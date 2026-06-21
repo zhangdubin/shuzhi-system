@@ -321,6 +321,69 @@ async function checkUpdate() {
   }
 }
 
+// 软重启
+const restartDialogVisible = ref(false)
+const restartCountdown = ref(3)
+const restartPhase = ref<'idle' | 'waiting' | 'recovering' | 'done' | 'failed'>('idle')
+let restartTimer: number | null = null
+let healthTimer: number | null = null
+
+async function startRestart() {
+  restartDialogVisible.value = true
+  restartPhase.value = 'waiting'
+  restartCountdown.value = 3
+  try {
+    await settingsApi.restartBackend()
+  } catch (e: any) {
+    // 503 是预期的（重启时连接断开）
+    if (e?.message?.includes('503') || e?.message?.includes('Network') || e?.code === 'ERR_NETWORK') {
+      // 正常
+    } else {
+      ElMessage.warning('重启请求已发送但收到异常响应：' + (e?.message || '未知错误'))
+    }
+  }
+  // 倒计时 3 秒
+  restartTimer = window.setInterval(() => {
+    restartCountdown.value--
+    if (restartCountdown.value <= 0) {
+      if (restartTimer) clearInterval(restartTimer)
+      restartPhase.value = 'recovering'
+      startHealthPolling()
+    }
+  }, 1000)
+}
+
+function startHealthPolling() {
+  let attempts = 0
+  const maxAttempts = 60 // 60 秒（容器重启 + uvicorn 4 workers 启动需要时间）
+  healthTimer = window.setInterval(async () => {
+    attempts++
+    try {
+      await settingsApi.healthCheck()
+      // 通了
+      if (healthTimer) clearInterval(healthTimer)
+      restartPhase.value = 'done'
+      ElMessage.success('✅ 后端已重启完成！')
+      // 3 秒后自动刷新页面
+      setTimeout(() => window.location.reload(), 3000)
+    } catch (e) {
+      if (attempts >= maxAttempts) {
+        if (healthTimer) clearInterval(healthTimer)
+        restartPhase.value = 'failed'
+      }
+    }
+  }, 1000)
+}
+
+function closeRestartDialog() {
+  if (restartPhase.value === 'waiting' || restartPhase.value === 'recovering') {
+    ElMessage.warning('重启进行中，请勿关闭')
+    return
+  }
+  restartDialogVisible.value = false
+  restartPhase.value = 'idle'
+}
+
 async function testConn(target: string) {
   testing.value = target
   try {
@@ -384,6 +447,7 @@ onMounted(load)
       <button class="tb-btn" :class="{active: exportLoading}" @click="doExport">📦 备份</button>
       <button class="tb-btn" @click="openImportDialog">📥 导入</button>
       <button class="tb-btn" :class="{active: updateLoading}" @click="checkUpdate">🔄 检查更新</button>
+      <button class="tb-btn tb-btn--warn" @click="startRestart">♻️ 软重启</button>
       <div class="tb-spacer"></div>
       <button class="tb-btn tb-btn--primary" :class="{disabled: editedKeys.length === 0}" @click="save">
         💾 保存
@@ -651,6 +715,41 @@ onMounted(load)
       </template>
     </el-dialog>
 
+    <!-- 软重启后端弹窗 -->
+    <el-dialog v-model="restartDialogVisible" title="♻️ 软重启后端" width="440px" :close-on-click-modal="false" :show-close="restartPhase === 'done' || restartPhase === 'failed' || restartPhase === 'idle'" :before-close="closeRestartDialog">
+      <div v-if="restartPhase === 'waiting'" class="restart-body">
+        <div class="restart-icon waiting">⏳</div>
+        <h3>后端将在 {{ restartCountdown }} 秒后重启</h3>
+        <p>容器内 uvicorn 进程会被替换，Docker 自动拉起新进程。</p>
+        <p class="restart-tip">预计 5-10 秒后恢复，期间页面可能短暂无响应。</p>
+      </div>
+      <div v-else-if="restartPhase === 'recovering'" class="restart-body">
+        <div class="restart-icon spinning">🔄</div>
+        <h3>后端重启中...</h3>
+        <p>正在轮询健康检查端点，最多 30 秒</p>
+        <el-progress :percentage="Math.min(100, 100 * (30 - 3) / 30)" :show-text="false" />
+      </div>
+      <div v-else-if="restartPhase === 'done'" class="restart-body">
+        <div class="restart-icon done">✅</div>
+        <h3>后端已成功重启！</h3>
+        <p>页面将在 3 秒后自动刷新加载新配置...</p>
+      </div>
+      <div v-else-if="restartPhase === 'failed'" class="restart-body">
+        <div class="restart-icon failed">❌</div>
+        <h3>后端启动超时（30 秒）</h3>
+        <p>可能原因：</p>
+        <ul>
+          <li>Docker 容器 restart policy 不是 unless-stopped</li>
+          <li>新代码有错误导致启动失败</li>
+        </ul>
+        <p class="restart-tip">请到服务器执行 <code>docker logs shuzhi-backend</code> 查看</p>
+      </div>
+      <template #footer>
+        <el-button v-if="restartPhase === 'done' || restartPhase === 'failed'" @click="restartDialogVisible = false">关闭</el-button>
+        <el-button v-else @click="closeRestartDialog" disabled>重启中...</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 触点 #52：检查更新弹窗 -->
     <el-dialog v-model="updateDialogVisible" title="🔄 系统更新检查" width="560px" :close-on-click-modal="false">
       <div v-if="updateInfo" class="update-dialog">
@@ -675,7 +774,10 @@ onMounted(load)
         </div>
         <div v-if="updateInfo.assetSizeMB !== undefined" class="ud-row">
           <span class="ud-lbl">资源大小：</span>
-          <span class="ud-val">{{ updateInfo.assetSizeMB }} MB</span>
+          <span class="ud-val">
+            <span v-if="updateInfo.assetSizeMB > 0">{{ updateInfo.assetSizeMB }} MB</span>
+            <span v-else class="ud-muted">未上传二进制附件（建议 git pull 升级）</span>
+          </span>
         </div>
         <div v-if="updateInfo.releaseNotes" class="ud-notes">
           <div class="ud-lbl">Release Notes：</div>
@@ -780,6 +882,9 @@ $ss-radius-sm:  6px;
 .tb-btn--primary { background: $ss-primary; color: #FFFFFF; padding: 4px 14px; font-weight: 500; }
 .tb-btn--primary:hover:not(.disabled) { background: $ss-primary-2; }
 .tb-btn--primary.disabled { opacity: 0.4; cursor: not-allowed; }
+.tb-btn--warn { color: #D97706; }
+.tb-btn--warn:hover { background: #FEF3C7; color: #B45309; }
+.tb-btn--warn.active { background: #FEF3C7; color: #B45309; }
 .tb-icon { font-size: 14px; }
 .tb-sep { color: $ss-border-2; margin: 0 2px; }
 .tb-spacer { flex: 1; }
@@ -909,6 +1014,7 @@ $ss-radius-sm:  6px;
 
 /* Dialog */
 .update-dialog { padding: 4px 0; }
+.ud-muted { color: #A1A1AA; font-size: 12px; }
 .ud-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; }
 .ud-lbl { color: $ss-text-2; min-width: 80px; }
 .ud-val { color: $ss-text; font-family: $font-family-mono; }
@@ -977,4 +1083,30 @@ $ss-radius-sm:  6px;
   .ss-row__r { flex: 0 0 auto; width: 100%; }
   .deploy-checklist .dc-grid { grid-template-columns: 1fr; }
 }
+
+/* 软重启对话框 */
+.restart-body { text-align: center; padding: 16px 0 8px; }
+.restart-icon {
+  width: 64px; height: 64px; margin: 0 auto 16px;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 32px; font-weight: 700; line-height: 1;
+}
+.restart-icon.waiting { background: #FEF3C7; color: #D97706; }
+.restart-icon.recovering { background: #EEF2FF; color: #4F46E5; }
+.restart-icon.done { background: #D1FAE5; color: #059669; }
+.restart-icon.failed { background: #FEE2E2; color: #DC2626; }
+.restart-body h3 { margin: 0 0 8px; font-size: 16px; color: #18181B; font-weight: 600; }
+.restart-body p { margin: 4px 0; color: #52525B; font-size: 13px; line-height: 1.6; }
+.restart-body .restart-tip { color: #A1A1AA; font-size: 12px; margin-top: 10px; }
+.restart-body .restart-progress {
+  margin-top: 14px; height: 4px; background: #F4F4F5;
+  border-radius: 2px; overflow: hidden;
+}
+.restart-body .restart-progress__bar {
+  height: 100%; background: #4F46E5; width: 0%;
+  transition: width 1s linear;
+}
+.restart-body.spinning .restart-icon { animation: rs-pulse 1.2s ease-in-out infinite; }
+@keyframes rs-pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.08); } }
+
 </style>

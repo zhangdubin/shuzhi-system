@@ -379,6 +379,20 @@ export const settingsApi = {
       assetSizeMB?: number
       error?: string
     }>('/admin/settings/update/check'),
+  restartBackend: () =>
+    http.post<{
+      message: string
+      delay_seconds: number
+      estimated_recovery_seconds: number
+      note: string
+    }>('/admin/settings/restart'),
+  healthCheck: async () => {
+    // 直接用 fetch 绕过 axios 的 /api/v1 baseURL 拦截器（健康检查在根路径）
+    // 后端只返回 "ok\n" 文本，不要 r.json() 会报错
+    const r = await fetch('/health', { cache: 'no-store' })
+    if (!r.ok) throw new Error('health ' + r.status)
+    return { status: 'ok' }
+  },
 }
 
 // ---------- 报销中心 ----------
