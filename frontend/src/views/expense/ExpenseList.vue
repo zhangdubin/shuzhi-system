@@ -37,7 +37,7 @@ const typeChips = computed(() => {
 
 // 4 KPI（API 填充）
 const stats = ref([
-  { label: '本期费用总额', value: '...',  unit: '万', icon: '¥', iconBg: 'rgba(79,107,255,0.12)',  iconColor: '#4F6BFF', delta: '加载中' },
+  { label: '本期费用总额', value: '...',  unit: '元', icon: '¥', iconBg: 'rgba(79,107,255,0.12)',  iconColor: '#4F6BFF', delta: '加载中' },
   { label: '待审批',       value: 0,          unit: '单', icon: '⏱', iconBg: 'rgba(245,158,11,0.12)',  iconColor: '#F59E0B', delta: '' },
   { label: '已通过',       value: 0,          unit: '单', icon: '✓', iconBg: 'rgba(16,185,129,0.12)',  iconColor: '#10B981', delta: '' },
   { label: '已驳回',       value: 0,           unit: '单', icon: '!', iconBg: 'rgba(239,68,68,0.12)',   iconColor: '#EF4444', delta: '' },
@@ -145,7 +145,7 @@ async function loadData(opts: { keyword?: string; status?: string; type?: string
       })
       // 更新 KPI
       const sumAmount = rows.value.reduce((s: number, r: any) => s + (r.amount || 0), 0)
-      stats.value[0].value = '¥ ' + (sumAmount / 10000).toFixed(1)
+      stats.value[0].value = '¥ ' + Number(sumAmount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
       stats.value[0].delta = '历史累计'
       stats.value[1].value = rows.value.filter((r: any) => r.status === '审批中').length
       stats.value[2].value = rows.value.filter((r: any) => ['已通过','已报销'].includes(r.status)).length

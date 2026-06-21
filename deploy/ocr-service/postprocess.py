@@ -18,7 +18,8 @@
 不依赖版面分析（layout），只依赖 OCR 行文本 + Y 轴排序。
 """
 import re
-from datetime import datetime
+from datetime import datetime, date
+from decimal import Decimal
 from typing import Dict, List, Optional, Tuple
 
 
@@ -121,6 +122,12 @@ def extract_invoice_fields(items: List[Tuple]) -> Dict[str, dict]:
     """
     if not items:
         return {}
+
+    # 0. 类型检测：先看是不是火车票 / 其他票种
+    # 火车票特征：含 "铁路电子客票" 或 "车次" 或 "二等座/硬座" 等
+    full_text_raw = " ".join(t for _, t, _ in items)
+    if any(kw in full_text_raw for kw in ("铁路电子客票", "电子客票号", "车次", "二等座", "硬座", "软座", "商务座", "特等座", "动车", "高铁")):
+        return _extract_train_ticket_fields(items)
 
     # 1. 多行合并
     merged = _merge_lines(items, y_threshold=25)
@@ -538,3 +545,177 @@ def _pct(conf: float) -> int:
 def date(y, m, d):
     from datetime import date as _d
     return _d(y, m, d)
+
+
+# ============================================================
+# 火车票识别（铁路电子客票）
+# ============================================================
+# 火车票版式固定，特征明显：
+# - 标题：电子发票（铁路电子客票）
+# - 发票号码：20+ 位数字
+# - 开票日期：YYYY年MM月DD日
+# - 出发站 + 到达站 + 车次
+# - 乘车日期 + 时间
+# - 车厢号 + 座位号
+# - 票价：¥XX.XX
+# - 姓名 + 身份证号（18 位）
+# - 电子客票号（30+ 位数字）
+# - 购买方名称 + 税号
+
+import re
+
+RE_TRAIN_FROM = re.compile(r"^([\u4e00-\u9fa5]{2,4})站\s*$")  # 上海站、北京南站
+RE_TRAIN_TRAIN_NO = re.compile(r"^([GDCZTKLPS]\d{1,4})次?$|^([GDCZTKLPS]\d{1,4})$")  # G4/D12/K1057
+RE_TRAIN_DATE = re.compile(r"(\d{4})年(\d{1,2})月(\d{1,2})日")
+RE_TRAIN_TIME = re.compile(r"(\d{1,2}):(\d{1,2})开$|^(\d{1,2}):(\d{1,2})$")
+RE_TRAIN_CAR = re.compile(r"(\d{1,2})车(\d{1,3}[A-Z]?号)")  # 12车02C号
+RE_TRAIN_PRICE = re.compile(r"[¥￥]\s*([0-9]+(?:\.[0-9]{1,2})?)")  # 半角/全角 ¥ 都收
+RE_TRAIN_ID = re.compile(r"(?<!\d)(\d{17}[\dXx])(?!\d)")  # 18 位身份证（避免误匹 20 位发票号）
+RE_TRAIN_ID_MASKED = re.compile(r"(\d{6,10})\*+(\d{4})")  # 3715811989****1751
+RE_TRAIN_E_TICKET = re.compile(r"电子客票号[:：]\s*(\d{18,})" )  # 电子客票号（18+ 位）
+RE_TRAIN_BUYER = re.compile(r"购买方名称[:：]\s*([^\n]+)")  # 火车票购买方（不跨行）
+RE_TRAIN_TAX = re.compile(r"统一社会信用代码[:：]\s*([0-9A-Z]{15,20})")
+RE_TRAIN_INVOICE_NO = re.compile(r"发票号码[:：]\s*(\d{15,25})")  # 火车票发票号 20 位左右
+
+
+def _extract_train_ticket_fields(items: List[Tuple]) -> Dict[str, dict]:
+    """提取铁路电子客票字段"""
+    if not items:
+        return {}
+
+    merged = _merge_lines(items, y_threshold=25)
+    lines = [(it[0], it[1].strip(), it[2]) for it in merged if it[1].strip()]
+    overall_conf = sum(c for _, _, c in items) / max(1, len(items))
+
+    fields: Dict[str, dict] = {}
+    full_text = "\n".join(t for _, t, _ in lines)
+
+    # ===== 发票号（标题"发票号码："后）=====
+    m = RE_TRAIN_INVOICE_NO.search(full_text)
+    if m:
+        fields["invoiceNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 开票日期 =====
+    m = RE_TRAIN_DATE.search(full_text)
+    if m:
+        y, mo, d = m.groups()
+        try:
+            fields["issueDate"] = {"value": date(int(y), int(mo), int(d)).isoformat(), "confidence": _pct(overall_conf)}
+        except ValueError:
+            pass
+
+    # ===== 票价（"¥" 开头的金额） =====
+    m = RE_TRAIN_PRICE.search(full_text)
+    if m:
+        fields["totalAmount"] = {"value": float(m.group(1)), "confidence": _pct(overall_conf)}
+        fields["taxAmount"] = {"value": 0.0, "confidence": 100}  # 火车票免税
+        fields["amount"] = {"value": float(m.group(1)), "confidence": _pct(overall_conf)}
+        fields["taxRate"] = {"value": 0.0, "confidence": 100}
+        # 大写
+        fields["totalAmountCn"] = {"value": _cn_capital(Decimal(str(m.group(1)))), "confidence": _pct(overall_conf)}
+
+    # ===== 乘车人身份证（18 位或掩码） =====
+    m = RE_TRAIN_ID.search(full_text)
+    if m:
+        fields["buyerIdNumber"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+    m = RE_TRAIN_ID_MASKED.search(full_text)
+    if m:
+        fields["buyerIdMasked"] = {"value": f"{m.group(1)}****{m.group(2)}", "confidence": _pct(overall_conf)}
+
+    # ===== 购买方（抬头） =====
+    m = RE_TRAIN_BUYER.search(full_text)
+    if m:
+        fields["buyerName"] = {"value": m.group(1).strip(), "confidence": _pct(overall_conf)}
+
+    m = RE_TRAIN_TAX.search(full_text)
+    if m:
+        fields["buyerTaxNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 电子客票号 =====
+    m = RE_TRAIN_E_TICKET.search(full_text)
+    if m:
+        fields["eTicketNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 车次 / 出发 / 到达 / 乘车日期 / 车厢座位 =====
+    # 提取所有 station 标记（"X站"格式）
+    stations = []
+    for _, t, c in lines:
+        m = re.match(r"^([\u4e00-\u9fa5]{2,4})站$", t)
+        if m:
+            stations.append(m.group(1))
+    if len(stations) >= 2:
+        fields["fromStation"] = {"value": stations[0], "confidence": _pct(overall_conf)}
+        fields["toStation"] = {"value": stations[1], "confidence": _pct(overall_conf)}
+
+    # 车次
+    for _, t, c in lines:
+        m = re.match(r"^([GDCZTKLY]\d{1,4})$", t)
+        if m:
+            fields["trainNo"] = {"value": m.group(1), "confidence": _pct(c)}
+            break
+
+    # 乘车日期时间（"2026年04月10日" + "07:00开" 配对）
+    ride_date = None
+    ride_time = None
+    for _, t, c in lines:
+        m = RE_TRAIN_DATE.match(t)
+        if m and not fields.get("issueDate", {}).get("value", "").endswith(f"-{int(m.group(2)):02d}-{int(m.group(3)):02d}"):
+            # 可能是乘车日期（不是开票日期）
+            try:
+                ride_date = date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat()
+            except ValueError:
+                pass
+        m = re.match(r"^(\d{1,2}):(\d{1,2})开?$", t)
+        if m:
+            ride_time = f"{int(m.group(1)):02d}:{m.group(2)}"
+    if ride_date:
+        fields["rideDate"] = {"value": ride_date, "confidence": _pct(overall_conf)}
+    if ride_time:
+        fields["rideTime"] = {"value": ride_time, "confidence": _pct(overall_conf)}
+
+    # 车厢 + 座位
+    for _, t, c in lines:
+        m = RE_TRAIN_CAR.match(t)
+        if m:
+            fields["carriageNo"] = {"value": f"{m.group(1)}车", "confidence": _pct(c)}
+            fields["seatNo"] = {"value": m.group(2), "confidence": _pct(c)}
+            break
+    for _, t, c in lines:
+        if t in ("二等座", "一等座", "商务座", "特等座", "硬座", "软座", "硬卧", "软卧", "动卧"):
+            fields["seatClass"] = {"value": t, "confidence": _pct(c)}
+            break
+
+    # ===== 标识 =====
+    fields["invoiceType"] = {"value": "铁路电子客票", "confidence": _pct(overall_conf)}
+    fields["sellerName"] = {"value": "中国铁路", "confidence": _pct(overall_conf)}
+    fields["sellerTaxNo"] = {"value": "", "confidence": 0}
+    fields["invoiceCode"] = {"value": "", "confidence": 0}
+    fields["remarks"] = {"value": "火车票（差旅）", "confidence": _pct(overall_conf)}
+
+    print(f"[ocr] train ticket: fields={list(fields.keys())}", flush=True)
+    return fields
+
+
+def _cn_capital(amount):
+    """数字转中文大写金额（复用主代码逻辑，避免重复 import）"""
+    try:
+        from postprocess_cn import cn_capital
+        return cn_capital(amount)
+    except ImportError:
+        # 兜底：直接调用本地小函数
+        return _cn_capital_local(amount)
+
+
+def _cn_capital_local(amount):
+    """简易中文大写转换（兜底）"""
+    if amount is None:
+        return ""
+    try:
+        amt = float(amount)
+    except (TypeError, ValueError):
+        return ""
+    if amt == 0:
+        return "零元整"
+    # 简化版：数字 + "元"
+    return f"{amt:.2f}元"
+

@@ -16,7 +16,7 @@ from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import NotFoundException, ParamErrorException, ConflictException
+from app.core.exceptions import NotFoundException, ParamErrorException, ConflictException, OCRFailedException
 from app.core.sse import (
     publish_batch_progress, publish_batch_item_done,
     publish_batch_summary, publish_batch_completed,
@@ -36,6 +36,20 @@ def _gen_invoice_code() -> str:
 
 def _gen_batch_code() -> str:
     return f"BATCH-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:3].upper()}"
+
+
+def _parse_issue_date(s):
+    """把 YYYY-MM-DD / YYYY/MM/DD / YYYYMMDD / datetime 解析为 date"""
+    if not s:
+        return None
+    txt = str(s)[:10]
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(txt, fmt).date()
+        except Exception:
+            pass
+    return None
+
 
 
 async def _save_file(filename: str, content: bytes) -> dict:
@@ -507,6 +521,8 @@ async def get_invoice(db: AsyncSession, invoice_id: int) -> dict:
         "updatedAt": inv.updated_at.isoformat() if inv.updated_at else None,
         "relations": relations,
         "items": _clean_items(inv.items or []),
+        # 原始 OCR（含火车票扩展字段：fromStation/toStation/trainNo/carriageNo/seatNo/seatClass/buyerIdMasked/eTicketNo/rideDate/rideTime）
+        "rawOcr": inv.raw_ocr or {},
         # 启发式归类（前端"费用类型"下拉一键带入）
         "expenseType": _classify_expense_category(inv.seller_name, inv.invoice_type) if inv.seller_name else "",
     }
@@ -572,6 +588,12 @@ def _classify_expense_category(seller_name: Optional[str], invoice_type: Optiona
     差旅 / 招待 / 办公 / 推广 / 培训 / 其他
     """
     name = (seller_name or "").strip()
+    itype = (invoice_type or "").strip()
+    # 0. 票种级判定（最优先）
+    if "铁路" in itype or "火车" in itype or "航空" in itype or "机票" in itype:
+        return "差旅"
+    if name in ("中国铁路", "中国国家铁路集团", "12306", "国航", "东航", "南航", "海航") or "铁路" in name or "航空" in name or "12306" in name:
+        return "差旅"
     # 关键词 → 类别
     rules: list[tuple[list[str], str]] = [
         (["酒店", "宾馆", "招待所", "客栈", "民宿", "度假村", "客房"], "差旅"),
@@ -686,7 +708,24 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
     inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
     if not inv:
         raise NotFoundException(f"发票不存在：{invoice_id}")
-    new_ocr = await ocr_client.recognize(inv.file_id or f"INV-{inv.id}", inv.file_url or "")
+
+    # R18.1: 非标准格式（PDF/HEIC/WEBP）必须先转 JPEG 再 OCR
+    # 否则 ocr-service 收到 PDF 会 LoadImageError → 上层回退 mock → 用户看到假数据
+    try:
+        normalized_url, normalized_name, _ = await image_converter.normalize_to_jpeg(
+            file_url=inv.file_url or "",
+            file_id=inv.file_id or f"INV-{inv.id}",
+            save_callback=_save_file,
+        )
+        ocr_url = normalized_url
+        if normalized_url != (inv.file_url or ""):
+            from loguru import logger
+            logger.info(f"[recheck OCR 转码] {inv.file_url} → {normalized_name} → {normalized_url}")
+    except OCRFailedException as e:
+        # 转码失败：直接报错，不回退 mock
+        raise OCRFailedException(f"重新识别失败（转码错误）：{e}")
+
+    new_ocr = await ocr_client.recognize(inv.file_id or f"INV-{inv.id}", ocr_url)
     from app.integrations.ocr_client import _cn_capital
     # 不管 OCR 成败，都确保 3 个字段已填（OCR 不返时用兜底逻辑）
     try:
@@ -708,6 +747,12 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
         inv.total_amount_cn = flat.get("totalAmountCn") or _cn_capital(_amount_yuan)
         inv.verify_code = flat.get("verifyCode") or flat.get("verify_code") or ""
         inv.remarks = flat.get("remarks") or ""
+        inv.buyer_name = flat["buyerName"]
+        inv.buyer_tax_no = flat["buyerTaxNo"]
+        inv.seller_name = flat["sellerName"]
+        inv.seller_tax_no = flat["sellerTaxNo"]
+        inv.invoice_code = flat["invoiceCode"]
+        inv.issue_date = _parse_issue_date(flat["issueDate"])
     else:
         # OCR 失败：用现有数据兜底
         inv.status = "rejected"
@@ -717,6 +762,28 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
             inv.verify_code = ""  # OCR 没返就留空
     inv.status = inv.status if inv.status != "failed" else "rejected"
     await db.commit()
+
+    # R-fix: 重新识别后，如果已 submit 且存在关联 expense，按新 invoice_type 修正 category
+    # 避免老 expense 因发票首次归类错误（比如火车票卖家名不匹配 → '其他'）永远错
+    if inv.status in ("submitted", "verified"):
+        try:
+            from app.modules.expense.models import Expense
+            from sqlalchemy import select as _sel
+            link_tag = f"[关联发票 INV-{inv.invoice_no or inv.id}]"
+            stmt = _sel(Expense).where(Expense.description.contains(link_tag))
+            rows = (await db.execute(stmt)).scalars().all()
+            if rows:
+                new_cat = _classify_expense_category(inv.seller_name, inv.invoice_type)
+                for r in rows:
+                    if r.category in (None, "", "其他") and new_cat != "其他":
+                        r.category = new_cat
+                    elif r.category != new_cat and new_cat != "其他":
+                        # 同步覆盖：火车票→差旅 即使已不是空也升级
+                        r.category = new_cat
+                await db.commit()
+        except Exception as _e:
+            print(f"[recheck-fix-category] invoice_id={inv.id} failed: {_e}", flush=True)
+
     return await get_invoice(db, inv.id)
 
 

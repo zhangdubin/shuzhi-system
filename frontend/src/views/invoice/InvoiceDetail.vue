@@ -372,6 +372,28 @@ onMounted(async () => {
           tax: _normMoney(it.taxAmount),
         }
       })
+    } else if (d.invoiceType === '铁路电子客票') {
+      // 火车票：把 fromStation/toStation/trainNo 拼成一条 items 行（避免空表）
+      const _f = (d.rawOcr && d.rawOcr.fields) || {}
+      const fromS = (_f.fromStation && _f.fromStation.value) || ''
+      const toS = (_f.toStation && _f.toStation.value) || ''
+      const train = (_f.trainNo && _f.trainNo.value) || ''
+      const seat = (_f.seatClass && _f.seatClass.value) || ''
+      const ride = (_f.rideDate && _f.rideDate.value) || ''
+      const itemName = (train ? train + ' ' : '') + (fromS && toS ? (fromS + '→' + toS) : (fromS || toS || '—'))
+      const itemSub = (ride ? ride : '') + (seat ? ' · ' + seat : '')
+      items.value = [{
+        seq: 1,
+        name: itemName + (itemSub ? '（' + itemSub + '）' : ''),
+        qty: 1,
+        price: d.totalAmount ?? 0,
+        amount: d.totalAmount ?? 0,
+        taxRate: '0%',
+        tax: '0.00',
+      }]
+    } else {
+      // 其他类型且 OCR 没识别到明细：清空假数据
+      items.value = []
     }
     // 5) 上传人/上传时间
     if (d.uploaderName) {
@@ -598,7 +620,7 @@ async function runAiRecheck() {
             <!-- 设计稿的 fake-invoice 模拟样式（始终保留） -->
             <div class="fake-invoice">
               <div class="fi-header">
-                <div class="fi-title">电子普通发票</div>
+                <div class="fi-title">{{ mock.type || "电子普通发票" }}</div>
                 <div class="fi-no">No. {{ mock.no }}</div>
               </div>
               <div class="fi-info-grid">

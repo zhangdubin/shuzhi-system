@@ -104,7 +104,7 @@ function matchAi(r: any): boolean {
   return true
 }
 const filteredList = computed(() => {
-  if (!aiFilter.value) return list
+  if (!aiFilter.value) return list.value
   return list.value.filter(matchAi)
 })
 
@@ -121,7 +121,7 @@ const sampleRows = ref([
   { id: 9, code: 'HK-2026-017', contract: 'HT-2026-022', client: '携程商旅',             amount: 12000,  total: 24000,    progress: 50,  planDate: '2026-05-30', actualDate: '—',          manager: '李建国', status: '已逾期',  statusColor: 'danger' },
 ])
 
-function fmtAmount(n: number) { return '¥ ' + n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function fmtAmount(cents: any) { const v = (cents == null || isNaN(Number(cents))) ? 0 : Number(cents) / 100; return '¥ ' + v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
 function gotoDetail(r: any) { ElMessage.info(`查看回款: ${r.code}`) }
 function gotoCreate() { router.push('/receivable/create') }
 
@@ -130,37 +130,41 @@ onMounted(() => {
     .then((res: any) => {
       if (res?.list?.length) {
         const raw = res.list as any[]
+        // 后端字段：planAmount/receivedAmount 均为元（后端已 /100）
+        // 状态：pending/partial/paid/overdue → 待回款/部分回款/已完成/已逾期
+        const stMap: Record<string, string> = { pending: '待回款', partial: '部分回款', paid: '已完成', overdue: '已逾期' }
+        const colorMap: Record<string, string> = { '待回款': 'info', '部分回款': 'warning', '已完成': 'success', '已逾期': 'danger' }
         list.value = raw.map((r: any) => {
-          const st = r.status || '待回款'
-          const statusMap: Record<string, string> = {
-            '已完成': 'success',
-            '部分回款': 'warning',
-            '待回款': 'info',
-            '已逾期': 'danger',
-          }
+          const plan = Number(r.planAmount || 0)
+          const recv = Number(r.receivedAmount || 0)
+          const st = stMap[r.status] || r.status || '待回款'
+          const progress = plan > 0 ? Math.min(100, Math.round((recv / plan) * 100)) : 0
           return {
             id: r.receivableId || r.id,
             code: r.code || 'DRAFT',
-            contract: r.contractCode || '-',
+            contract: r.contractCode || r.contract || '-',
             client: r.clientName || r.client || '-',
-            amount: r.amount || 0, // 分
-            total: r.totalAmount || r.amount || 0,
-            progress: r.progress || 0,
+            // 前端内部 amount 统一用"分"，展示时 /100 转元
+            amount: Math.round(plan * 100),
+            total: Math.round(plan * 100),
+            received: Math.round(recv * 100),
+            progress,
             planDate: r.planDate || '-',
             actualDate: r.actualDate || '—',
             manager: r.managerName || r.manager || '-',
             status: st,
-            statusColor: statusMap[st] || 'info',
+            statusColor: colorMap[st] || 'info',
           }
         })
-        // 更新 KPI
-        const totalAmt = list.value.reduce((s, r) => s + (r.amount || 0), 0)
+        // KPI（amount 是分 → /100 转元，/10000 转万）
+        const totalAmt = list.value.reduce((s, r) => s + (r.amount || 0), 0) / 100
         const overdueCount = list.value.filter(r => r.status === '已逾期').length
-        stats.value[0].value = '¥ ' + (totalAmt / 1000000).toFixed(1)
+        stats.value[0].value = '¥ ' + (totalAmt / 10000).toFixed(2)
         stats.value[0].delta = `完成率 ${list.value.filter(r => r.status === '已完成').length}/${list.value.length}`
-        stats.value[1].value = '¥ ' + (list.value.filter(r => r.status !== '已完成').reduce((s, r) => s + (r.amount || 0), 0) / 1000000).toFixed(1)
+        const remainAmt = list.value.filter(r => r.status !== '已完成').reduce((s, r) => s + (r.amount || 0), 0) / 100
+        stats.value[1].value = '¥ ' + (remainAmt / 10000).toFixed(2)
         stats.value[1].delta = `剩余 ${list.value.filter(r => r.status !== '已完成').length} 笔`
-        const doneAmt = list.value.filter(r => r.status === '已完成').reduce((s, r) => s + (r.amount || 0), 0)
+        const doneAmt = list.value.filter(r => r.status === '已完成').reduce((s, r) => s + (r.amount || 0), 0) / 100
         stats.value[2].value = totalAmt > 0 ? ((doneAmt / totalAmt) * 100).toFixed(1) : '0'
         stats.value[3].value = overdueCount
       }
