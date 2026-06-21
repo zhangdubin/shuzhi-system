@@ -18,12 +18,12 @@
 - 🤖 AI 智能中心（抽取/问答/风险扫描）
 
 ## 本地启动
-\`\`\`bash
+```bash
 cp backend/.env.example backend/.env
 # 编辑 .env 填入真实密钥
 docker compose up -d
 # 访问 http://localhost
-\`\`\`
+```
 
 ## 文档
 - [AGENTS.md](./AGENTS.md) - AI 助手协作规范
