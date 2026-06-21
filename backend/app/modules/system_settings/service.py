@@ -49,6 +49,13 @@ SETTING_METAS: List[Dict[str, Any]] = [
     {"key": "OCR_CONFIDENCE_THRESHOLD", "group": "OCR 识别", "label": "置信度阈值（0-1）", "type": "float", "min": 0, "max": 1, "step": 0.05, "sensitive": False},
     {"key": "OCR_TIMEOUT", "group": "OCR 识别", "label": "超时（秒）", "type": "int", "sensitive": False},
 
+    # ===== GitHub Release（系统更新检查）=====
+    {"key": "GITHUB_REPO_OWNER", "group": "系统更新", "label": "仓库 Owner（用户/组织名）", "type": "string", "sensitive": False, "placeholder": "如 zhangdubin"},
+    {"key": "GITHUB_REPO_NAME", "group": "系统更新", "label": "仓库名", "type": "string", "sensitive": False, "placeholder": "如 shuzhi-system"},
+    {"key": "GITHUB_API_BASE", "group": "系统更新", "label": "GitHub API 地址", "type": "string", "sensitive": False, "placeholder": "https://api.github.com"},
+    {"key": "GITHUB_TOKEN", "group": "系统更新", "label": "GitHub Token（PAT）", "type": "string", "sensitive": True, "placeholder": "Private 仓库必填；公开仓库可留空（填写后限额 60/h → 5000/h）", "help": "申请：https://github.com/settings/tokens/new （无 scopes 即可）"},
+    {"key": "APP_VERSION", "group": "系统更新", "label": "当前版本号", "type": "string", "sensitive": False, "help": "CI/CD 构建时注入；本地留默认 1.0.0"},
+
     # ===== 诺诺发票云 =====
     {"key": "NUONUO_API_KEY", "group": "诺诺发票云", "label": "AppKey", "type": "string", "sensitive": True, "placeholder": "向诺诺开放平台申请"},
     {"key": "NUONUO_API_SECRET", "group": "诺诺发票云", "label": "AppSecret", "type": "string", "sensitive": True},
@@ -132,7 +139,7 @@ def get_all_settings() -> Dict[str, Any]:
         "groups": groups,
         "envFilePath": _find_env_path(),
         "runtimeEnv": settings.ENV,
-        "version": settings.APP_NAME,
+        "version": settings.APP_VERSION or settings.APP_NAME,
     }
 
 
@@ -372,10 +379,7 @@ def import_settings(payload: Dict[str, Any], operator_id: int) -> Dict[str, Any]
 # 系统更新（检查新版本）
 # ============================================================
 
-# 项目仓库（可后续移到 .env 配置）
-PROJECT_REPO_OWNER = "trisome"
-PROJECT_REPO_NAME = "数智化系统new"
-GITHUB_API = "https://api.github.com"
+# GitHub Release 仓库配置已移至 app.config.settings（GITHUB_REPO_OWNER / GITHUB_REPO_NAME / GITHUB_API_BASE）
 
 
 async def check_update() -> Dict[str, Any]:
@@ -397,11 +401,23 @@ async def check_update() -> Dict[str, Any]:
 
     # 调用 GitHub API 拿最新 release
     try:
-        url = f"{GITHUB_API}/repos/{PROJECT_REPO_OWNER}/{PROJECT_REPO_NAME}/releases/latest"
+        url = f"{settings.GITHUB_API_BASE}/repos/{settings.GITHUB_REPO_OWNER}/{settings.GITHUB_REPO_NAME}/releases/latest"
+        # GitHub PAT 头（Private 仓库或提升限流）
+        _gh_headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": "shuzhi-update-checker",
+            "X-GitHub-Api-Version": "2022-11-28",
+        }
+        if settings.GITHUB_TOKEN:
+            _gh_headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
         async with httpx.AsyncClient(timeout=8.0) as client:
-            r = await client.get(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "shuzhi-update-checker"})
+            r = await client.get(url, headers=_gh_headers)
             if r.status_code == 404:
-                return {"currentVersion": current, "latestVersion": None, "hasUpdate": False, "releaseUrl": None, "error": "仓库未发布任何 release"}
+                # 可能是仓库不存在 / 仓库私有无 token / 仓库未发 release
+                _err = "仓库未发布任何 release"
+                if not settings.GITHUB_TOKEN:
+                    _err += "（若仓库为 Private，请在 .env 配置 GITHUB_TOKEN）"
+                return {"currentVersion": current, "latestVersion": None, "hasUpdate": False, "releaseUrl": None, "error": _err}
             if r.status_code != 200:
                 return {"currentVersion": current, "latestVersion": None, "hasUpdate": False, "releaseUrl": None, "error": f"GitHub API HTTP {r.status_code}"}
             data = r.json()
@@ -429,7 +445,13 @@ async def check_update() -> Dict[str, Any]:
 
 
 def _get_current_git_version() -> str:
-    """从 git 读当前 tag 或 commit short hash"""
+    """读当前版本：优先用 settings.APP_VERSION（CI/CD 注入），fallback 到 git"""
+    # 1) 优先：环境变量/CI 注入的版本号
+    # 优先用 settings.APP_VERSION（.env / CI / 构建时注入）
+    _app_v = getattr(settings, "APP_VERSION", None)
+    if _app_v and _app_v.strip() and _app_v.strip() != "unknown":
+        return _app_v.strip()
+    # 2) fallback：git tag 或 commit
     try:
         # 优先 tag
         out = subprocess.run(

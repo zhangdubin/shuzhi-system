@@ -34,6 +34,21 @@ const editing = reactive<Set<string>>(new Set())
 // 哪些 key 被用户真正改动过（触点 #51 修复初始 34 项误报问题）
 const dirty = reactive<Set<string>>(new Set())
 
+// 触点：扩展能力
+const totalItems = computed(() => Object.values(groups.value).reduce((sum, arr) => sum + (arr?.length || 0), 0))
+function hasGroupDirty(g: string) {
+  return (groups.value[g] || []).some(it => dirty.has(it.key))
+}
+const groupFilter = ref('')
+const filteredGroupItems = computed(() => {
+  const arr = groups.value[activeGroup.value] || []
+  if (!groupFilter.value.trim()) return arr
+  const kw = groupFilter.value.toLowerCase()
+  return arr.filter(it => it.label.toLowerCase().includes(kw) || it.key.toLowerCase().includes(kw))
+})
+const showSecrets = reactive<Record<string, boolean>>({})
+const isEdited = (key: string) => dirty.has(key)
+
 function markDirty(key: string) {
   dirty.add(key)
 }
@@ -118,6 +133,15 @@ function cancelEdit(item: SettingItem) {
   clearDirty(item.key)
 }
 
+function displaySecret(item: SettingItem): string {
+  // 安全策略：前端永远拿不到明文
+  if (!item.isSet) return '未配置'
+  if (showSecrets[item.key]) {
+    return `${item.displayValue}（已设置）`
+  }
+  return item.displayValue
+}
+
 const isEditing = (key: string) => editing.has(key)
 const editedKeys = computed(() => Array.from(dirty))
 
@@ -181,7 +205,21 @@ async function save() {
     if (r.rejected && r.rejected.length > 0) {
       ElMessage.warning(`${r.applied.length} 项应用成功，${r.rejected.length} 项被拒绝：${r.rejected.map((x: any) => x.key + ' ' + x.reason).join('; ')}`)
     } else {
-      ElMessage.success(`已保存 ${r.applied.length} 项配置（${r.envWritten ? '已写入 .env' : '仅内存生效'}）`)
+      const needRestart = r.applied.filter((x: any) => !x.hotReload)
+      if (needRestart.length > 0) {
+        ElMessageBox.alert(
+          `<div style="line-height:1.7">
+            已保存 <b>${r.applied.length}</b> 项配置（${r.envWritten ? '已写入 .env' : '仅内存生效'}）<br/>
+            其中 <b>${needRestart.length}</b> 项需要<b style="color:#e6a23c">重启后端容器</b>才生效：<br/>
+            <code style="background:#f5f5f5;padding:2px 6px;border-radius:4px;margin-top:6px;display:inline-block">${needRestart.map((x: any) => x.key).join(', ')}</code><br/><br/>
+            <code style="background:#f5f5f5;padding:4px 8px;border-radius:4px">docker restart shuzhi-backend</code>
+          </div>`,
+          '保存成功',
+          { dangerouslyUseHTMLString: true, confirmButtonText: '我知道了' }
+        )
+      } else {
+        ElMessage.success(`已保存 ${r.applied.length} 项配置（已热加载，立即生效）`)
+      }
     }
     // 清空编辑态
     for (const k of editedKeys.value) {
@@ -317,138 +355,151 @@ onMounted(load)
 <template>
   <div class="settings-page">
     <!-- 顶部信息条 -->
-    <div class="settings-head">
-      <div class="head-left">
-        <h2>⚙ 系统设置</h2>
-        <div class="head-meta">
-          <span class="meta-item">环境：<b :class="['env-tag', runtimeEnv]">{{ runtimeEnv }}</b></span>
-          <span class="meta-item">版本：{{ version }}</span>
-          <span class="meta-item" v-if="envFilePath">
-            .env：<a href="javascript:void(0)" @click="openEnvFile" class="env-link" :title="envFilePath">{{ envFilePath.split('/').pop() }}</a>
-          </span>
-        </div>
+    <header class="ss-header">
+      <div class="ss-header__left">
+        <h2 class="ss-header__title">系统设置</h2>
+        <span class="ss-header__sub">· {{ totalItems }} 项配置 · {{ activeGroup || '请选择分组' }}</span>
       </div>
-      <div class="head-right">
-        <el-button @click="load" :loading="loading">🔄 重新加载</el-button>
-        <el-button type="primary" :loading="saving" :disabled="editedKeys.length === 0" @click="save">
-          💾 保存更改
-          <span v-if="editedKeys.length > 0" class="badge-count">{{ editedKeys.length }}</span>
-        </el-button>
+      <div class="ss-header__right">
+        <span :class="['ss-env-chip', runtimeEnv]">{{ runtimeEnv }}</span>
+        <span class="ss-stat-mini"><span class="ss-stat-mini__lbl">版本</span>v{{ version }}</span>
+        <span class="ss-stat-mini" v-if="envFilePath" @click="openEnvFile" style="cursor:pointer">
+          <span class="ss-stat-mini__lbl">.env</span>{{ envFilePath.split('/').pop() }}
+        </span>
+        <span class="ss-stat-mini ss-stat-mini--warn" v-if="editedItems.length > 0">
+          <span class="ss-stat-mini__lbl">待保存</span>{{ editedItems.length }} 项
+        </span>
       </div>
+    </header>
+
+    <div class="ss-toolbar">
+      <button class="tb-btn" :class="{active: loading}" @click="load" title="重新加载"><span class="tb-icon">↻</span><span>重新加载</span></button>
+      <span class="tb-sep">|</span>
+      <button class="tb-btn" :class="{active: testing==='ocr'}" @click="testConn('ocr')">🔍 OCR</button>
+      <button class="tb-btn" :class="{active: testing==='nuonuo'}" @click="testConn('nuonuo')">🧾 诺诺</button>
+      <button class="tb-btn" :class="{active: testing==='redis'}" @click="testConn('redis')">🔴 Redis</button>
+      <button class="tb-btn" :class="{active: testing==='database'}" @click="testConn('database')">🗄 数据库</button>
+      <button class="tb-btn" :class="{active: testing==='storage'}" @click="testConn('storage')">🗃 对象存储</button>
+      <span class="tb-sep">|</span>
+      <button class="tb-btn" :class="{active: exportLoading}" @click="doExport">📦 备份</button>
+      <button class="tb-btn" @click="openImportDialog">📥 导入</button>
+      <button class="tb-btn" :class="{active: updateLoading}" @click="checkUpdate">🔄 检查更新</button>
+      <div class="tb-spacer"></div>
+      <button class="tb-btn tb-btn--primary" :class="{disabled: editedKeys.length === 0}" @click="save">
+        💾 保存
+        <span v-if="editedKeys.length > 0" class="tb-badge">{{ editedKeys.length }}</span>
+      </button>
     </div>
 
-    <!-- 测试连通性 -->
-    <div class="test-bar">
-      <span class="bar-label">测试外部服务：</span>
-      <el-button size="small" :loading="testing==='ocr'" @click="testConn('ocr')">🔍 OCR</el-button>
-      <el-button size="small" :loading="testing==='nuonuo'" @click="testConn('nuonuo')">🧾 诺诺发票云</el-button>
-      <el-button size="small" :loading="testing==='redis'" @click="testConn('redis')">🔴 Redis</el-button>
-      <el-button size="small" :loading="testing==='database'" @click="testConn('database')">🗄 数据库</el-button>
-      <el-button size="small" :loading="testing==='storage'" @click="testConn('storage')">🗃 对象存储</el-button>
-      <span class="bar-sep">|</span>
-      <el-button size="small" :loading="exportLoading" @click="doExport">📦 备份配置</el-button>
-      <el-button size="small" @click="openImportDialog">📥 导入配置</el-button>
-      <el-button size="small" :loading="updateLoading" @click="checkUpdate">🔄 检查更新</el-button>
-    </div>
-
-    <div class="settings-body">
-      <!-- 左侧分组导航 -->
-      <aside class="settings-nav">
+    <div class="ss-body">
+      <aside class="ss-nav">
+        <div class="ss-nav__head">分组</div>
         <div
           v-for="g in groupList"
           :key="g"
-          :class="['nav-item', { active: activeGroup === g }]"
+          :class="['ss-nav__item', { active: activeGroup === g, dirty: hasGroupDirty(g) }]"
           @click="activeGroup = g"
         >
-          <span class="nav-icon">{{ groupIcon[g] || '•' }}</span>
-          <span class="nav-label">{{ g }}</span>
-          <span class="nav-count">{{ groups[g].length }}</span>
+          <span class="ss-nav__icon">{{ groupIcon[g] || '•' }}</span>
+          <span class="ss-nav__label">{{ g }}</span>
+          <span class="ss-nav__count">{{ groups[g].length }}</span>
         </div>
+        <div class="ss-nav__foot">💡 新分组：后端 <code>SETTING_METAS</code> 加 group</div>
       </aside>
 
-      <!-- 右侧表单 -->
-      <main class="settings-form">
-        <div v-if="!activeGroup" class="empty">请选择左侧分组</div>
-        <table v-else class="form-table">
-          <thead>
-            <tr>
-              <th style="width: 28%">配置项</th>
-              <th>当前值</th>
-              <th style="width: 100px">操作</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="item in groups[activeGroup]" :key="item.key">
-              <td>
-                <div class="item-label">
-                  <span :class="['tag-sensitive' , item.sensitive ? 'on' : '']" v-if="item.sensitive">密钥</span>
-                  <span :class="['tag-hot', item.hotReload ? 'on' : '']" v-if="item.hotReload">热加载</span>
-                  <span class="item-name">{{ item.label }}</span>
-                  <code class="item-key">{{ item.key }}</code>
+      <main class="ss-main">
+        <div v-if="!activeGroup" class="ss-empty">
+          <div class="ss-empty__icon">👈</div>
+          <div>请选择左侧分组</div>
+        </div>
+        <div v-else class="ss-list">
+          <div class="ss-list__head">
+            <div class="ss-list__title">
+              <span class="ss-list__icon">{{ groupIcon[activeGroup] || '•' }}</span>
+              <h3>{{ activeGroup }}</h3>
+              <span class="ss-list__count">{{ groups[activeGroup].length }} 项</span>
+            </div>
+            <input v-model="groupFilter" class="ss-list__search" placeholder="🔍 搜索配置项..." />
+          </div>
+
+          <div class="ss-list__body">
+            <div
+              v-for="item in filteredGroupItems"
+              :key="item.key"
+              :class="['ss-row', { 'ss-row--dirty': isEdited(item.key), 'ss-row--sensitive': item.sensitive, 'ss-row--unset': !item.isSet }]"
+            >
+              <div class="ss-row__l">
+                <div class="ss-row__top">
+                  <span class="ss-row__label">{{ item.label }}</span>
+                  <span v-if="item.sensitive" class="ss-tag ss-tag--secret">密钥</span>
+                  <span v-if="item.hotReload" class="ss-tag ss-tag--hot">热加载</span>
+                  <span v-else-if="!item.sensitive" class="ss-tag ss-tag--restart">需重启</span>
                 </div>
-                <div v-if="item.help" class="item-help">{{ item.help }}</div>
-                <div v-if="item.warning" class="item-warning">⚠ {{ item.warning }}</div>
-              </td>
-              <td>
-                <!-- 敏感字段：未编辑时显示脱敏值 + 修改按钮 -->
+                <code class="ss-row__key">{{ item.key }}</code>
+                <div v-if="item.help" class="ss-row__help">💡 {{ item.help }}</div>
+                <div v-if="item.warning" class="ss-row__warn">⚠ {{ item.warning }}</div>
+              </div>
+
+              <div class="ss-row__r">
                 <template v-if="item.sensitive && !isEditing(item.key)">
-                  <span v-if="!item.isSet" class="empty-val">未配置</span>
-                  <code v-else class="masked-val">{{ item.displayValue }}</code>
+                  <div v-if="!item.isSet" class="ss-row__empty">○ 未配置</div>
+                  <div v-else class="ss-row__secret">
+                    <code>{{ displaySecret(item) }}</code>
+                    <a class="ss-link" @click="showSecrets[item.key] = !showSecrets[item.key]">
+                      {{ showSecrets[item.key] ? '🙈' : '👁' }}
+                    </a>
+                    <a class="ss-link ss-link--primary" @click="startEdit(item)">修改</a>
+                  </div>
                 </template>
-                <!-- 非敏感字段 或 正在编辑 -->
+                <template v-else-if="item.sensitive && isEditing(item.key)">
+                  <el-input
+                    v-model="edits[item.key]"
+                    type="password" show-password
+                    placeholder="输入新值覆盖原密钥"
+                    class="ss-row__input"
+                    @input="markDirty(item.key)"
+                  />
+                  <a class="ss-link ss-link--danger" @click="cancelEdit(item)">取消</a>
+                </template>
                 <template v-else>
-                  <!-- bool: switch -->
                   <el-switch
                     v-if="item.type === 'bool'"
                     v-model="edits[item.key]"
-                    :active-value="'True'"
-                    :inactive-value="'False'"
+                    :active-value="'True'" :inactive-value="'False'"
                     @change="markDirty(item.key)"
                   />
-                  <!-- enum: select -->
                   <el-select
                     v-else-if="item.type === 'enum' && item.options"
                     v-model="edits[item.key]"
                     :placeholder="item.displayValue || '请选择'"
-                    style="width: 100%"
+                    class="ss-row__input"
                     @change="markDirty(item.key)"
                   >
                     <el-option v-for="opt in item.options" :key="opt" :label="opt" :value="opt" />
                   </el-select>
-                  <!-- number/float: input number -->
                   <el-input-number
                     v-else-if="item.type === 'int' || item.type === 'float'"
                     v-model="edits[item.key]"
                     :min="item.min" :max="item.max" :step="item.step || 1"
                     :precision="item.type === 'float' ? 2 : 0"
-                    style="width: 100%"
+                    class="ss-row__input"
                     @change="markDirty(item.key)"
                   />
-                  <!-- string: input -->
                   <el-input
                     v-else
                     v-model="edits[item.key]"
                     :placeholder="item.placeholder || item.displayValue || '请输入'"
-                    :type="item.sensitive && isEditing(item.key) ? 'password' : 'text'"
-                    show-password
+                    class="ss-row__input"
                     @input="markDirty(item.key)"
                   />
-                  <div v-if="item.options_help" class="options-help">
-                    <span v-for="(url, env) in item.options_help" :key="env">
-                      <code>{{ env }}</code>: <a :href="url" target="_blank" class="mono">{{ url }}</a>
-                    </span>
-                  </div>
                 </template>
-              </td>
-              <td>
-                <a v-if="item.sensitive && !isEditing(item.key)" class="action-link" @click="startEdit(item)">修改</a>
-                <a v-else-if="isEditing(item.key)" class="action-link danger" @click="cancelEdit(item)">取消</a>
-              </td>
-            </tr>
-          </tbody>
-        </table>
+              </div>
+            </div>
+          </div>
+        </div>
       </main>
     </div>
+
 
     <!-- 触点 #49：生产部署清单（只读，告诉运维上线要做什么） -->
     <div class="deploy-checklist">
@@ -665,149 +716,265 @@ onMounted(load)
 <style lang="scss" scoped>
 @import "@/assets/styles/variables.scss";
 
-.settings-page { padding: 0; min-height: calc(100vh - 100px); display: flex; flex-direction: column; }
+$ss-bg-page:    #FAFAFA;
+$ss-bg-card:    #FFFFFF;
+$ss-bg-muted:   #F4F4F5;
+$ss-bg-soft:    #F9FAFB;
+$ss-border:     #E4E4E7;
+$ss-border-2:   #D4D4D8;
+$ss-text:       #18181B;
+$ss-text-2:     #52525B;
+$ss-text-3:     #A1A1AA;
+$ss-primary:    #4F46E5;
+$ss-primary-2:  #4338CA;
+$ss-primary-bg: #EEF2FF;
+$ss-warning:    #D97706;
+$ss-warning-bg: #FEF3C7;
+$ss-danger:     #DC2626;
+$ss-danger-bg:  #FEE2E2;
+$ss-success:    #059669;
+$ss-radius:     8px;
+$ss-radius-sm:  6px;
 
-.settings-head {
+.settings-page { padding: 16px 20px 24px; min-height: calc(100vh - 100px); background: $ss-bg-page; }
+
+/* 极简顶栏 */
+.ss-header {
   display: flex; justify-content: space-between; align-items: center;
-  padding: 16px 20px; background: #fff; border-radius: $radius-md;
-  box-shadow: $shadow-sm; margin-bottom: 12px;
-  h2 { margin: 0; font-size: 20px; color: $color-text-primary; }
-  .head-meta { display: flex; gap: 16px; margin-top: 6px; font-size: 12px; color: $color-text-tertiary; }
-  .meta-item b { font-weight: 600; }
-  .env-tag { padding: 1px 8px; border-radius: 3px; font-size: 11px; margin-left: 2px; }
-  .env-tag.development { background: #dbeafe; color: #2563eb; }
-  .env-tag.staging     { background: #fef3c7; color: #d97706; }
-  .env-tag.production  { background: #d1fae5; color: #059669; }
-  .env-link { color: $color-primary; }
-  .badge-count {
-    background: #ef4444; color: #fff; border-radius: 10px;
-    padding: 1px 6px; font-size: 10px; margin-left: 6px;
-  }
+  padding: 12px 18px; background: #FFFFFF; border: 1px solid $ss-border;
+  border-radius: $ss-radius; margin-bottom: 8px;
+}
+.ss-header__left { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.ss-header__title { margin: 0; font-size: 17px; font-weight: 600; color: $ss-text; }
+.ss-header__sub { font-size: 12px; color: $ss-text-3; }
+.ss-header__right { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+.ss-env-chip {
+  font-size: 10.5px; font-weight: 600; padding: 2px 7px; border-radius: 4px;
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.ss-env-chip.development { background: $ss-warning-bg; color: $ss-warning; }
+.ss-env-chip.production  { background: $ss-danger-bg; color: $ss-danger; }
+.ss-env-chip.staging     { background: $ss-primary-bg; color: $ss-primary; }
+.ss-stat-mini {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11.5px; color: $ss-text-2; padding: 2px 8px;
+  background: $ss-bg-muted; border-radius: 4px;
+}
+.ss-stat-mini__lbl { color: $ss-text-3; font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.5px; }
+.ss-stat-mini--warn { background: $ss-warning-bg; color: $ss-warning; }
+
+/* 工具条 */
+.ss-toolbar {
+  display: flex; align-items: center; gap: 3px; flex-wrap: wrap;
+  background: #FFFFFF; border: 1px solid $ss-border;
+  border-radius: $ss-radius; padding: 5px 10px; margin-bottom: 8px;
+}
+.tb-btn {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; font-size: 12.5px; color: $ss-text-2;
+  background: transparent; border: 1px solid transparent; border-radius: $ss-radius-sm;
+  cursor: pointer; transition: all 0.12s; font-family: inherit; white-space: nowrap;
+}
+.tb-btn:hover { background: $ss-bg-muted; color: $ss-text; }
+.tb-btn.active { background: $ss-primary-bg; color: $ss-primary-2; }
+.tb-btn--primary { background: $ss-primary; color: #FFFFFF; padding: 4px 14px; font-weight: 500; }
+.tb-btn--primary:hover:not(.disabled) { background: $ss-primary-2; }
+.tb-btn--primary.disabled { opacity: 0.4; cursor: not-allowed; }
+.tb-icon { font-size: 14px; }
+.tb-sep { color: $ss-border-2; margin: 0 2px; }
+.tb-spacer { flex: 1; }
+.tb-badge {
+  display: inline-block; margin-left: 6px; padding: 1px 6px;
+  background: rgba(255,255,255,0.25); color: #FFFFFF; border-radius: 8px;
+  font-size: 10.5px; font-weight: 600;
 }
 
-.test-bar {
-  background: #fff; padding: 10px 16px; border-radius: $radius-md;
-  box-shadow: $shadow-sm; margin-bottom: 12px; display: flex; align-items: center; gap: 8px;
-  .bar-label { font-size: 13px; color: $color-text-secondary; margin-right: 4px; }
-  .bar-sep { display: inline-block; width: 1px; height: 16px; background: $color-border; margin: 0 4px; }
-  .bar-sep { display: inline-block; width: 1px; height: 16px; background: $color-border; margin: 0 4px; }
-}
+/* Body */
+.ss-body { display: flex; gap: 8px; align-items: flex-start; }
 
-// 触点 #52：检查更新弹窗
-.update-dialog { font-size: 13px; }
-.ud-row { display: flex; gap: 8px; margin-bottom: 8px; align-items: center; }
-.ud-lbl { width: 90px; color: $color-text-secondary; font-size: 12.5px; }
-.ud-val { font-family: $font-family-mono; font-size: 12.5px; color: $color-text-primary; }
-.ud-error { background: #FEF3C7; color: #92400E; padding: 8px 12px; border-radius: 6px; margin: 8px 0; font-size: 12.5px; }
+/* 左侧 nav */
+.ss-nav {
+  flex: 0 0 200px;
+  background: #FFFFFF; border: 1px solid $ss-border;
+  border-radius: $ss-radius; padding: 6px;
+  position: sticky; top: 16px; max-height: calc(100vh - 120px); overflow-y: auto;
+}
+.ss-nav__head {
+  font-size: 10px; color: $ss-text-3; text-transform: uppercase;
+  letter-spacing: 0.5px; padding: 6px 8px; font-weight: 600;
+}
+.ss-nav__item {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: $ss-radius-sm; cursor: pointer;
+  font-size: 12.5px; color: $ss-text-2; transition: background 0.1s; margin-bottom: 1px;
+}
+.ss-nav__item:hover { background: $ss-bg-muted; color: $ss-text; }
+.ss-nav__item.active { background: $ss-primary-bg; color: $ss-primary-2; font-weight: 600; }
+.ss-nav__item.dirty .ss-nav__count { background: $ss-warning; color: #FFFFFF; }
+.ss-nav__icon { font-size: 13px; width: 16px; text-align: center; flex-shrink: 0; }
+.ss-nav__label { flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ss-nav__count {
+  background: $ss-bg-muted; color: $ss-text-2;
+  padding: 0 6px; border-radius: 8px; font-size: 10px; font-weight: 600;
+  min-width: 20px; text-align: center; line-height: 16px;
+}
+.ss-nav__item.active .ss-nav__count { background: $ss-primary; color: #FFFFFF; }
+.ss-nav__foot {
+  margin-top: 6px; padding: 6px 8px; background: $ss-bg-muted;
+  border-radius: $ss-radius-sm; font-size: 11px; color: $ss-text-2; line-height: 1.5;
+}
+.ss-nav__foot code { background: #FFFFFF; padding: 1px 3px; border-radius: 3px; font-size: 10px; color: $ss-text; }
+
+/* 主区 */
+.ss-main { flex: 1 1 0; min-width: 0; }
+.ss-empty {
+  background: #FFFFFF; border: 1px dashed $ss-border-2;
+  border-radius: $ss-radius; padding: 100px 20px;
+  text-align: center; color: $ss-text-3; font-size: 14px;
+}
+.ss-empty__icon { font-size: 40px; margin-bottom: 8px; opacity: 0.4; }
+
+/* 配置项列表 */
+.ss-list {
+  background: #FFFFFF; border: 1px solid $ss-border;
+  border-radius: $ss-radius; overflow: hidden;
+}
+.ss-list__head {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 16px; border-bottom: 1px solid $ss-border; background: $ss-bg-soft;
+}
+.ss-list__title { display: flex; align-items: center; gap: 8px; }
+.ss-list__icon { font-size: 14px; }
+.ss-list__title h3 { margin: 0; font-size: 13.5px; font-weight: 600; color: $ss-text; }
+.ss-list__count {
+  font-size: 10.5px; color: $ss-text-3;
+  padding: 1px 6px; background: $ss-bg-muted; border-radius: 8px; font-weight: 500;
+}
+.ss-list__search {
+  border: 1px solid $ss-border; background: #FFFFFF;
+  padding: 4px 10px; font-size: 12px; border-radius: $ss-radius-sm;
+  width: 220px; color: $ss-text; outline: none; font-family: inherit;
+}
+.ss-list__search:focus { border-color: $ss-primary; box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.08); }
+.ss-list__body { padding: 0; }
+
+/* 单条配置项（行式布局）*/
+.ss-row {
+  display: flex; gap: 16px; padding: 12px 16px;
+  border-bottom: 1px solid $ss-border; transition: background 0.1s;
+  align-items: flex-start;
+}
+.ss-row:last-child { border-bottom: none; }
+.ss-row:hover { background: $ss-bg-soft; }
+.ss-row--dirty { background: #FFFBEB; }
+.ss-row--dirty:hover { background: #FEF3C7; }
+.ss-row--sensitive { border-left: 3px solid $ss-danger; padding-left: 13px; }
+.ss-row--unset .ss-row__label { color: $ss-text-3; }
+.ss-row__l { flex: 1 1 0; min-width: 0; }
+.ss-row__top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.ss-row__label { font-size: 13.5px; font-weight: 600; color: $ss-text; }
+.ss-row__key {
+  display: inline-block; margin-top: 2px;
+  font-size: 10.5px; color: $ss-text-3; font-family: $font-family-mono;
+}
+.ss-row__help { margin-top: 4px; font-size: 11.5px; color: $ss-text-2; line-height: 1.5; }
+.ss-row__help code { background: $ss-bg-muted; padding: 1px 4px; border-radius: 3px; font-size: 10.5px; color: $ss-text; }
+.ss-row__warn {
+  margin-top: 4px; font-size: 11.5px; color: $ss-warning;
+  background: $ss-warning-bg; padding: 4px 8px; border-radius: $ss-radius-sm; display: inline-block;
+}
+.ss-row__r { flex: 0 0 360px; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ss-row__input { flex: 1; min-width: 0; }
+.ss-row__input.el-select,
+.ss-row__input.el-input-number { width: 100%; }
+.ss-row__empty { font-size: 12px; color: $ss-text-3; font-style: italic; }
+.ss-row__secret {
+  flex: 1; display: flex; align-items: center; gap: 8px;
+  background: $ss-bg-muted; padding: 4px 10px; border-radius: $ss-radius-sm; min-width: 0;
+}
+.ss-row__secret code {
+  flex: 1; font-family: $font-family-mono; font-size: 11.5px;
+  color: $ss-text; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ss-link { color: $ss-primary !important; font-size: 11.5px; cursor: pointer; user-select: none; }
+.ss-link:hover { text-decoration: underline; }
+.ss-link--primary { color: $ss-primary !important; font-weight: 500; }
+.ss-link--danger { color: $ss-danger !important; }
+
+/* Tags */
+.ss-tag { display: inline-block; padding: 0 5px; font-size: 9.5px; border-radius: 3px; font-weight: 500; line-height: 15px; }
+.ss-tag--secret   { background: $ss-danger-bg; color: $ss-danger; }
+.ss-tag--hot      { background: #D1FAE5; color: $ss-success; }
+.ss-tag--restart  { background: $ss-warning-bg; color: $ss-warning; }
+
+/* Dialog */
+.update-dialog { padding: 4px 0; }
+.ud-row { display: flex; align-items: center; gap: 12px; padding: 6px 0; font-size: 13px; }
+.ud-lbl { color: $ss-text-2; min-width: 80px; }
+.ud-val { color: $ss-text; font-family: $font-family-mono; }
+.ud-error { color: $ss-warning; padding: 8px 0; }
 .ud-notes { margin-top: 12px; }
-.ud-pre { background: $color-bg; padding: 10px 12px; border-radius: 6px; font-family: $font-family-mono; font-size: 11.5px; line-height: 1.6; color: $color-text-secondary; max-height: 200px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
-
-.settings-body {
-  flex: 1; display: flex; gap: 12px; min-height: 0;
+.ud-pre {
+  background: $ss-bg-muted; padding: 12px; border-radius: $ss-radius-sm;
+  font-size: 12px; max-height: 200px; overflow: auto; white-space: pre-wrap;
+  font-family: $font-family-mono; line-height: 1.5;
 }
 
-.settings-nav {
-  width: 220px; background: #fff; border-radius: $radius-md;
-  box-shadow: $shadow-sm; padding: 8px; flex-shrink: 0;
-  .nav-item {
-    display: flex; align-items: center; gap: 8px;
-    padding: 10px 12px; border-radius: 6px; cursor: pointer;
-    font-size: 13px; color: $color-text-secondary; transition: all 0.15s;
-    &:hover { background: rgba(79,107,255,0.06); }
-    &.active { background: rgba(79,107,255,0.12); color: $color-primary; font-weight: 600; }
-    .nav-icon { font-size: 16px; width: 20px; }
-    .nav-label { flex: 1; }
-    .nav-count { font-size: 11px; color: $color-text-tertiary; background: rgba(0,0,0,0.04); padding: 1px 6px; border-radius: 8px; }
-  }
-}
-
-.settings-form {
-  flex: 1; background: #fff; border-radius: $radius-md;
-  box-shadow: $shadow-sm; padding: 16px; overflow: auto;
-  .empty { text-align: center; color: $color-text-tertiary; padding: 60px; }
-}
-
-.form-table {
-  width: 100%; border-collapse: collapse;
-  th, td { padding: 12px 8px; text-align: left; vertical-align: top; border-bottom: 1px solid $color-border; }
-  th { font-size: 12px; color: $color-text-tertiary; font-weight: 500; background: rgba(0,0,0,0.01); }
-  tbody tr:hover { background: rgba(0,0,0,0.01); }
-}
-
-.item-label { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.tag-sensitive { background: #fee2e2; color: #b91c1c; padding: 1px 6px; border-radius: 3px; font-size: 10px; }
-.tag-hot { background: #d1fae5; color: #047857; padding: 1px 6px; border-radius: 3px; font-size: 10px; }
-.item-name { font-weight: 500; font-size: 13px; }
-.item-key { font-size: 11px; color: $color-text-tertiary; background: rgba(0,0,0,0.04); padding: 1px 4px; border-radius: 3px; font-family: $font-family-mono; }
-.item-help { font-size: 11px; color: $color-text-tertiary; margin-top: 4px; }
-.item-warning { font-size: 11px; color: #d97706; margin-top: 4px; background: #fef3c7; padding: 4px 6px; border-radius: 3px; }
-
-.masked-val { font-family: $font-family-mono; font-size: 13px; background: rgba(0,0,0,0.04); padding: 4px 8px; border-radius: 4px; }
-.empty-val { font-size: 12px; color: $color-text-tertiary; font-style: italic; }
-.options-help { margin-top: 4px; font-size: 11px; color: $color-text-tertiary; }
-.options-help code { background: rgba(0,0,0,0.04); padding: 1px 4px; border-radius: 3px; }
-.options-help a { color: $color-primary; }
-.action-link { color: $color-primary; cursor: pointer; font-size: 12px; margin-right: 8px; }
-.action-link.danger { color: #ef4444; }
-
-// 触点 #49：生产部署清单
-.deploy-checklist {
-  background: #fff;
-  border-radius: $radius-md;
-  box-shadow: $shadow-sm;
-  padding: 20px 24px;
-  margin-top: 16px;
-  .dc-head {
-    display: flex; align-items: baseline; justify-content: space-between;
-    margin-bottom: 16px; padding-bottom: 12px;
-    border-bottom: 1px solid $color-border;
-    h3 { font-size: 16px; font-weight: 600; color: $color-text-primary; margin: 0; }
-    .dc-sub { font-size: 12px; color: $color-text-tertiary; }
-  }
-  .dc-grid {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
-    @media (max-width: 1100px) { grid-template-columns: 1fr; }
-  }
-  .dc-card {
-    display: flex; gap: 12px;
-    padding: 14px 16px;
-    background: #F8FAFC;
-    border: 1px solid $color-border;
-    border-left: 3px solid $color-primary;
-    border-radius: 8px;
-    .dc-num {
-      flex: 0 0 auto;
-      width: 28px; height: 28px;
-      background: $color-primary; color: #fff;
-      border-radius: 50%;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 13px; font-weight: 600;
-    }
-    .dc-body { flex: 1; min-width: 0; }
-    .dc-title { font-size: 13.5px; font-weight: 600; color: $color-text-primary; margin-bottom: 6px; }
-    .dc-list { margin: 0; padding-left: 18px; font-size: 12.5px; color: $color-text-secondary; line-height: 1.8; }
-    .dc-list code { background: rgba(79,107,255,0.1); color: $color-primary; padding: 1px 5px; border-radius: 3px; font-size: 11.5px; font-family: $font-family-mono; }
-    .dc-list a { color: $color-primary; }
-    .dc-list b { color: #B45309; }
-    .dc-list li strong { color: #4F6BFF; }
-    &.dc-card-wide { grid-column: 1 / -1; }
-  }
-  .dc-foot {
-    margin-top: 14px; padding: 10px 14px;
-    background: #FEF3C7; color: #92400E;
-    border-radius: 6px; font-size: 12.5px; line-height: 1.6;
-    code { background: rgba(146,64,14,0.1); padding: 1px 4px; border-radius: 3px; font-size: 11.5px; font-family: $font-family-mono; }
-  }
-}
+/* Pending bar */
 .pending-bar {
   position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
-  background: #1f2937; color: #fff; border-radius: 8px;
-  padding: 12px 20px; display: flex; align-items: center; gap: 16px;
-  box-shadow: 0 8px 24px rgba(0,0,0,0.2); z-index: 100;
-  .pending-count { background: #ef4444; color: #fff; border-radius: 10px; padding: 2px 8px; font-size: 12px; font-weight: 600; margin-right: 4px; }
-  .pending-sensitive { color: #fbbf24; font-size: 12px; margin-left: 4px; }
-  .pending-info { font-size: 13px; }
+  background: #FFFFFF; border: 1px solid $ss-border;
+  border-radius: $ss-radius; padding: 10px 20px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1), 0 4px 10px rgba(0,0,0,0.05);
+  display: flex; align-items: center; gap: 16px; z-index: 100;
+}
+.pending-info { font-size: 13px; color: $ss-text; }
+.pending-count {
+  display: inline-block; background: $ss-warning; color: #FFFFFF;
+  padding: 2px 8px; border-radius: 10px; font-size: 12px; font-weight: 600; margin-right: 4px;
+}
+.pending-sensitive { color: $ss-text-2; font-size: 12px; margin-left: 4px; }
+.pending-actions { display: flex; gap: 8px; }
+
+/* Deploy checklist */
+.deploy-checklist { margin-top: 16px; }
+.deploy-checklist .dc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; padding: 0 2px; }
+.deploy-checklist h3 { margin: 0; font-size: 14px; font-weight: 600; color: $ss-text; }
+.deploy-checklist .dc-sub { font-size: 12px; color: $ss-text-3; }
+.deploy-checklist .dc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.deploy-checklist .dc-card {
+  background: #FFFFFF; border: 1px solid $ss-border;
+  border-left: 3px solid $ss-primary; border-radius: $ss-radius;
+  padding: 10px 14px; display: flex; gap: 10px;
+}
+.deploy-checklist .dc-num {
+  width: 22px; height: 22px; flex-shrink: 0;
+  background: $ss-primary; color: #FFFFFF; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 600; align-self: flex-start;
+}
+.deploy-checklist .dc-body { flex: 1; min-width: 0; }
+.deploy-checklist .dc-title { font-size: 12.5px; font-weight: 600; color: $ss-text; margin-bottom: 3px; }
+.deploy-checklist .dc-list { margin: 0; padding-left: 14px; font-size: 11.5px; color: $ss-text-2; line-height: 1.6; }
+.deploy-checklist .dc-list code { background: $ss-bg-muted; padding: 1px 3px; border-radius: 3px; font-size: 10.5px; color: $ss-text; }
+.deploy-checklist .dc-list a { color: $ss-primary; text-decoration: none; }
+.deploy-checklist .dc-list a:hover { text-decoration: underline; }
+.deploy-checklist .dc-card-wide { grid-column: 1 / -1; }
+.deploy-checklist .dc-foot {
+  margin-top: 10px; padding: 8px 14px; background: $ss-bg-muted;
+  border-radius: $ss-radius-sm; font-size: 11.5px; color: $ss-text-2;
+}
+.deploy-checklist .dc-foot code { background: #FFFFFF; padding: 1px 4px; border-radius: 3px; font-size: 10.5px; }
+
+/* Responsive */
+@media (max-width: 1100px) {
+  .ss-body { flex-direction: column; }
+  .ss-nav { position: static; max-height: none; flex: 0 0 auto; }
+  .ss-row__r { flex: 0 0 280px; }
+}
+@media (max-width: 768px) {
+  .ss-row { flex-direction: column; }
+  .ss-row__r { flex: 0 0 auto; width: 100%; }
+  .deploy-checklist .dc-grid { grid-template-columns: 1fr; }
 }
 </style>

@@ -17,7 +17,14 @@ class Settings(BaseSettings):
 
     # ===== 应用 =====
     APP_NAME: str = "数智化管理系统"
+    APP_VERSION: str = "1.0.0"  # 触点 #53：版本号（建议在构建镜像时通过环境变量注入）
     ENV: str = Field(default="development", description="development/staging/production")
+
+    # ===== GitHub Release（系统更新检查）=====
+    GITHUB_REPO_OWNER: str = "trisome"                       # GitHub 用户/组织名
+    GITHUB_REPO_NAME: str = "shuzhi-system"                  # 仓库名
+    GITHUB_API_BASE: str = "https://api.github.com"          # GitHub API 地址
+    GITHUB_TOKEN: str = ""                                    # 可选：Private 仓库需提供 PAT（无 scopes 即可），提升限额 60→5000/h
     LOG_LEVEL: str = "INFO"
     DEBUG: bool = True
 
