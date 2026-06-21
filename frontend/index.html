@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <!-- 响应式 viewport：移动端自适应 + 禁止过度缩放 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <!-- iOS 状态栏透明沉浸式 -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <!-- Windows Phone 点击无高亮 -->
+    <meta name="msapplication-tap-highlight" content="no" />
+    <title>数智化管理系统</title>
+    <!-- 基础移动端样式：禁用弹性滚动/点击高亮/选择色 -->
+    <style>
+      * { -webkit-tap-highlight-color: transparent; }
+      html, body, #app { height: 100%; overflow: hidden; }
+      body { overscroll-behavior: none; }
+      ::selection { background: rgba(79, 107, 255, 0.25); }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

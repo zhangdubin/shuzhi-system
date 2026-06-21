@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>发票模板编辑器 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .editor-layout {
+    display: grid;
+    grid-template-columns: 280px 1fr 320px;
+    gap: 20px;
+    align-items: start;
+  }
+  /* 左侧：字段库 */
+  .field-lib {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .lib-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--color-border);
+    background: #FAFBFF;
+  }
+  .lib-head h4 { font-size: 13px; font-weight: 600; }
+  .lib-search {
+    margin-top: 8px;
+    width: 100%;
+    padding: 6px 10px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  .lib-body { padding: 12px 8px; }
+  .lib-group { margin-bottom: 14px; }
+  .lib-group .g {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 10px;
+  }
+  .lib-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    cursor: grab;
+    transition: all 0.15s;
+  }
+  .lib-item:hover {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+  }
+  .lib-item .ico { font-size: 14px; }
+  .lib-item .type {
+    margin-left: auto;
+    font-size: 10px;
+    color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+  }
+
+  /* 中间：画布 */
+  .canvas {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .canvas-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .canvas-head h3 { font-size: 14px; font-weight: 600; }
+  .canvas-body {
+    padding: 24px;
+    min-height: 480px;
+    background: #FAFBFF;
+  }
+  /* 模板预览区 */
+  .tpl-canvas {
+    background: #fff;
+    border-radius: var(--radius-md);
+    padding: 24px 28px;
+    max-width: 720px;
+    margin: 0 auto;
+    box-shadow: var(--shadow-sm);
+    min-height: 420px;
+  }
+  .tpl-section-title {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 12px 0 8px;
+    border-bottom: 1px dashed var(--color-border);
+    margin-bottom: 12px;
+  }
+  .tpl-row {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 12px 24px;
+    margin-bottom: 12px;
+  }
+  .tpl-field {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #F8FAFC;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    cursor: move;
+    transition: all 0.15s;
+    position: relative;
+  }
+  .tpl-field:hover { border-color: var(--color-primary); }
+  .tpl-field.required::before {
+    content: '*';
+    color: var(--color-danger);
+    font-weight: 700;
+  }
+  .tpl-field .l { font-size: 12px; color: var(--color-text-secondary); }
+  .tpl-field .v { font-size: 12px; color: var(--color-text-primary); font-weight: 500; flex: 1; }
+  .tpl-field .ai-tag {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    font-size: 9px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    font-weight: 600;
+  }
+  .tpl-field .del {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--color-text-tertiary);
+    display: grid; place-items: center;
+    font-size: 12px;
+    opacity: 0;
+    transition: all 0.15s;
+  }
+  .tpl-field:hover .del { opacity: 1; }
+  .tpl-field .del:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+
+  /* 右侧：属性面板 */
+  .props {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+  }
+  .props-head {
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--color-border);
+    background: #FAFBFF;
+  }
+  .props-head h4 { font-size: 13px; font-weight: 600; }
+  .props-body { padding: 16px 18px; }
+  .props-section { margin-bottom: 18px; }
+  .props-section:last-child { margin-bottom: 0; }
+  .props-section .t {
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .props-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 0;
+    font-size: 12.5px;
+  }
+  .props-row .l { color: var(--color-text-secondary); width: 70px; }
+  .props-row .v { color: var(--color-text-primary); font-weight: 500; }
+
+  /* 模板基本信息表单 */
+  .meta-form {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+  }
+  .meta-form-row {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html" class="active"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>财务</span><span class="sep">/</span>
+            <span><a href="invoice-template.html" style="color:var(--color-text-tertiary);">发票模板</a></span>
+            <span class="sep">/</span>
+            <span>差旅报销模板</span>
+          </div>
+          <h1 class="page-title">模板编辑器</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">⊗ 取消</button>
+        <button class="btn btn-outline btn-sm">预览效果</button>
+        <button class="btn btn-primary btn-sm">✓ 保存模板</button>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 模板基本信息 -->
+      <div class="meta-form">
+        <div style="font-size:12.5px;font-weight:600;color:var(--color-text-tertiary);margin-bottom:12px;">📋 模板基本信息</div>
+        <div class="meta-form-row">
+          <div class="field">
+            <label>模板名称 <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" value="差旅报销模板" />
+          </div>
+          <div class="field">
+            <label>模板编码</label>
+            <input type="text" value="TPL-TR-2026-001" readonly style="background:#F8FAFC;" />
+          </div>
+          <div class="field">
+            <label>模板分类</label>
+            <select>
+              <option>差旅</option>
+              <option>招待</option>
+              <option>办公</option>
+              <option>推广</option>
+            </select>
+          </div>
+          <div class="field" style="grid-column:1 / 3;">
+            <label>模板描述</label>
+            <input type="text" value="含机票/酒店/打车/餐补，自动汇总差旅报销明细" />
+          </div>
+          <div class="field">
+            <label>适用税率</label>
+            <select>
+              <option>6%（服务费）</option>
+              <option>3%（小规模）</option>
+              <option>13%（货物）</option>
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <!-- 编辑器三栏 -->
+      <div class="editor-layout">
+
+        <!-- 左侧：字段库 -->
+        <div class="field-lib">
+          <div class="lib-head">
+            <h4>🧩 字段库</h4>
+            <input class="lib-search" placeholder="🔍 搜索字段..." />
+          </div>
+          <div class="lib-body">
+            <div class="lib-group">
+              <div class="g">基础信息</div>
+              <div class="lib-item"><span class="ico">📄</span>发票类型<span class="type">text</span></div>
+              <div class="lib-item"><span class="ico">🔢</span>发票代码<span class="type">text</span></div>
+              <div class="lib-item"><span class="ico">#</span>发票号码<span class="type">text</span></div>
+              <div class="lib-item"><span class="ico">📅</span>开票日期<span class="type">date</span></div>
+              <div class="lib-item"><span class="ico">💼</span>销售方名称<span class="type">text</span></div>
+              <div class="lib-item"><span class="ico">🪪</span>纳税人识别号<span class="type">text</span></div>
+            </div>
+            <div class="lib-group">
+              <div class="g">金额信息</div>
+              <div class="lib-item"><span class="ico">💰</span>价税合计<span class="type">amount</span></div>
+              <div class="lib-item"><span class="ico">%</span>税率<span class="type">rate</span></div>
+              <div class="lib-item"><span class="ico">¥</span>税额<span class="type">amount</span></div>
+              <div class="lib-item"><span class="ico">¥</span>不含税金额<span class="type">amount</span></div>
+            </div>
+            <div class="lib-group">
+              <div class="g">业务字段</div>
+              <div class="lib-item"><span class="ico">👤</span>报销人<span class="type">user</span></div>
+              <div class="lib-item"><span class="ico">🏢</span>部门<span class="type">text</span></div>
+              <div class="lib-item"><span class="ico">📂</span>关联合同<span class="type">ref</span></div>
+              <div class="lib-item"><span class="ico">📂</span>关联项目<span class="type">ref</span></div>
+              <div class="lib-item"><span class="ico">📂</span>成本中心<span class="type">ref</span></div>
+              <div class="lib-item"><span class="ico">📝</span>备注<span class="type">textarea</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 中间：画布 -->
+        <div class="canvas">
+          <div class="canvas-head">
+            <h3>画布预览</h3>
+            <div style="display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-sm">📱 移动端</button>
+              <button class="btn btn-ghost btn-sm active" style="background:var(--color-primary-bg);color:var(--color-primary);">🖥 桌面</button>
+            </div>
+          </div>
+          <div class="canvas-body">
+            <div class="tpl-canvas">
+              <div class="tpl-section-title">📌 票面信息（OCR 自动识别）</div>
+              <div class="tpl-row">
+                <div class="tpl-field required"><span class="l">发票类型</span><span class="v">增值税电子普通发票</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field required"><span class="l">发票代码</span><span class="v">011002600611</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field required"><span class="l">发票号码</span><span class="v">25113300000012345678</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field required"><span class="l">开票日期</span><span class="v">2026-06-08</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field required"><span class="l">销售方</span><span class="v">上海数智信息技术有限公司</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field required"><span class="l">购买方</span><span class="v">万象科技有限公司</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+              </div>
+
+              <div class="tpl-section-title">💰 金额信息</div>
+              <div class="tpl-row">
+                <div class="tpl-field required"><span class="l">价税合计</span><span class="v">¥ 28,000.00</span><span class="ai-tag">AI</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">税率</span><span class="v">6%</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">税额</span><span class="v">¥ 1,584.91</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">不含税金额</span><span class="v">¥ 26,415.09</span><span class="del">×</span></div>
+              </div>
+
+              <div class="tpl-section-title">📋 业务信息（人工填写）</div>
+              <div class="tpl-row">
+                <div class="tpl-field required"><span class="l">报销人</span><span class="v">陈思琪</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">部门</span><span class="v">销售部</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">关联合同</span><span class="v">HT-2026-028</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">关联项目</span><span class="v">PRJ-2026-018</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">成本中心</span><span class="v">CC-2026-008</span><span class="del">×</span></div>
+                <div class="tpl-field"><span class="l">费用类型</span><span class="v">差旅</span><span class="del">×</span></div>
+              </div>
+
+              <div class="tpl-section-title">📝 附加信息</div>
+              <div class="tpl-field" style="grid-column:1 / -1;">
+                <span class="l">备注</span>
+                <span class="v">第二季度服务费尾款，已与 HT-2026-028 合同对齐...</span>
+                <span class="del">×</span>
+              </div>
+            </div>
+            <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--color-text-tertiary);">
+              提示：从左侧字段库拖拽字段到画布，或点击已有字段的 × 移除
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：属性面板 -->
+        <div class="props">
+          <div class="props-head">
+            <h4>⚙️ 当前选中：报销人</h4>
+          </div>
+          <div class="props-body">
+            <div class="props-section">
+              <div class="t">基础属性</div>
+              <div class="props-row"><span class="l">字段名</span><span class="v">报销人</span></div>
+              <div class="props-row"><span class="l">字段标识</span><span class="v" style="font-family:var(--font-mono);font-size:11.5px;">reimburse_user</span></div>
+              <div class="props-row"><span class="l">字段类型</span><span class="v">用户选择器</span></div>
+            </div>
+            <div class="props-section">
+              <div class="t">验证规则</div>
+              <div class="props-row"><span class="l">是否必填</span><span class="v" style="color:var(--color-danger);">是</span></div>
+              <div class="props-row"><span class="l">数据来源</span><span class="v">组织架构</span></div>
+              <div class="props-row"><span class="l">默认值</span><span class="v">当前用户</span></div>
+            </div>
+            <div class="props-section">
+              <div class="t">权限</div>
+              <div class="props-row"><span class="l">可见角色</span><span class="v">财务、销售</span></div>
+              <div class="props-row"><span class="l">可编辑</span><span class="v">是</span></div>
+            </div>
+            <div class="props-section">
+              <div class="t">联动</div>
+              <div class="props-row"><span class="l">联动字段</span><span class="v" style="color:var(--color-primary);">部门</span></div>
+              <div class="props-row"><span class="l">联动逻辑</span><span class="v">自动填充所在部门</span></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

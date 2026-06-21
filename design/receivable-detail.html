@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>回款详情 · HK-2026-018 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .receivable-hero {
+    background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%);
+    border-radius: var(--radius-lg);
+    padding: 24px 28px;
+    color: #fff;
+    margin-bottom: 20px;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .receivable-hero.normal { background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%); }
+  .receivable-hero.done { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
+
+  .rh-left h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .rh-id { font-size: 12px; color: rgba(255,255,255,0.7); font-family: var(--font-mono); margin-bottom: 4px; }
+  .rh-meta { font-size: 13px; color: rgba(255,255,255,0.85); }
+  .rh-right { text-align: right; }
+  .rh-amount { font-size: 28px; font-weight: 700; }
+  .rh-amount-l { font-size: 11px; color: rgba(255,255,255,0.7); }
+
+  /* 逾期大告警 */
+  .overdue-alert {
+    background: linear-gradient(135deg, rgba(239,68,68,0.06), rgba(245,158,11,0.06));
+    border: 1px solid rgba(239,68,68,0.25);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    display: flex; gap: 16px; align-items: center;
+  }
+  .overdue-alert .ico {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.15);
+    color: var(--color-danger);
+    display: grid; place-items: center;
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+  .overdue-alert .body { flex: 1; }
+  .overdue-alert .body .t {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-danger);
+    margin-bottom: 4px;
+  }
+  .overdue-alert .body .m {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+  }
+  .overdue-alert .body .m strong { color: var(--color-danger); }
+  .overdue-alert .actions { display: flex; flex-direction: column; gap: 8px; }
+  .overdue-alert .days {
+    text-align: center;
+    background: var(--color-danger);
+    color: #fff;
+    border-radius: var(--radius-md);
+    padding: 14px 20px;
+  }
+  .overdue-alert .days .v { font-size: 32px; font-weight: 800; line-height: 1; }
+  .overdue-alert .days .l { font-size: 11px; margin-top: 4px; }
+
+  /* 回款进度大字 */
+  .re-progress-big {
+    background: #FAFBFF;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    margin-bottom: 20px;
+  }
+  .re-progress-head {
+    display: flex; justify-content: space-between; align-items: baseline;
+    margin-bottom: 14px;
+  }
+  .re-progress-head .t { font-size: 14px; font-weight: 600; }
+  .re-progress-head .pct { font-size: 24px; font-weight: 700; color: var(--color-primary); }
+  .re-progress-bar-big {
+    height: 14px;
+    background: #F1F5F9;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    position: relative;
+    margin-bottom: 12px;
+  }
+  .re-progress-bar-big .fill {
+    height: 100%;
+    background: var(--gradient-brand);
+    border-radius: var(--radius-full);
+    position: relative;
+  }
+  .re-progress-bar-big .label {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+    padding: 0 8px;
+  }
+  .re-progress-legend {
+    display: flex; justify-content: space-between;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+  }
+  .re-progress-legend .item { display: flex; align-items: center; gap: 6px; }
+  .re-progress-legend .item .v { font-weight: 700; color: var(--color-text-primary); }
+  .re-progress-legend .item .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* 催收记录 */
+  .remind-log {
+    display: flex; flex-direction: column; gap: 0;
+  }
+  .rl-item {
+    display: flex; gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rl-item:last-child { border-bottom: none; }
+  .rl-item .ico {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    display: grid; place-items: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .rl-item .body { flex: 1; }
+  .rl-item .body .t { font-size: 13px; font-weight: 500; }
+  .rl-item .body .m { font-size: 11.5px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .rl-item .body .d {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-top: 6px;
+    padding: 6px 10px;
+    background: #FAFBFF;
+    border-radius: var(--radius-sm);
+    line-height: 1.5;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html" class="active"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>业务</span><span class="sep">/</span>
+            <span><a href="receivable.html" style="color:var(--color-text-tertiary);">回款管理</a></span>
+            <span class="sep">/</span>
+            <span>HK-2026-018</span>
+          </div>
+          <h1 class="page-title">回款详情 <span class="tag tag-danger" style="margin-left:8px;">逾期 8 天</span></h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">⇩ 导出记录</button>
+        <button class="btn btn-outline btn-sm">📧 发送催收邮件</button>
+        <button class="btn btn-primary btn-sm">+ 登记到账</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="receivable-hero">
+        <div class="rh-left">
+          <div class="rh-id">HK-2026-018</div>
+          <h2>万象科技 2026Q1 服务费尾款</h2>
+          <div class="rh-meta">关联合同：<strong style="color:#fff;">HT-2026-030</strong> · 负责人：陈思琪</div>
+        </div>
+        <div class="rh-right">
+          <div class="rh-amount-l">待回款金额</div>
+          <div class="rh-amount">¥ 28,000.00</div>
+        </div>
+      </div>
+
+      <div class="overdue-alert">
+        <div class="ico">⚠</div>
+        <div class="body">
+          <div class="t">本笔回款已逾期 8 天</div>
+          <div class="m">
+            计划回款日：<strong>2026-06-04</strong> · 已超 8 天<br/>
+            客户：<strong>万象科技有限公司</strong> · 客户联系人：<strong>李建国（CTO）· 138****8888</strong><br/>
+            历史回款记录：客户过往 5 笔均按期回款，本次为首笔逾期，建议优先电话沟通。
+          </div>
+        </div>
+        <div class="actions">
+          <div class="days">
+            <div class="v">8</div>
+            <div class="l">逾期天数</div>
+          </div>
+          <button class="btn btn-primary btn-sm">📞 立即催收</button>
+        </div>
+      </div>
+
+      <div class="detail-tabs">
+        <a href="#" class="active">基本信息</a>
+        <a href="#">回款记录</a>
+        <a href="#">催收记录</a>
+        <a href="#">发票关联</a>
+      </div>
+
+      <div class="detail-layout">
+
+        <div>
+          <!-- 回款进度 -->
+          <div class="re-progress-big">
+            <div class="re-progress-head">
+              <span class="t">回款进度</span>
+              <span class="pct">0%</span>
+            </div>
+            <div class="re-progress-bar-big">
+              <div class="fill" style="width:0%;"></div>
+            </div>
+            <div class="re-progress-legend">
+              <div class="item">
+                <span class="dot" style="background:#10B981;"></span>
+                <span>已回款</span>
+                <span class="v">¥ 0</span>
+              </div>
+              <div class="item">
+                <span class="dot" style="background:#EF4444;"></span>
+                <span>待回款</span>
+                <span class="v">¥ 28,000</span>
+              </div>
+              <div class="item">
+                <span class="dot" style="background:#94A3B8;"></span>
+                <span>计划金额</span>
+                <span class="v">¥ 28,000</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 回款信息 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>💰 回款信息</h4>
+            </div>
+            <div class="detail-section-body">
+              <div class="info-grid">
+                <div class="info-row"><span class="l">回款编号</span><span class="v mono">HK-2026-018</span></div>
+                <div class="info-row"><span class="l">关联合同</span><span class="v"><a href="contract-detail.html" style="color:var(--color-primary);">HT-2026-030 · 北辰集团 BI 系统升级服务合同</a></span></div>
+                <div class="info-row"><span class="l">客户</span><span class="v">万象科技有限公司</span></div>
+                <div class="info-row"><span class="l">回款类型</span><span class="v">合同尾款</span></div>
+                <div class="info-row"><span class="l">计划金额</span><span class="v amount">¥ 28,000.00</span></div>
+                <div class="info-row"><span class="l">已回金额</span><span class="v amount" style="color:var(--color-danger);">¥ 0.00</span></div>
+                <div class="info-row"><span class="l">计划回款日</span><span class="v">2026-06-04</span></div>
+                <div class="info-row"><span class="l">实际回款日</span><span class="v" style="color:var(--color-text-tertiary);">—</span></div>
+                <div class="info-row"><span class="l">账期</span><span class="v">30 天</span></div>
+                <div class="info-row"><span class="l">逾期天数</span><span class="v" style="color:var(--color-danger);font-weight:700;">8 天</span></div>
+                <div class="info-row"><span class="l">负责人</span><span class="v">陈思琪（销售部）</span></div>
+                <div class="info-row"><span class="l">收款账户</span><span class="v" style="font-family:var(--font-mono);font-size:12.5px;">招行 6225 **** **** 1234</span></div>
+                <div class="info-row full">
+                  <span class="l">备注</span>
+                  <div class="notes-block">
+                    客户已确认本次尾款，但因内部审批流程延迟，预计本周内可安排付款。已与客户李建国（CTO）沟通确认到账时间约 2026-06-15。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 催收记录 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>📞 催收记录（2 次）</h4>
+              <button class="btn btn-primary btn-sm">+ 新增记录</button>
+            </div>
+            <div class="detail-section-body" style="padding:6px 20px 16px;">
+              <div class="remind-log">
+                <div class="rl-item">
+                  <div class="ico">📞</div>
+                  <div class="body">
+                    <div class="t">电话催收 · 陈思琪 → 李建国（CTO）</div>
+                    <div class="m">2026-06-11 14:30 · 通话 8 分钟</div>
+                    <div class="d">
+                      客户反馈：因内部季度结算，付款流程延迟至本周。承诺 2026-06-15 之前安排。已发送书面付款提醒邮件至客户财务部。
+                    </div>
+                  </div>
+                </div>
+                <div class="rl-item">
+                  <div class="ico">📧</div>
+                  <div class="body">
+                    <div class="t">邮件催收 · 发送至客户财务部</div>
+                    <div class="m">2026-06-09 09:15 · 由陈思琪发起</div>
+                    <div class="d">
+                      邮件主题：「关于 2026Q1 尾款 ¥ 28,000 的付款提醒」<br/>
+                      附件：付款通知单.pdf · 合同副本.pdf
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 关联发票 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>▤ 关联发票（1 张）</h4>
+            </div>
+            <div class="detail-section-body" style="padding:0 20px 12px;">
+              <div class="rel-item">
+                <div class="ico" style="background:rgba(79,107,255,0.12);color:var(--color-primary);">▤</div>
+                <div class="body">
+                  <div class="t"><a href="invoice-detail.html" style="color:var(--color-primary);font-family:var(--font-mono);font-size:12.5px;">25113300000012345678</a></div>
+                  <div class="m">电子普通发票 · 开票日 2026-06-02 · 已认证</div>
+                </div>
+                <div class="v" style="font-weight:600;">¥ 28,000.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧 -->
+        <div>
+          <!-- 客户信息 -->
+          <div class="meta-card">
+            <h4>👤 客户信息</h4>
+            <div class="info-grid" style="gap:10px;">
+              <div class="info-row full"><span class="l">客户名称</span><span class="v">万象科技有限公司</span></div>
+              <div class="info-row full"><span class="l">主要联系人</span><span class="v">李建国（CTO）</span></div>
+              <div class="info-row"><span class="l">手机</span><span class="v" style="font-family:var(--font-mono);font-size:12.5px;">138 **** 8888</span></div>
+              <div class="info-row"><span class="l">邮箱</span><span class="v" style="font-size:12.5px;">lijianguo@wx-tech.cn</span></div>
+              <div class="info-row full"><span class="l">付款历史</span><span class="v" style="color:var(--color-success);">5/6 按期回款（83%）</span></div>
+            </div>
+          </div>
+
+          <!-- 客户回款历史 -->
+          <div class="meta-card">
+            <h4>📊 客户回款历史</h4>
+            <div class="rel-item">
+              <div class="ico" style="background:rgba(16,185,129,0.1);color:var(--color-success);">✓</div>
+              <div class="body">
+                <div class="t" style="font-size:12.5px;">HK-2026-009</div>
+                <div class="m">2026-03-15 · 按期</div>
+              </div>
+              <div class="v" style="font-size:12.5px;">¥ 86,500</div>
+            </div>
+            <div class="rel-item">
+              <div class="ico" style="background:rgba(16,185,129,0.1);color:var(--color-success);">✓</div>
+              <div class="body">
+                <div class="t" style="font-size:12.5px;">HK-2025-118</div>
+                <div class="m">2025-12-30 · 提前 1 天</div>
+              </div>
+              <div class="v" style="font-size:12.5px;">¥ 86,500</div>
+            </div>
+            <div class="rel-item">
+              <div class="ico" style="background:rgba(16,185,129,0.1);color:var(--color-success);">✓</div>
+              <div class="body">
+                <div class="t" style="font-size:12.5px;">HK-2025-082</div>
+                <div class="m">2025-09-28 · 按期</div>
+              </div>
+              <div class="v" style="font-size:12.5px;">¥ 86,500</div>
+            </div>
+            <div class="rel-item">
+              <div class="ico" style="background:rgba(245,158,11,0.1);color:var(--color-warning);">!</div>
+              <div class="body">
+                <div class="t" style="font-size:12.5px;">HK-2025-045</div>
+                <div class="m">2025-06-30 · 逾期 3 天</div>
+              </div>
+              <div class="v" style="font-size:12.5px;">¥ 56,000</div>
+            </div>
+          </div>
+
+          <!-- 风险评估 -->
+          <div class="meta-card">
+            <h4>🎯 风险评估</h4>
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px;">
+              <div style="font-size:32px;font-weight:800;color:var(--color-warning);">中</div>
+              <div style="flex:1;">
+                <div style="font-size:12.5px;font-weight:500;">中度风险</div>
+                <div style="font-size:11.5px;color:var(--color-text-tertiary);">客户信用良好但本次逾期</div>
+              </div>
+            </div>
+            <div style="font-size:11.5px;color:var(--color-text-secondary);line-height:1.6;padding-top:10px;border-top:1px solid var(--color-border);">
+              <strong>AI 分析：</strong>该客户历史回款准时率 83%，本次为首笔严重逾期，但客户已主动沟通承诺到账时间，建议持续跟进，无需升级法务。
+            </div>
+          </div>
+
+          <!-- 快捷操作 -->
+          <div class="meta-card">
+            <h4>⚡ 快捷操作</h4>
+            <div style="display:flex;flex-direction:column;gap:8px;">
+              <button class="btn btn-primary btn-sm btn-block">📞 立即催收</button>
+              <button class="btn btn-outline btn-sm btn-block">📧 发送催收邮件</button>
+              <button class="btn btn-outline btn-sm btn-block">💬 微信通知</button>
+              <button class="btn btn-outline btn-sm btn-block">+ 登记到账</button>
+              <button class="btn btn-ghost btn-sm btn-block" style="color:var(--color-danger);">⊗ 标记坏账</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

@@ -1,0 +1,100 @@
+# ============================================================
+# 数智化管理系统 - 全局 .gitignore
+# ============================================================
+
+# ---------- 环境变量 / 密钥（绝对不能上传） ----------
+.env
+.env.*
+!.env.example
+!.env.docker.example
+*.pem
+*.key
+*.crt
+*.p12
+secrets/
+config.local.*
+
+# ---------- Python（后端） ----------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+ENV/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+dist/
+build/
+*.egg
+
+# ---------- Node / Vite（前端） ----------
+node_modules/
+.next/
+.nuxt/
+.vite/
+dist/
+*.local
+.pnpm-store/
+.yarn/
+
+# ---------- 构建产物 ----------
+*.log
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# ---------- 上传文件 / 运行时数据 ----------
+uploads/
+static/uploads/
+storage/
+attachments/
+invoices/
+receipts/
+*.pdf
+*.zip
+*.tar.gz
+backups/
+*.sql
+*.sql.gz
+*.dump
+
+# ---------- 测试 / Mock 数据 ----------
+tests/fixtures/*.db
+tests/fixtures/*.sqlite
+*.sqlite
+*.sqlite3
+
+# ---------- 监控 / 缓存 ----------
+.cache/
+.tmp/
+temp/
+
+# ---------- IDE ----------
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.cursor/
+.aider*
+
+# ---------- OS ----------
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+Thumbs.db

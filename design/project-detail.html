@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>项目详情 · 数智化二期 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 进度大字 */
+  .project-hero {
+    background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #312E81 100%);
+    border-radius: var(--radius-lg);
+    padding: 28px 32px;
+    color: #fff;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .project-hero::before {
+    content: '';
+    position: absolute;
+    right: -60px; top: -60px;
+    width: 280px; height: 280px;
+    background: radial-gradient(circle, rgba(124,58,237,0.4) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .project-hero::after {
+    content: '';
+    position: absolute;
+    right: 100px; bottom: -80px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(79,107,255,0.3) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .ph-top { position: relative; z-index: 1; display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+  .ph-title { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .ph-id { font-size: 12px; color: rgba(255,255,255,0.6); font-family: var(--font-mono); }
+  .ph-meta { font-size: 13px; color: rgba(255,255,255,0.8); margin-top: 4px; }
+  .ph-status {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: var(--radius-full);
+    background: rgba(79,107,255,0.25);
+    font-size: 12px; font-weight: 500;
+    border: 1px solid rgba(79,107,255,0.4);
+  }
+  .ph-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px; position: relative; z-index: 1; }
+  .ph-stat .l { font-size: 11.5px; color: rgba(255,255,255,0.6); margin-bottom: 4px; }
+  .ph-stat .v { font-size: 22px; font-weight: 700; }
+  .ph-stat .v.sm { font-size: 14px; font-weight: 500; }
+  .ph-stat .d { font-size: 11px; color: rgba(255,255,255,0.6); margin-top: 2px; }
+
+  .ph-progress {
+    margin-top: 18px;
+    padding-top: 18px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    position: relative; z-index: 1;
+  }
+  .ph-progress .bar {
+    height: 10px;
+    background: rgba(255,255,255,0.1);
+    border-radius: var(--radius-full);
+    overflow: hidden;
+    margin-top: 8px;
+  }
+  .ph-progress .fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4F6BFF, #7C3AED, #EC4899);
+    border-radius: var(--radius-full);
+  }
+  .ph-progress .label {
+    display: flex; justify-content: space-between; font-size: 12.5px;
+    color: rgba(255,255,255,0.7);
+  }
+  .ph-progress .label .pct { font-weight: 700; color: #fff; font-size: 16px; }
+
+  /* 里程碑 */
+  .milestone {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--color-border);
+    position: relative;
+  }
+  .milestone:last-child { border-bottom: none; }
+  .ms-icon {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .ms-icon.done { background: var(--color-success-bg); color: var(--color-success); }
+  .ms-icon.current { background: var(--color-primary-bg); color: var(--color-primary); border: 2px solid var(--color-primary); }
+  .ms-icon.todo { background: #F1F5F9; color: var(--color-text-tertiary); }
+  .ms-body { flex: 1; }
+  .ms-body .t { font-size: 13.5px; font-weight: 500; }
+  .ms-body .m { font-size: 11.5px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .ms-status { font-size: 11.5px; font-weight: 500; }
+  .ms-status.done { color: var(--color-success); }
+  .ms-status.current { color: var(--color-primary); }
+  .ms-status.todo { color: var(--color-text-tertiary); }
+
+  /* 团队成员网格 */
+  .team-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  .member-card {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px;
+    background: #FAFBFF;
+    border-radius: var(--radius-md);
+  }
+  .member-card img {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+  }
+  .member-card .info { flex: 1; min-width: 0; }
+  .member-card .info .n { font-size: 13px; font-weight: 500; }
+  .member-card .info .r { font-size: 11px; color: var(--color-text-tertiary); }
+  .member-card .role-tag { font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--color-primary-bg); color: var(--color-primary); font-weight: 600; }
+
+  /* 关联合同/发票列表 */
+  .rel-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rel-item:last-child { border-bottom: none; }
+  .rel-item .ico {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    display: grid; place-items: center;
+    font-size: 14px;
+    flex-shrink: 0;
+  }
+  .rel-item .body { flex: 1; min-width: 0; }
+  .rel-item .body .t { font-size: 13px; font-weight: 500; }
+  .rel-item .body .m { font-size: 11.5px; color: var(--color-text-tertiary); }
+  .rel-item .v { font-size: 13px; font-weight: 600; color: var(--color-text-primary); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html" class="active"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>业务</span><span class="sep">/</span>
+            <span><a href="project.html" style="color:var(--color-text-tertiary);">项目管理</a></span>
+            <span class="sep">/</span>
+            <span>数智化二期</span>
+          </div>
+          <h1 class="page-title">项目详情</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">📋 复制项目</button>
+        <button class="btn btn-outline btn-sm">⊗ 暂停项目</button>
+        <button class="btn btn-primary btn-sm">+ 添加里程碑</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="project-hero fade-up">
+        <div class="ph-top">
+          <div>
+            <div class="ph-id">PRJ-2026-018</div>
+            <div class="ph-title">数智化二期</div>
+            <div class="ph-meta">客户：<strong style="color:#fff;">万象科技有限公司</strong> · 负责人：陈思琪 · 创建于 2026-03-15</div>
+          </div>
+          <div class="ph-status">● 进行中</div>
+        </div>
+
+        <div class="ph-stats">
+          <div class="ph-stat">
+            <div class="l">整体进度</div>
+            <div class="v">68%</div>
+            <div class="d">+5% 本周</div>
+          </div>
+          <div class="ph-stat">
+            <div class="l">已花预算</div>
+            <div class="v sm">¥ 186.5 万</div>
+            <div class="d">总预算 ¥ 280 万</div>
+          </div>
+          <div class="ph-stat">
+            <div class="l">里程碑</div>
+            <div class="v sm">4 / 6</div>
+            <div class="d">已完成</div>
+          </div>
+          <div class="ph-stat">
+            <div class="l">剩余天数</div>
+            <div class="v">79 <span style="font-size:13px;font-weight:500;">天</span></div>
+            <div class="d">截止 2026-08-30</div>
+          </div>
+        </div>
+
+        <div class="ph-progress">
+          <div class="label">
+            <span>项目进度</span>
+            <span class="pct">68%</span>
+          </div>
+          <div class="bar"><div class="fill" style="width:68%;"></div></div>
+        </div>
+      </div>
+
+      <div class="detail-layout">
+
+        <!-- 左侧：主体 -->
+        <div>
+          <!-- Tab -->
+          <div class="detail-tabs">
+            <a href="#" class="active">概览</a>
+            <a href="#">里程碑</a>
+            <a href="#">任务</a>
+            <a href="#">文件</a>
+            <a href="#">动态</a>
+            <a href="#">风险</a>
+          </div>
+
+          <!-- 里程碑 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>🎯 里程碑进度</h4>
+              <span class="tag tag-primary">4 / 6 已完成</span>
+            </div>
+            <div class="detail-section-body" style="padding:6px 20px 14px;">
+              <div class="milestone">
+                <div class="ms-icon done">✓</div>
+                <div class="ms-body">
+                  <div class="t">M1 · 项目启动会</div>
+                  <div class="m">完成于 2026-03-20 · 张明 / 陈思琪</div>
+                </div>
+                <div class="ms-status done">已完成</div>
+              </div>
+              <div class="milestone">
+                <div class="ms-icon done">✓</div>
+                <div class="ms-body">
+                  <div class="t">M2 · 需求调研 & 原型设计</div>
+                  <div class="m">完成于 2026-04-15 · 陈思琪 / 王芳</div>
+                </div>
+                <div class="ms-status done">已完成</div>
+              </div>
+              <div class="milestone">
+                <div class="ms-icon done">✓</div>
+                <div class="ms-body">
+                  <div class="t">M3 · 一期系统集成</div>
+                  <div class="m">完成于 2026-05-10 · 王洋 / 李明</div>
+                </div>
+                <div class="ms-status done">已完成</div>
+              </div>
+              <div class="milestone">
+                <div class="ms-icon done">✓</div>
+                <div class="ms-body">
+                  <div class="t">M4 · UAT 测试</div>
+                  <div class="m">完成于 2026-06-05 · 陈思琪 / 客户</div>
+                </div>
+                <div class="ms-status done">已完成</div>
+              </div>
+              <div class="milestone">
+                <div class="ms-icon current">5</div>
+                <div class="ms-body">
+                  <div class="t">M5 · 试运行 & 数据迁移</div>
+                  <div class="m">计划 2026-06-15 ~ 2026-07-30 · 当前阶段</div>
+                </div>
+                <div class="ms-status current">进行中 · 45%</div>
+              </div>
+              <div class="milestone">
+                <div class="ms-icon todo">6</div>
+                <div class="ms-body">
+                  <div class="t">M6 · 正式上线 & 验收</div>
+                  <div class="m">计划 2026-08-01 ~ 2026-08-30</div>
+                </div>
+                <div class="ms-status todo">未开始</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 项目信息 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>📋 项目信息</h4>
+              <a style="font-size:12px;color:var(--color-primary);cursor:pointer;">编辑</a>
+            </div>
+            <div class="detail-section-body">
+              <div class="info-grid">
+                <div class="info-row"><span class="l">项目编号</span><span class="v mono">PRJ-2026-018</span></div>
+                <div class="info-row"><span class="l">项目类型</span><span class="v">SaaS 平台升级</span></div>
+                <div class="info-row"><span class="l">客户</span><span class="v">万象科技有限公司</span></div>
+                <div class="info-row"><span class="l">客户联系人</span><span class="v">李建国（CTO）· 138****8888</span></div>
+                <div class="info-row"><span class="l">开始日期</span><span class="v">2026-03-15</span></div>
+                <div class="info-row"><span class="l">截止日期</span><span class="v">2026-08-30</span></div>
+                <div class="info-row"><span class="l">合同金额</span><span class="v">¥ 1,280,000.00</span></div>
+                <div class="info-row"><span class="l">项目预算</span><span class="v">¥ 280,000.00</span></div>
+                <div class="info-row full">
+                  <span class="l">项目描述</span>
+                  <div class="notes-block">
+                    在一期基础上扩展发票识别模块，新增回款管理、项目管理、合同管理三大业务模块，实现企业财务全流程在线化。包含 AI 智能识别、可视化驾驶舱、多端协同。
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 关联合同 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>📄 关联合同（3 份）</h4>
+              <a style="font-size:12px;color:var(--color-primary);cursor:pointer;">查看全部</a>
+            </div>
+            <div class="detail-section-body" style="padding:0 20px;">
+              <div class="rel-item">
+                <div class="ico">▦</div>
+                <div class="body">
+                  <div class="t"><a href="contract-detail.html" style="color:var(--color-primary);">HT-2026-028 · 数智化二期 SaaS 平台年度服务</a></div>
+                  <div class="m">签订于 2026-05-20 · 执行中</div>
+                </div>
+                <div class="v">¥ 1,280,000.00</div>
+              </div>
+              <div class="rel-item">
+                <div class="ico">▦</div>
+                <div class="body">
+                  <div class="t"><a href="contract-detail.html" style="color:var(--color-primary);">HT-2026-031 · 万象科技 SaaS 服务合同 2026Q2</a></div>
+                  <div class="m">签订于 2026-06-11 · 已签订</div>
+                </div>
+                <div class="v">¥ 86,500.00</div>
+              </div>
+              <div class="rel-item">
+                <div class="ico">▦</div>
+                <div class="body">
+                  <div class="t"><a href="contract-detail.html" style="color:var(--color-primary);">HT-2026-023 · 数智化一期验收补充协议</a></div>
+                  <div class="m">签订于 2026-05-01 · 已归档</div>
+                </div>
+                <div class="v">¥ 56,000.00</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 右侧：元信息 -->
+        <div>
+          <!-- 团队 -->
+          <div class="meta-card">
+            <h4>👥 项目团队（6 人）</h4>
+            <div class="team-grid">
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=12" alt="">
+                <div class="info">
+                  <div class="n">陈思琪</div>
+                  <div class="r">项目经理</div>
+                </div>
+                <span class="role-tag">PM</span>
+              </div>
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=23" alt="">
+                <div class="info">
+                  <div class="n">王芳</div>
+                  <div class="r">财务专员</div>
+                </div>
+                <span class="role-tag" style="background:#D1FAE5;color:#047857;">财务</span>
+              </div>
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=33" alt="">
+                <div class="info">
+                  <div class="n">李明</div>
+                  <div class="r">法务主管</div>
+                </div>
+                <span class="role-tag" style="background:#FEF3C7;color:#B45309;">法务</span>
+              </div>
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=45" alt="">
+                <div class="info">
+                  <div class="n">刘洋</div>
+                  <div class="r">销售经理</div>
+                </div>
+                <span class="role-tag" style="background:#FAE8FF;color:#86198F;">销售</span>
+              </div>
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=15" alt="">
+                <div class="info">
+                  <div class="n">张明</div>
+                  <div class="r">财务总监</div>
+                </div>
+                <span class="role-tag">PMO</span>
+              </div>
+              <div class="member-card">
+                <img src="https://i.pravatar.cc/64?img=68" alt="">
+                <div class="info">
+                  <div class="n">王洋</div>
+                  <div class="r">技术负责人</div>
+                </div>
+                <span class="role-tag" style="background:#CFFAFE;color:#0E7490;">技术</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 风险 -->
+          <div class="meta-card">
+            <h4>⚠️ 风险预警</h4>
+            <div style="background:rgba(245,158,11,0.08);border-left:3px solid var(--color-warning);padding:10px 12px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;margin-bottom:8px;">
+              <div style="font-size:12.5px;font-weight:500;color:var(--color-warning);">M5 试运行进度滞后</div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">当前 45%，按计划应达 60%</div>
+            </div>
+            <div style="background:rgba(239,68,68,0.06);border-left:3px solid var(--color-danger);padding:10px 12px;border-radius:0 var(--radius-sm) var(--radius-sm) 0;margin-bottom:8px;">
+              <div style="font-size:12.5px;font-weight:500;color:var(--color-danger);">2 张回款逾期</div>
+              <div style="font-size:11px;color:var(--color-text-secondary);margin-top:2px;">涉及 ¥ 114,500，关联本项目</div>
+            </div>
+          </div>
+
+          <!-- 关联发票 -->
+          <div class="meta-card">
+            <h4>▤ 关联发票（12 张）</h4>
+            <div class="rel-item">
+              <div class="ico">▤</div>
+              <div class="body">
+                <div class="t" style="font-family:var(--font-mono);font-size:12px;">25113300...12345678</div>
+                <div class="m">2026-06-08 · 已入账</div>
+              </div>
+              <div class="v">¥ 28,000</div>
+            </div>
+            <div class="rel-item">
+              <div class="ico">▤</div>
+              <div class="body">
+                <div class="t" style="font-family:var(--font-mono);font-size:12px;">25113300...55443322</div>
+                <div class="m">2026-06-06 · 已关联合同</div>
+              </div>
+              <div class="v">¥ 142,300</div>
+            </div>
+            <div class="rel-item">
+              <div class="ico">▤</div>
+              <div class="body">
+                <div class="t" style="font-family:var(--font-mono);font-size:12px;">25113300...99887766</div>
+                <div class="m">2026-05-28 · 已入账</div>
+              </div>
+              <div class="v">¥ 86,500</div>
+            </div>
+            <a style="display:block;text-align:center;font-size:12px;color:var(--color-primary);padding-top:8px;cursor:pointer;">查看全部 12 张 →</a>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

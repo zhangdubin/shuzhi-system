@@ -1,0 +1,148 @@
+// ============================================================
+// 全局样式
+// ============================================================
+@use "./variables.scss" as *;
+@use "./mixins.scss" as *;
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: $font-family-base;
+  font-size: 14px;
+  line-height: 1.6;
+  color: $color-text-primary;
+  background: $color-bg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $color-primary;
+  text-decoration: none;
+  &:hover {
+    color: $color-primary-hover;
+  }
+}
+
+// 滚动条
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: $color-border-strong;
+  border-radius: 4px;
+  &:hover {
+    background: $color-text-tertiary;
+  }
+}
+
+// 通用类
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.text-secondary { color: $color-text-secondary; }
+.text-tertiary { color: $color-text-tertiary; }
+
+// 页面容器
+.page-container {
+  padding: $space-md;
+  min-height: calc(100vh - #{$layout-header-height});
+}
+
+// 通用页面 H1 + breadcrumb 区域
+.page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  margin-bottom: $space-md;
+  flex-wrap: wrap;
+  gap: 12px;
+  h1 {
+    @include page-title-h1;
+    margin: 0 0 4px 0;
+  }
+  .page-desc {
+    color: $color-text-secondary;
+    font-size: 13px;
+    margin: 0;
+  }
+  .page-actions {
+    display: flex;
+    gap: 8px;
+  }
+}
+
+// 通用面板标题
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: $color-text-primary;
+  margin: 0 0 $space-md 0;
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 14px;
+    background: $gradient-brand;
+    border-radius: 2px;
+  }
+}
+
+// 详情 / 编辑器样式
+@import './detail.scss';
+
+// ============================================================
+// Element Plus 表格（全局兜底，防止列宽溢出截断）
+// ============================================================
+.el-table {
+  font-size: 13px;
+  // 列宽累加超过容器时允许横向滚动（不截断）
+  &.el-table--fit, &.el-table--border, &.el-table--default {
+    border-radius: 0;
+  }
+  th.el-table__cell {
+    background: #F8FAFC;
+    color: #475569;
+    font-weight: 600;
+    font-size: 12px;
+  }
+  td.el-table__cell {
+    color: #0F172A;
+  }
+}
+// el-pagination 兜底
+.el-pagination {
+  margin-top: 16px;
+  justify-content: flex-end;
+  display: flex;
+  flex-wrap: wrap;
+}
+// el-tag 小尺寸统一
+.el-tag.is-small {
+  font-size: 11px;
+  padding: 0 8px;
+  height: 22px;
+  line-height: 20px;
+}
+
+// ============================================================
+// AI 数智化组件（Phase 1，2026-05-21 引入）
+// 不破坏 EP 主题，仅追加新类
+// ============================================================
+@import './ai.scss';

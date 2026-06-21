@@ -1,0 +1,398 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>销售费用 · 录入与审批 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .layout-with-drawer {
+    position: relative;
+  }
+  .page-mask {
+    position: fixed; inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    z-index: 90;
+    backdrop-filter: blur(3px);
+  }
+  .drawer-expense {
+    position: fixed; top: 0; right: 0; bottom: 0;
+    width: 720px; max-width: 95vw;
+    background: #fff;
+    display: flex; flex-direction: column;
+    box-shadow: -20px 0 50px -10px rgba(0,0,0,0.25);
+    z-index: 100;
+    animation: drawerIn 0.28s cubic-bezier(0,0,0.2,1);
+  }
+  @keyframes drawerIn { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+  /* 类型选择器 */
+  .type-grid {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 10px;
+  }
+  .type-card {
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 14px 8px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #fff;
+  }
+  .type-card:hover { border-color: var(--color-primary); }
+  .type-card.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary-bg);
+  }
+  .type-card .ico { font-size: 24px; margin-bottom: 4px; }
+  .type-card .n { font-size: 12px; font-weight: 500; }
+
+  /* 金额输入 */
+  .amount-input {
+    display: flex; align-items: center;
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: 0 16px;
+    background: linear-gradient(135deg, rgba(79,107,255,0.04), rgba(124,58,237,0.04));
+  }
+  .amount-input .symbol { font-size: 20px; color: var(--color-primary); font-weight: 600; }
+  .amount-input input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    padding: 14px 0 14px 8px;
+    outline: none;
+  }
+
+  /* 审批流（垂直版） */
+  .approval-flow {
+    display: flex; flex-direction: column;
+    gap: 0;
+  }
+  .af-step {
+    display: flex; gap: 12px;
+    position: relative;
+    padding-bottom: 16px;
+  }
+  .af-step:last-child { padding-bottom: 0; }
+  .af-step::before {
+    content: '';
+    position: absolute;
+    left: 13px; top: 30px; bottom: 0;
+    width: 1.5px;
+    background: var(--color-border);
+  }
+  .af-step:last-child::before { display: none; }
+  .af-step.done::before { background: var(--color-success); }
+  .af-step .node {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: #F1F5F9;
+    color: var(--color-text-tertiary);
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 600;
+    border: 2px solid #E2E8F0;
+    flex-shrink: 0;
+    z-index: 1;
+  }
+  .af-step.done .node {
+    background: var(--color-success);
+    color: #fff;
+    border-color: transparent;
+  }
+  .af-step.current .node {
+    background: var(--gradient-brand);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 0 0 4px rgba(79,107,255,0.2);
+  }
+  .af-step .body { flex: 1; padding-top: 2px; }
+  .af-step .body .t { font-size: 13px; font-weight: 500; }
+  .af-step .body .m { font-size: 11.5px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .af-step .body .d { font-size: 11.5px; color: var(--color-text-secondary); margin-top: 4px; padding: 6px 8px; background:#F8FAFC; border-radius:4px; }
+
+  /* 表单分组 */
+  .form-block { margin-bottom: 20px; }
+  .form-block .head {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 10px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }
+
+  /* 附件 */
+  .att-list { display: flex; flex-direction: column; gap: 8px; }
+  .att-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    background: #FAFBFF;
+  }
+  .att-item .ico {
+    width: 36px; height: 36px;
+    border-radius: 8px;
+    background: rgba(79,107,255,0.1);
+    color: var(--color-primary);
+    display: grid; place-items: center;
+    font-size: 16px;
+  }
+  .att-item .info { flex: 1; min-width: 0; }
+  .att-item .info .n { font-size: 13px; font-weight: 500; }
+  .att-item .info .m { font-size: 11px; color: var(--color-text-tertiary); }
+  .att-item .actions a { color: var(--color-primary); font-size: 12px; padding: 4px 8px; }
+  .att-upload {
+    border: 1.5px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    text-align: center;
+    color: var(--color-text-tertiary);
+    font-size: 12.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .att-upload:hover { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-bg); }
+</style>
+</head>
+<body>
+<div class="layout layout-with-drawer">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html" class="active"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main" style="filter:blur(0);">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>财务</span><span class="sep">/</span>
+            <span><a href="sales-expense.html" style="color:var(--color-text-tertiary);">销售费用</a></span>
+            <span class="sep">/</span>
+            <span>录入费用</span>
+          </div>
+          <h1 class="page-title">销售费用 · 录入与审批</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+      <div style="text-align:center;color:rgba(255,255,255,0.7);font-size:14px;padding:60px 20px;">
+        背景页面（实际使用中会保留此处的列表）
+      </div>
+    </div>
+  </main>
+
+  <!-- 抽屉：录入与审批 -->
+  <div class="drawer-expense">
+
+    <div class="modal-head" style="border-bottom:1px solid var(--color-border);">
+      <div>
+        <h3>📝 录入销售费用</h3>
+        <div class="sub">单号 EX-2026-0612-003 · 提交后将进入审批流</div>
+      </div>
+      <span class="modal-close" onclick="document.querySelector('.drawer-expense').remove();document.querySelector('.page-mask').remove();">×</span>
+    </div>
+
+    <div class="modal-body" style="flex:1;overflow-y:auto;">
+
+      <div class="form-block">
+        <div class="head">费用类型</div>
+        <div class="type-grid">
+          <div class="type-card active"><div class="ico">✈</div><div class="n">差旅</div></div>
+          <div class="type-card"><div class="ico">🍽</div><div class="n">招待</div></div>
+          <div class="type-card"><div class="ico">📎</div><div class="n">办公</div></div>
+          <div class="type-card"><div class="ico">📢</div><div class="n">推广</div></div>
+          <div class="type-card"><div class="ico">📚</div><div class="n">培训</div></div>
+          <div class="type-card"><div class="ico">⋯</div><div class="n">其他</div></div>
+        </div>
+      </div>
+
+      <div class="form-block">
+        <div class="head">基本信息</div>
+        <div class="form-row">
+          <div class="field">
+            <label>费用事由 <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" value="上海-北京客户拜访（北辰集团）" />
+          </div>
+          <div class="field">
+            <label>费用日期 <span style="color:var(--color-danger);">*</span></label>
+            <input type="date" value="2026-06-12" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>关联合同</label>
+            <select>
+              <option>HT-2026-029 · 朗驰智能设备改造工程合同</option>
+              <option>HT-2026-028 · 万象科技 SaaS 服务合同</option>
+              <option>暂不关联</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>关联项目</label>
+            <select>
+              <option>PRJ-2026-022 · 万象科技 SaaS 部署</option>
+              <option>PRJ-2026-018 · 数智化二期</option>
+              <option>暂不关联</option>
+            </select>
+          </div>
+        </div>
+        <div class="field">
+          <label>费用说明</label>
+          <textarea placeholder="详细说明费用用途、参与人员、客户背景等">北京北辰集团 Q2 项目对接会，含 3 名销售团队 + 2 名技术专家。含机票（往返）、酒店 2 晚、当地打车。</textarea>
+        </div>
+      </div>
+
+      <div class="form-block">
+        <div class="head">金额明细</div>
+        <div class="field" style="margin-bottom:14px;">
+          <label>报销总金额 <span style="color:var(--color-danger);">*</span></label>
+          <div class="amount-input">
+            <span class="symbol">¥</span>
+            <input type="text" value="4,820.00" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="field">
+            <label>机票</label>
+            <input type="text" value="2,860.00" />
+          </div>
+          <div class="field">
+            <label>酒店</label>
+            <input type="text" value="1,280.00" />
+          </div>
+          <div class="field">
+            <label>打车/交通</label>
+            <input type="text" value="380.00" />
+          </div>
+          <div class="field">
+            <label>餐补/其他</label>
+            <input type="text" value="300.00" />
+          </div>
+        </div>
+      </div>
+
+      <div class="form-block">
+        <div class="head">附件（发票 / 凭证）</div>
+        <div class="att-list" style="margin-bottom:8px;">
+          <div class="att-item">
+            <div class="ico">▤</div>
+            <div class="info">
+              <div class="n">机票行程单.pdf</div>
+              <div class="m">128 KB · 已通过 OCR 识别</div>
+            </div>
+            <div class="actions"><a>查看</a><a style="color:var(--color-danger);">删除</a></div>
+          </div>
+          <div class="att-item">
+            <div class="ico">▤</div>
+            <div class="info">
+              <div class="n">酒店发票.pdf</div>
+              <div class="m">86 KB · 已通过 OCR 识别</div>
+            </div>
+            <div class="actions"><a>查看</a><a style="color:var(--color-danger);">删除</a></div>
+          </div>
+          <div class="att-item">
+            <div class="ico">▤</div>
+            <div class="info">
+              <div class="n">打车明细截图.png</div>
+              <div class="m">420 KB</div>
+            </div>
+            <div class="actions"><a>查看</a><a style="color:var(--color-danger);">删除</a></div>
+          </div>
+        </div>
+        <div class="att-upload">+ 拖拽文件到此处 / 点击上传</div>
+      </div>
+
+      <div class="form-block">
+        <div class="head">审批流程（提交后将按此流程审批）</div>
+        <div class="approval-flow">
+          <div class="af-step">
+            <div class="node">1</div>
+            <div class="body">
+              <div class="t">提交人 · 陈思琪</div>
+              <div class="m">销售部 · 当前</div>
+            </div>
+          </div>
+          <div class="af-step">
+            <div class="node">2</div>
+            <div class="body">
+              <div class="t">直属上级 · 王芳</div>
+              <div class="m">销售部经理</div>
+            </div>
+          </div>
+          <div class="af-step">
+            <div class="node">3</div>
+            <div class="body">
+              <div class="t">财务审核 · 张明</div>
+              <div class="m">财务部</div>
+            </div>
+          </div>
+          <div class="af-step">
+            <div class="node">4</div>
+            <div class="body">
+              <div class="t">总经理审批（金额 ≥ ¥ 5,000 时触发）</div>
+              <div class="m">本次 ¥ 4,820 免触发</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-foot" style="justify-content:space-between;">
+      <button class="btn btn-ghost btn-sm" onclick="document.querySelector('.drawer-expense').remove();document.querySelector('.page-mask').remove();">⊗ 取消</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-outline btn-sm">存为草稿</button>
+        <button class="btn btn-primary btn-sm">✓ 提交审批</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="page-mask" onclick="document.querySelector('.drawer-expense').remove();this.remove();"></div>
+</div>
+</body>
+</html>

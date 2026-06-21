@@ -1,0 +1,318 @@
+# ============================================================
+# 数智化管理系统 - 一键启动
+# 用法：docker compose --profile core up -d    （核心 5 服务）
+#       docker compose --profile monitoring up -d    （加监控）
+#       docker compose --profile all up -d    （全部 12 服务）
+# ============================================================
+
+name: shuzhi-deploy
+
+# 使用环境变量
+# copy .env.example .env
+
+services:
+  # ============================================================
+  # 核心服务（profile: core）
+  # ============================================================
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: shuzhi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shuzhi
+      POSTGRES_PASSWORD: shuzhi
+      POSTGRES_DB: shuzhi
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - /tmp/pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shuzhi -d shuzhi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shuzhi-net
+    profiles: [core, monitoring, all]
+
+  redis:
+    image: redis:7-alpine
+    container_name: shuzhi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - /tmp/redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - shuzhi-net
+    profiles: [core, monitoring, all]
+
+  backend:
+    image: shuzhi-backend:latest
+    container_name: shuzhi-backend
+    restart: unless-stopped
+    environment:
+      # 数据库
+      SHUZHI_DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi
+      # Redis
+      SHUZHI_REDIS_URL: redis://redis:6379/0
+      # JWT
+      SHUZHI_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
+      # OCR
+      SHUZHI_OCR_SERVICE_URL: http://ocr-service:8001
+      SHUZHI_OCR_MODE: real
+      # 容器内公网 URL（R19 修复：让 ocr-service 能下载到图片）
+      SHUZHI_PUBLIC_BASE_URL: http://shuzhi-backend:8000
+      # MinIO 对象存储（发票 PDF/图片/合同/凭证 统一管理）
+      SHUZHI_STORAGE_BACKEND: ${STORAGE_BACKEND:-local}
+      SHUZHI_MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
+      SHUZHI_MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      SHUZHI_MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      SHUZHI_MINIO_BUCKET: ${MINIO_BUCKET:-shuzhi-files}
+      SHUZHI_MINIO_SECURE: ${MINIO_SECURE:-false}
+      # 诺诺发票云
+      SHUZHI_NUONUO_API_KEY: ${NUONUO_API_KEY:-}
+      SHUZHI_NUONUO_API_SECRET: ${NUONUO_API_SECRET:-}
+      # Sentry
+      SHUZHI_SENTRY_DSN: ${SENTRY_DSN:-}
+      # 环境
+      SHUZHI_ENV: ${ENV:-development}
+      SHUZHI_LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    networks:
+      - shuzhi-net
+    volumes:
+      - /tmp/shuzhi-uploads:/app/uploads
+      # 让系统设置页能可视化编辑 .env（容器内 /app/.env 与主机 backend/.env 同步）
+      - ../backend/.env:/app/.env
+    profiles: [core, monitoring, all]
+
+  ocr-service:
+    image: shuzhi-ocr-service:latest
+    container_name: shuzhi-ocr-service
+    restart: unless-stopped
+    environment:
+      # 后端 URL（让 OCR 容器能下载后端 /static 下的文件）
+      BACKEND_URL: http://shuzhi-backend:8000
+      LOG_LEVEL: INFO
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 60s
+      retries: 3
+    networks:
+      - shuzhi-net
+    profiles: [core, monitoring, all]
+
+  frontend:
+    image: nginx:alpine
+    container_name: shuzhi-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - /Users/trisome/Desktop/开发/数智化系统new/frontend/dist:/usr/share/nginx/html:ro
+      - /tmp/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - backend
+    networks:
+      - shuzhi-net
+    profiles: [core, monitoring, all]
+
+  # ============================================================
+  # 监控服务（profile: monitoring）
+  # ============================================================
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: shuzhi-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - /tmp/prom-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: shuzhi-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: shuzhi-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: shuzhi-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://shuzhi:shuzhi@postgres:5432/shuzhi?sslmode=disable"
+    depends_on:
+      - postgres
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: shuzhi-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    depends_on:
+      - redis
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: shuzhi-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - /tmp/grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
+      - ./monitoring/grafana-dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+      - prometheus
+    networks:
+      - shuzhi-net
+    profiles: [monitoring, all]
+
+  design-preview:
+    image: nginx:alpine
+    container_name: shuzhi-design-preview
+    restart: unless-stopped
+    ports:
+      - "8090:80"
+    volumes:
+      - /Users/trisome/Desktop/开发/数智化系统new/design:/usr/share/nginx/html:ro
+    networks:
+      - shuzhi-net
+    profiles: [all]
+
+  # 报销中心 - 独立子服务（8002）
+  reimbursement:
+    image: shuzhi-reimbursement:latest
+    container_name: shuzhi-reimbursement
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi
+      REDIS_URL: redis://redis:6379/0
+      # 与后端 config.py JWT_SECRET_KEY default 一致（避免 secret 不匹配 401）
+      JWT_SECRET_KEY: please-change-this-to-a-very-long-random-string-at-least-64-chars
+      JWT_ALGORITHM: HS256
+      APP_NAME: 数智化系统-报销中心
+      LOG_LEVEL: INFO
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # MinIO - 对象存储（专门管理非结构化数据：发票 PDF/图片/合同/凭证）
+  # 9000 = S3 API，9001 = Web Console
+  # ============================================================
+  minio:
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    container_name: shuzhi-minio
+    restart: unless-stopped
+    command: ["server", "/data", "--console-address", ":9001"]
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "9000:9000"  # S3 API
+      - "9001:9001"  # Web Console
+    volumes:
+      - /tmp/minio-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    networks:
+      - shuzhi-net
+    profiles: [core, storage, all]
+
+  # MinIO 初始化：建一个默认 bucket shuzhi-files
+  minio-init:
+    image: minio/minio:RELEASE.2024-01-31T20-20-33Z
+    container_name: shuzhi-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      sleep 5;
+      mc alias set myminio http://minio:9000 ${MINIO_ROOT_USER:-minioadmin} ${MINIO_ROOT_PASSWORD:-minioadmin};
+      mc mb --ignore-existing myminio/shuzhi-files;
+      mc anonymous set download myminio/shuzhi-files 2>/dev/null || true;
+      echo 'MinIO bucket shuzhi-files ready';
+      "
+    networks:
+      - shuzhi-net
+    profiles: [core, storage, all]
+    restart: "no"
+
+# ============================================================
+# 网络
+# ============================================================
+networks:
+  shuzhi-net:
+    name: deploy_shuzhi-net
+    external: true

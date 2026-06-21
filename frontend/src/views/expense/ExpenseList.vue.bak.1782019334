@@ -1,0 +1,835 @@
+<script setup lang="ts">
+/**
+ * ExpenseList · 销售费用（1:1 复刻 design/sales-expense.html）
+ * - 4 KPI 统计卡（design 同款：¥86.5 万 / 12 待审批 / 68 已通过 / 3 已驳回）
+ * - 4 类 filter-chip（全部/差旅/办公/招待/其他）
+ * - 9 列费用表（申请单号/类型/事由/申请人/部门/提交时间/金额/状态/操作）
+ * - 示例 9 行数据
+ */
+import { ref, computed, onMounted, reactive } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import AiFilterDialog from '@/components/ai/AiFilterDialog.vue'
+
+// 触点 #22：AI 智能筛选
+const aiFilterVisible = ref(false)
+import { expenseApi, reimburseApi, type Expense } from '@/api/modules'
+
+const router = useRouter()
+
+const activeType = ref<string>('all')
+const query = reactive({ keyword: '', status: '' })
+const clientFilter = ref<{ type: string; amountMin: number | null; amountMax: number | null }>({ type: '', amountMin: null, amountMax: null })
+
+// 4 类型 filter-chip（基于 rows 统计 + 全部分类）
+const typeChips = computed(() => {
+  const all = rows.value.length
+  const map: Record<string, number> = {}
+  for (const r of rows.value) {
+    const t = (r as any).type || '其他'
+    map[t] = (map[t] || 0) + 1
+  }
+  return [
+    { key: 'all', label: '全部', count: all },
+    ...Object.entries(map).map(([k, v]) => ({ key: k, label: k, count: v })),
+  ]
+})
+
+// 4 KPI（API 填充）
+const stats = ref([
+  { label: '本期费用总额', value: '...',  unit: '万', icon: '¥', iconBg: 'rgba(79,107,255,0.12)',  iconColor: '#4F6BFF', delta: '加载中' },
+  { label: '待审批',       value: 0,          unit: '单', icon: '⏱', iconBg: 'rgba(245,158,11,0.12)',  iconColor: '#F59E0B', delta: '' },
+  { label: '已通过',       value: 0,          unit: '单', icon: '✓', iconBg: 'rgba(16,185,129,0.12)',  iconColor: '#10B981', delta: '' },
+  { label: '已驳回',       value: 0,           unit: '单', icon: '!', iconBg: 'rgba(239,68,68,0.12)',   iconColor: '#EF4444', delta: '' },
+])
+
+// 真实数据（API 填充）
+const rows = ref<any[]>([])
+
+const filteredRows = computed(() => {
+  let arr = rows.value
+  if (activeType.value !== 'all') arr = arr.filter((r: any) => r.type === activeType.value)
+  // AI 类别过滤
+  if (clientFilter.value.type) {
+    arr = arr.filter((r: any) => (r.typeLabel === clientFilter.value.type || r.type === clientFilter.value.type))
+  }
+  // AI 金额过滤
+  if (clientFilter.value.amountMin != null) {
+    arr = arr.filter((r: any) => Number(r.amount || 0) >= clientFilter.value.amountMin!)
+  }
+  if (clientFilter.value.amountMax != null) {
+    arr = arr.filter((r: any) => Number(r.amount || 0) <= clientFilter.value.amountMax!)
+  }
+  return arr
+})
+
+// 类型映射（API 返回中文分类名）
+function mapCategory(c: string) {
+  const map: Record<string, { label: string; color: string }> = {
+    '差旅': { label: '差旅', color: 'info' },
+    '办公': { label: '办公', color: 'primary' },
+    '招待': { label: '招待', color: 'purple' },
+    '餐饮': { label: '餐饮', color: 'orange' },
+    '通讯': { label: '通讯', color: 'cyan' },
+    '软件服务费': { label: '软件服务费', color: 'blue' },
+    '咨询服务费': { label: '咨询服务费', color: 'indigo' },
+  }
+  return map[c] || { label: c, color: 'gray' }
+}
+
+function mapStatus(s: string) {
+  const map: Record<string, { label: string; color: string }> = {
+    'pending_review': { label: '审批中', color: 'warning' },
+    'pending': { label: '审批中', color: 'warning' },
+    'submitted': { label: '审批中', color: 'warning' },
+    'approved': { label: '已通过', color: 'success' },
+    'paid': { label: '已报销', color: 'primary' },
+    'rejected': { label: '已驳回', color: 'danger' },
+    'draft': { label: '草稿', color: 'gray' },
+  }
+  return map[s] || { label: s, color: 'gray' }
+}
+
+async function loadData(opts: { keyword?: string; status?: string; type?: string } = {}) {
+  try {
+    const kw = opts.keyword ?? query.keyword
+    const st = opts.status ?? query.status
+    console.log('[expense.list] request', { page: currentPage.value, pageSize: pageSize.value, keyword: kw, filters: { ...(st ? { status: st } : {}) } })
+    const res: any = await expenseApi.list({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: kw || undefined,
+      filters: { ...(st ? { status: st } : {}) },
+    } as any)
+    console.log('[expense.list] response', { hasList: !!res?.list, total: res?.total, len: res?.list?.length, keys: res ? Object.keys(res).slice(0,8) : null })
+    if (res?.list) {
+      total.value = res?.total ?? 0
+      rows.value = res.list.map((r: any) => {
+        const cat = mapCategory(r.category || 'other')
+        const st = mapStatus(r.status || 'draft')
+        // reason 优先级：description 里的「入账事由：xxx」 > title > description > '-'
+        // 入账自动生成的 expense 在 description 含「入账事由：」，提取出来更直观
+        let reasonText = r.title || r.description || '-'
+        if (r.description) {
+          const m = r.description.match(/入账事由：(.+?)(?:\n|$)/)
+          if (m && m[1]) reasonText = m[1].trim()
+        }
+        // 来源标识：description 含「关联发票」字样即为发票入账
+        const isFromInvoice = !!(r.description && r.description.includes('关联发票'))
+        return {
+          id: r.expenseId,
+          code: r.code || 'DRAFT',
+          type: r.category || 'other',
+          typeLabel: cat.label,
+          typeColor: cat.color,
+          reason: reasonText,
+          source: isFromInvoice ? 'invoice' : 'manual',
+          applicant: r.applicantName || '-',
+          dept: r.departmentName || '-',
+          time: r.submitAt ? r.submitAt.replace('T', ' ').substring(0, 16) : r.createdAt ? r.createdAt.replace('T', ' ').substring(0, 16) : '-',
+          amount: r.amount, // 保持原值，分或元由 fmtAmount 处理
+          status: st.label,
+          statusColor: st.color,
+          aiSuggestion: r.aiSuggestion || 'approve',
+          aiReason: r.aiReason || '',
+          aiRisk: r.aiRisk || 'low',
+          aiTags: r.aiTags || [],
+        }
+      })
+      // 更新 KPI
+      const sumAmount = rows.value.reduce((s: number, r: any) => s + (r.amount || 0), 0)
+      stats.value[0].value = '¥ ' + (sumAmount / 10000).toFixed(1)
+      stats.value[0].delta = '历史累计'
+      stats.value[1].value = rows.value.filter((r: any) => r.status === '审批中').length
+      stats.value[2].value = rows.value.filter((r: any) => ['已通过','已报销'].includes(r.status)).length
+      stats.value[3].value = rows.value.filter((r: any) => r.status === '已驳回').length
+    }
+  } catch (e) {
+    console.warn('[费用列表] 加载失败', e)
+  }
+}
+
+function fmtAmount(n: number) { return '¥ ' + Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+
+function exportCsv() {
+  // 1) 构造 CSV 内容（用 filteredRows，已经过所有筛选）
+  const head = ['申请单号', '类型', '事由', '申请人', '部门', '提交时间', '金额', '状态', 'AI 建议', 'AI 标签', 'AI 原因']
+  const _esc = (v: any) => {
+    const s = v == null ? '' : String(v)
+    return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s
+  }
+  const _fmtAmt = (n: any) => {
+    const v = Number(n || 0)
+    return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  }
+  const lines = [head.join(',')]
+  for (const r of filteredRows.value as any[]) {
+    lines.push([
+      r.code, r.typeLabel, r.reason, r.applicant, r.dept, r.time,
+      _fmtAmt(r.amount), r.status,
+      aiSuggestionText(r.aiSuggestion),
+      (r.aiTags || []).join('/'),
+      r.aiReason || '',
+    ].map(_esc).join(','))
+  }
+  const csv = '\uFEFF' + lines.join('\n')  // BOM 让 Excel 识别 UTF-8
+  // 2) 触发下载
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  const stamp = new Date().toISOString().replace(/[-:T]/g, '').substring(0, 14)
+  a.download = `费用申请_${stamp}.csv`
+  document.body.appendChild(a)
+  a.click()
+  setTimeout(() => {
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }, 100)
+  ElMessage.success(`已导出 ${(filteredRows.value as any[]).length} 条到 ${a.download}`)
+}
+
+function onAiFilterApply(payload: { keyword: string; status: string; type: string; amountMin: number | null; amountMax: number | null; tags: string[] }) {
+  // 1. 类别 / 状态 / 关键字 → 走 query 状态 + 重新拉数据
+  query.keyword = payload.keyword || ''
+  query.status = payload.status || ''
+  // 2. 金额/类型在 client 端再过滤
+  clientFilter.value = {
+    type: payload.type || '',
+    amountMin: payload.amountMin,
+    amountMax: payload.amountMax,
+  }
+  // 3. 切到「全部」tab（保留全部数据，再前端过滤）
+  activeType.value = 'all'
+  currentPage.value = 1
+  loadData({ keyword: query.keyword, status: query.status })
+}
+function gotoDetail(r: any) { router.push(`/expense/${r.id}`) }
+function gotoCreate() { router.push('/expense/create') }
+
+
+// ============ 多选 → 生成报销单 ============
+const selectedExpenseIds = ref<number[]>([])
+const selectedRows = ref<any[]>([])
+function onSelectionChange(rows: any[]) {
+  selectedRows.value = rows
+  selectedExpenseIds.value = rows.map((r: any) => r.id).filter((v: any) => v != null)
+}
+const generateVisible = ref(false)
+const generateForm = reactive({
+  templateType: 'general',
+  title: '',
+  remark: '',
+  expenseDate: new Date().toISOString().substring(0, 10),
+})
+const generateBusy = ref(false)
+const generateAiDesc = ref('')
+const generateAiBusy = ref(false)
+const generateAiRisk: any = ref<{ level: string; reasons: string[] }>({ level: 'none', reasons: [] })
+
+function openGenerate() {
+  if (selectedExpenseIds.value.length === 0) {
+    ElMessage.warning('请先勾选要报销的销售费用记录')
+    return
+  }
+  // 默认标题
+  const ids = selectedExpenseIds.value
+  const first = selectedRows.value[0]
+  const cnt = ids.length
+  const sumAmount = selectedRows.value.reduce((s: number, r: any) => s + (Number(r.amount) || 0), 0)
+  const cat = first?.typeLabel || '费用'
+  generateForm.title = `${cat}报销 · ${cnt} 笔 / ¥${(sumAmount / 100).toFixed(2)}`
+  generateForm.remark = ''
+  generateAiDesc.value = ''
+  generateAiRisk.value = { level: 'none', reasons: [] }
+  generateVisible.value = true
+  // 异步拉 AI 描述 + 风险
+  runGenerateAi()
+}
+
+async function runGenerateAi() {
+  if (selectedExpenseIds.value.length === 0) return
+  generateAiBusy.value = true
+  try {
+    const [d, r] = await Promise.all([
+      reimburseApi.aiDescription({ expenseIds: selectedExpenseIds.value }).catch(() => ({ description: '' })),
+      reimburseApi.aiRisk({ expenseIds: selectedExpenseIds.value }).catch(() => ({ level: 'none', reasons: [] })),
+    ])
+    generateAiDesc.value = (d as any)?.description || ''
+    generateAiRisk.value = (r as any) || { level: 'none', reasons: [] }
+  } finally {
+    generateAiBusy.value = false
+  }
+}
+
+async function confirmGenerate() {
+  if (selectedExpenseIds.value.length === 0) {
+    ElMessage.warning('请先勾选销售费用记录')
+    return
+  }
+  generateBusy.value = true
+  try {
+    const payload: any = {
+      templateType: generateForm.templateType,
+      title: generateForm.title || '报销单',
+      expenseIds: selectedExpenseIds.value,
+      remark: generateForm.remark || undefined,
+      expenseDate: generateForm.expenseDate || undefined,
+    }
+    if (generateAiDesc.value) payload.aiDescription = generateAiDesc.value
+    const r: any = await reimburseApi.create(payload)
+    const newId = (r as any)?.formId || (r as any)?.id
+    ElMessage.success(`已生成报销单${(r as any)?.formNo || ''}，正在跳转...`)
+    generateVisible.value = false
+    selectedExpenseIds.value = []
+    selectedRows.value = []
+    // 跳到详情
+    if (newId) router.push(`/reimbursement/${newId}`)
+  } catch (e: any) {
+    ElMessage.error('生成失败：' + (e?.response?.data?.detail || e?.message || '未知错误'))
+  } finally {
+    generateBusy.value = false
+  }
+}
+
+// ============ 费用分析（弹窗）============
+const analyzeVisible = ref(false)
+const analyzeData = ref<any>(null)
+const analyzeLoading = ref(false)
+
+async function openAnalyze() {
+  analyzeVisible.value = true
+  analyzeLoading.value = true
+  analyzeData.value = null
+  try {
+    const r: any = await expenseApi.stats()
+    analyzeData.value = r?.data || r
+  } catch (e: any) {
+    ElMessage.error('加载费用分析失败：' + (e?.message || '未知错误'))
+    analyzeVisible.value = false
+  } finally {
+    analyzeLoading.value = false
+  }
+}
+
+function _yuan(n: any): string {
+  const v = Number(n || 0)
+  return v.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// 超管标识：来自 pinia user store（localStorage 'shuzhi_user'）
+import { useUserStore } from '@/stores/user'
+const userStore = useUserStore()
+const isAdmin = computed(() => !!userStore.isAdmin)
+
+// 单条删除
+async function deleteOne(row: any) {
+  if (!row || !row.id) return
+  try {
+    await ElMessageBox.confirm(
+      `确定删除费用「${row.code}」？删除后无法恢复。`,
+      '🗑 删除费用',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return } // 取消
+  try {
+    await expenseApi.delete(row.id)
+    ElMessage.success('已删除')
+    await loadData()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map((d: any) => `${d.loc?.slice(-1)[0] || ''}: ${d.msg || ''}`).join('；')
+      : (detail || e?.message || '未知错误')
+    ElMessage.error('删除失败：' + msg)
+  }
+}
+
+// 批量删除（仅超管）
+async function batchDeleteSelected() {
+  const ids = selectedExpenseIds.value as number[]
+  if (ids.length === 0) { ElMessage.warning('请先勾选要删除的费用'); return }
+  try {
+    await ElMessageBox.confirm(
+      `确定批量删除已勾选的 ${ids.length} 条费用？此操作不可恢复。`,
+      '🗑 批量删除',
+      { confirmButtonText: '确认删除', cancelButtonText: '取消', type: 'warning' },
+    )
+  } catch { return }
+  try {
+    const r: any = await (expenseApi as any).batchDelete(ids)
+    const data = r?.data || r || {}
+    let msg = `已删除 ${data.deleted ?? ids.length} 条`
+    if (Array.isArray(data.skipped) && data.skipped.length > 0) {
+      msg += `，跳过 ${data.skipped.length} 条（已通过/已报销不允许删除）`
+    }
+    ElMessage.success(msg)
+    await loadData()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map((d: any) => `${d.loc?.slice(-1)[0] || ''}: ${d.msg || ''}`).join('；')
+      : (detail || e?.message || '未知错误')
+    ElMessage.error('批量删除失败：' + msg)
+  }
+}
+
+// 分页
+const currentPage = ref(1)
+const pageSize = ref(20)
+const total = ref(0)
+
+function onPageChange(p: number) { currentPage.value = p; loadData() }
+function onSizeChange(s: number) { currentPage.value = 1; pageSize.value = s; loadData() }
+function onSearchChange() { currentPage.value = 1; loadData({ keyword: query.keyword, status: query.status }) }
+
+onMounted(() => {
+  loadData()
+})
+
+
+// 触点 #11：AI 建议标签文案
+function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
+  if (s === 'approve') return '建议通过'
+  if (s === 'review')  return '建议复核'
+  return '风险提示'
+}
+</script>
+
+<template>
+  <div class="page-container">
+    <div class="page-header">
+      <div>
+        <h1>销售费用</h1>
+        <p class="page-desc">差旅/办公/招待等费用申请与审批 · 当前 {{ typeChips[0].count }} 单</p>
+      </div>
+      <div style="display: flex; gap: 8px">
+        <el-button @click="openAnalyze">📊 费用分析</el-button>
+        <el-button v-permission="'expense:write'" type="primary" :icon="'Plus'" @click="gotoCreate">新建申请</el-button>
+      </div>
+    </div>
+
+    <!-- 4 KPI（design 同款） -->
+    <div class="kpi-row fade-up">
+      <div v-for="s in stats" :key="s.label" class="stat-card">
+        <div class="stat-label">
+          <span>{{ s.label }}</span>
+          <span class="stat-icon" :style="{ background: s.iconBg, color: s.iconColor }">{{ s.icon }}</span>
+        </div>
+        <div class="stat-value">{{ s.value }} <span class="unit">{{ s.unit }}</span></div>
+        <div class="stat-delta">{{ s.delta }}</div>
+      </div>
+    </div>
+
+    <!-- 4 类 filter-chip -->
+    <div class="page-card">
+      <div class="filter-bar">
+        <a v-for="t in typeChips" :key="t.key" href="javascript:void(0)"
+           :class="['filter-chip', { active: activeType === t.key }]"
+           @click="activeType = t.key">
+          {{ t.label }} ({{ t.count }})
+        </a>
+      </div>
+    </div>
+
+    <!-- 9 列费用表 -->
+    <div class="page-card">
+      <div class="card-head-row">
+        <h3>费用申请</h3>
+        <div class="toolbar">
+          <input
+            v-model="query.keyword"
+            class="search-input"
+            placeholder="搜索申请单号 / 事由 / 申请人..."
+            @keyup.enter="onSearchChange"
+          />
+          <select v-model="query.status" class="select-sm" @change="onSearchChange">
+            <option value="">所有状态</option>
+            <option value="审批中">审批中</option>
+            <option value="已通过">已通过</option>
+            <option value="已驳回">已驳回</option>
+          </select>
+          <!-- 触点 #22：AI 智能筛选 -->
+          <button class="btn-ai-outline" @click="aiFilterVisible = true">🤖 AI 智能筛选</button>
+          <button class="btn btn-primary btn-sm" :disabled="selectedExpenseIds.length === 0" @click="openGenerate">📑 生成报销单 ({{ selectedExpenseIds.length }})</button>
+          <button class="btn btn-outline btn-sm" @click="exportCsv">⇩ 导出</button>
+<button
+  v-if="isAdmin"
+  class="btn btn-outline btn-sm btn-danger"
+  :disabled="selectedExpenseIds.length === 0"
+  @click="batchDeleteSelected"
+>🗑 批量删除 ({{ selectedExpenseIds.length }})</button>
+        </div>
+      </div>
+
+      <el-table :data="filteredRows" border stripe row-key="id" style="width:100%" @selection-change="onSelectionChange" empty-text="暂无数据">
+        <el-table-column type="selection" width="42" />
+            <el-table-column prop="code" label="申请单号" min-width="120" />
+            <el-table-column label="类型" min-width="80">
+              <template #default="{ row }"><span :class="['tag', `tag-${row.typeColor}`]">{{ row.typeLabel }}</span></template>
+            </el-table-column>
+            <el-table-column label="来源" min-width="72" align="center">
+              <template #default="{ row }">
+                <el-tag v-if="row.source === 'invoice'" type="info" size="small" effect="plain">📥 发票入账</el-tag>
+                <span v-else class="text-tertiary">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column prop="reason" label="事由" min-width="180" show-overflow-tooltip />
+            <el-table-column prop="applicant" label="申请人" min-width="90" />
+            <el-table-column prop="dept" label="部门" min-width="100" />
+            <el-table-column prop="time" label="提交时间" min-width="140" />
+            <el-table-column prop="amount" label="金额" min-width="110" align="right">
+              <template #default="{ row }"><span class="cell-amount">{{ fmtAmount(row.amount) }}</span></template>
+            </el-table-column>
+            <el-table-column label="状态" min-width="80">
+              <template #default="{ row }"><span :class="['tag', `tag-${row.statusColor}`]">{{ row.status }}</span></template>
+            </el-table-column>
+            <el-table-column label="AI 建议" min-width="100">
+              <template #default="{ row }">
+                <span v-if="row.aiSuggestion" class="ai-suggest-chip" :class="`ai-suggest-${row.aiSuggestion}`">✦ {{ aiSuggestionText(row.aiSuggestion) }}</span>
+                <span v-else class="text-tertiary">—</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" min-width="160" align="center">
+              <template #default="{ row }">
+                <div class="cell-actions" style="display: flex; gap: 8px; justify-content: center;">
+                  <a v-permission="'expense:read'" @click="gotoDetail(row)">查看</a>
+                  <a v-permission="'expense:write'" v-if="row.status === '审批中'" @click="ElMessage.info('催办：' + row.code)">催办</a>
+                  <a v-permission="'expense:write'" v-if="row.status === '已驳回'" @click="ElMessage.info('重新提交：' + row.code)">重新提交</a>
+                  <a
+                    v-if="isAdmin && row.status !== '已通过' && row.status !== '已报销'"
+                    class="op-danger"
+                    @click="deleteOne(row)"
+                  >删除</a>
+                </div>
+              </template>
+            </el-table-column>
+      </el-table>
+
+      <div class="rec-foot">
+        <span class="rec-count">共 {{ total }} 单</span>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50, 100]"
+          :total="total"
+          layout="sizes, prev, pager, next, jumper"
+          background
+          size="small"
+          @current-change="onPageChange"
+          @size-change="onSizeChange"
+        />
+      </div>
+    </div>
+  </div>
+
+  
+
+  <!-- 生成报销单 弹窗 -->
+  <el-dialog v-model="generateVisible" title="📑 生成报销单" width="640px" :close-on-click-modal="false" append-to-body>
+    <el-form :model="generateForm" label-width="92px">
+      <el-form-item label="报销模板">
+        <el-select v-model="generateForm.templateType" style="width:100%">
+          <el-option label="📋 通用费用报销单" value="general" />
+          <el-option label="✈️ 差旅费报销单" value="travel" />
+          <el-option label="🍷 业务招待费报销单" value="hospitality" />
+          <el-option label="📣 市场推广费报销单" value="marketing" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="报销单标题">
+        <el-input v-model="generateForm.title" placeholder="如：差旅报销 · 2 笔" />
+      </el-form-item>
+      <el-form-item label="费用日期">
+        <el-date-picker v-model="generateForm.expenseDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
+      </el-form-item>
+      <el-form-item label="备注">
+        <el-input v-model="generateForm.remark" type="textarea" :rows="2" />
+      </el-form-item>
+
+      <el-divider content-position="left">已选费用（<b style="color:#4F6BFF">{{ selectedExpenseIds.length }}</b> 笔，共 ¥ {{ fmtAmount(selectedRows.reduce((s:number,r:any)=>s+(Number(r.amount)||0),0)) }}）</el-divider>
+      <div class="gen-list">
+        <div v-for="r in selectedRows" :key="r.id" class="gen-item">
+          <span class="gen-code">{{ r.code }}</span>
+          <span class="gen-reason">{{ r.reason }}</span>
+          <span class="gen-amount">¥ {{ fmtAmount(r.amount) }}</span>
+        </div>
+      </div>
+
+      <el-divider content-position="left">🤖 AI 辅助</el-divider>
+      <div class="gen-ai">
+        <div class="gen-ai-row">
+          <span class="ai-lbl">AI 生成说明：</span>
+          <span v-if="generateAiBusy" class="text-tertiary">生成中...</span>
+          <span v-else>{{ generateAiDesc || '—' }}</span>
+        </div>
+        <div class="gen-ai-row">
+          <span class="ai-lbl">AI 风险检查：</span>
+          <el-tag v-if="generateAiRisk.level === 'none'" type="success" size="small">无风险</el-tag>
+          <el-tag v-else-if="generateAiRisk.level === 'low'" type="info" size="small">低风险</el-tag>
+          <el-tag v-else-if="generateAiRisk.level === 'medium'" type="warning" size="small">中风险</el-tag>
+          <el-tag v-else type="danger" size="small">高风险</el-tag>
+          <span v-if="generateAiRisk.reasons && generateAiRisk.reasons.length" class="ai-reasons">（{{ generateAiRisk.reasons.join('；') }}）</span>
+        </div>
+      </div>
+    </el-form>
+    <template #footer>
+      <el-button @click="generateVisible = false">取消</el-button>
+      <el-button @click="runGenerateAi" :loading="generateAiBusy">重新生成 AI</el-button>
+      <el-button type="primary" :loading="generateBusy" @click="confirmGenerate">✓ 确认生成</el-button>
+    </template>
+  </el-dialog>
+
+  <!-- AI 智能筛选 Drawer -->
+  <AiFilterDialog v-model:visible="aiFilterVisible" scope="expense" @apply="onAiFilterApply" />
+
+  <!-- 费用分析弹窗 -->
+  <el-dialog v-model="analyzeVisible" title="📊 费用分析" width="920px" :close-on-click-modal="false" append-to-body>
+    <div v-loading="analyzeLoading">
+      <template v-if="analyzeData">
+        <!-- KPI 4 件套 -->
+        <div class="kpi-row" style="margin-bottom: 18px">
+          <div class="stat-card">
+            <div class="stat-label"><span>本期费用总额</span><span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF">¥</span></div>
+            <div class="stat-value">¥ {{ _yuan(analyzeData.kpi?.totalAmount) }} <span class="unit">元</span></div>
+            <div class="stat-delta">历史累计</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>待审批</span><span class="stat-icon" style="background:rgba(245,158,11,0.12);color:#F59E0B">⏱</span></div>
+            <div class="stat-value">{{ analyzeData.kpi?.pendingCount || 0 }} <span class="unit">单</span></div>
+            <div class="stat-delta">¥ {{ _yuan(analyzeData.kpi?.pendingAmount) }}</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>已通过</span><span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981">✓</span></div>
+            <div class="stat-value">{{ analyzeData.kpi?.approvedCount || 0 }} <span class="unit">单</span></div>
+            <div class="stat-delta">已审批通过</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>已驳回</span><span class="stat-icon" style="background:rgba(239,68,68,0.12);color:#EF4444">!</span></div>
+            <div class="stat-value">{{ analyzeData.kpi?.rejectedCount || 0 }} <span class="unit">单</span></div>
+            <div class="stat-delta">需重新提交</div>
+          </div>
+        </div>
+
+        <!-- 类目分布 -->
+        <h4 style="margin: 0 0 12px 0; font-size: 15px">类目分布</h4>
+        <div class="category-bars">
+          <div v-for="c in (analyzeData.categoryChart || [])" :key="c.name" class="cat-row">
+            <div class="cat-label">
+              <span class="cat-dot" :style="{ background: c.color }"></span>
+              <span>{{ c.name }}</span>
+            </div>
+            <div class="cat-bar-wrap">
+              <div class="cat-bar" :style="{ width: ((c.ratio || 0) * 100) + '%', background: c.color }"></div>
+            </div>
+            <div class="cat-amount">¥ {{ _yuan(c.amount) }}</div>
+            <div class="cat-ratio">{{ ((c.ratio || 0) * 100).toFixed(1) }}%</div>
+          </div>
+          <div v-if="!analyzeData.categoryChart?.length" class="empty-tip">暂无类目数据</div>
+        </div>
+
+        <!-- 趋势（占位） -->
+        <h4 style="margin: 20px 0 12px 0; font-size: 15px">近 30 天趋势（待接入）</h4>
+        <div class="trend-placeholder">
+          <div v-for="(label, i) in (analyzeData.trendChart?.labels || [])" :key="i" class="trend-col">
+            <div class="trend-bar" :style="{ height: Math.min(100, (analyzeData.trendChart.actual[i] / analyzeData.trendChart.budgetLine) * 100) + '%' }"></div>
+            <div class="trend-label">{{ label }}</div>
+          </div>
+        </div>
+      </template>
+    </div>
+  </el-dialog>
+</template>
+
+<style lang="scss" scoped>
+/* 触点 #11：AI 建议 chip */
+.ai-suggest-chip {
+  display: inline-block; padding: 2px 8px; font-size: 11px; font-weight: 600;
+  border-radius: $radius-sm; line-height: 1.4;
+  &.ai-suggest-approve { background: rgba(16,185,129,0.1); color: $color-success; }
+  &.ai-suggest-review  { background: rgba(245,158,11,0.1); color: $color-warning; }
+  &.ai-suggest-risk    { background: rgba(239,68,68,0.1);  color: $color-danger; }
+}
+
+.gen-list { max-height: 220px; overflow:auto; border:1px solid #E5E7EB; border-radius:6px; }
+.gen-item { display:flex; gap:12px; align-items:center; padding:6px 10px; border-bottom:1px solid #F3F4F6; font-size:13px; }
+.gen-item:last-child { border-bottom:0; }
+.gen-code { font-family: 'SF Mono', Menlo, monospace; color:#4F6BFF; min-width:110px; }
+.gen-reason { flex:1; color:#374151; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.gen-amount { color:#10B981; font-weight:600; }
+.gen-ai-row { display:flex; gap:8px; align-items:flex-start; margin-bottom:6px; font-size:13px; }
+.ai-lbl { color:#6B7280; min-width:84px; }
+.ai-reasons { color:#9CA3AF; }
+</style>
+
+<style lang="scss" scoped>
+@use "@/assets/styles/variables.scss" as *;
+@use "@/assets/styles/mixins.scss" as *;
+
+.page-card { @include page-card; }
+.page-header h1 { @include page-title-h1; margin: 0; }
+.page-header .page-desc { color: $color-text-secondary; font-size: 13px; margin: 4px 0 0 0; }
+
+// 4 KPI
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 18px;
+  margin-bottom: 24px;
+  @media (max-width: 1100px) { grid-template-columns: repeat(2, 1fr); }
+}
+.stat-card {
+  @include stat-card;
+  .stat-label {
+    font-size: 12.5px;
+    color: $color-text-secondary;
+    display: flex; justify-content: space-between; align-items: center;
+    position: relative; z-index: 1;
+  }
+  .stat-icon {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    display: grid; place-items: center;
+    font-size: 16px; font-weight: 600;
+  }
+  .stat-value {
+    font-size: 22px; font-weight: 700;
+    color: $color-text-primary;
+    font-family: $font-family-mono;
+    margin: 6px 0;
+    position: relative; z-index: 1;
+    white-space: nowrap;
+    line-height: 1.2;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    .unit { font-size: 13px; color: $color-text-tertiary; font-weight: 500; margin-left: 4px; font-family: -apple-system, sans-serif; }
+  }
+  .stat-delta { font-size: 12px; color: $color-text-tertiary; position: relative; z-index: 1; }
+}
+
+// filter-chip
+.filter-bar {
+  display: flex; gap: 8px; flex-wrap: wrap; padding: 4px 0;
+}
+.filter-chip {
+  padding: 6px 14px; border-radius: 9999px;
+  font-size: 12.5px; color: $color-text-secondary;
+  background: #fff; border: 1px solid $color-border;
+  cursor: pointer; transition: all 0.15s; font-weight: 500;
+  text-decoration: none;
+  &:hover { border-color: $color-primary; color: $color-primary; }
+  &.active { background: $gradient-brand; color: #fff; border-color: transparent; }
+}
+
+// 表格
+.card-head-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 0 0 16px 0;
+  h3 { font-size: 15px; font-weight: 600; margin: 0; }
+  .toolbar { display: flex; gap: 8px; align-items: center; }
+}
+.search-input {
+  height: 32px; padding: 0 12px;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  font-size: 12px;
+  background: #fff;
+  width: 240px;
+  &:focus { outline: none; border-color: $color-primary; }
+}
+.select-sm {
+  height: 32px; padding: 0 12px;
+  border: 1px solid $color-border;
+  border-radius: $radius-md;
+  font-size: 12px;
+  background: #fff;
+  color: $color-text-tertiary;
+}
+
+.ct-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  th {
+    background: #F8FAFC;
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: $color-text-secondary;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid $color-border;
+  }
+  td {
+    padding: 14px 16px;
+    border-bottom: 1px solid $color-border;
+    color: $color-text-primary;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover { background: #F8FAFC; }
+  .cell-mono { font-family: $font-family-mono; color: $color-primary; font-weight: 500; }
+  .cell-amount { font-weight: 600; text-align: right; }
+  .cell-actions { display: flex; gap: 4px; }
+  .cell-actions a {
+    color: $color-primary;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 4px 8px;
+    border-radius: $radius-sm;
+    cursor: pointer;
+    &:hover { background: $color-primary-bg; }
+  }
+}
+
+.tag {
+  display: inline-flex; align-items: center;
+  padding: 2px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9999px;
+  background: #F1F5F9;
+  color: $color-text-secondary;
+  &.tag-primary { background: #E0E6FF; color: #4F6BFF; }
+  &.tag-success { background: #D1FAE5; color: #047857; }
+  &.tag-warning { background: #FEF3C7; color: #B45309; }
+  &.tag-danger  { background: #FEE2E2; color: #B91C1C; }
+  &.tag-info    { background: #CFFAFE; color: #0E7490; }
+  &.tag-gray    { background: #F1F5F9; color: #475569; }
+}
+
+.rec-foot {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 14px 0 0 0; margin-top: 12px;
+  border-top: 1px solid $color-border;
+  flex-wrap: wrap; gap: 8px;
+  .rec-count { font-size: 12.5px; color: $color-text-tertiary; }
+  .pagination { display: flex; gap: 4px; }
+}
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 0 14px;
+  font-size: 13px; font-weight: 500;
+  border-radius: $radius-md; transition: all 0.15s;
+  border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  &.btn-primary { background: $gradient-brand; color: #fff; &:hover { box-shadow: 0 4px 12px rgba(79, 107, 255, 0.4); } }
+  &.btn-outline { background: #fff; border-color: $color-border; color: $color-text-primary; &:hover { border-color: $color-primary; color: $color-primary; } }
+  &.btn-ghost { background: transparent; color: $color-text-secondary; &:hover { background: $color-primary-bg; color: $color-primary; } }
+  &.btn-sm { height: 32px; padding: 0 10px; font-size: 12px; }
+}
+
+/* 费用分析弹窗专用样式 */
+.category-bars { display: flex; flex-direction: column; gap: 10px; }
+.cat-row { display: grid; grid-template-columns: 100px 1fr 120px 60px; align-items: center; gap: 12px; font-size: 13px; }
+.cat-label { display: flex; align-items: center; gap: 8px; }
+.cat-dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.cat-bar-wrap { background: #F1F5F9; height: 8px; border-radius: 4px; overflow: hidden; }
+.cat-bar { height: 100%; transition: width 0.3s; }
+.cat-amount { font-family: $font-family-mono; text-align: right; color: $color-text-primary; font-weight: 500; }
+.cat-ratio { color: $color-text-secondary; text-align: right; }
+.empty-tip { text-align: center; color: $color-text-secondary; padding: 20px 0; }
+.trend-placeholder { display: flex; align-items: flex-end; gap: 16px; height: 160px; padding: 12px 16px; background: #F8FAFC; border-radius: 8px; }
+.trend-col { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.trend-bar { width: 24px; background: linear-gradient(180deg, #4F6BFF 0%, #7C3AED 100%); border-radius: 4px 4px 0 0; min-height: 4px; }
+.trend-label { font-size: 12px; color: $color-text-secondary; }
+</style>

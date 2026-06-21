@@ -1,0 +1,378 @@
+version: 1
+plan:
+  name: '详情/编辑器 5 模块并行复刻 design 设计稿'
+  max_concurrency: 5
+  max_consecutive_failures: 2
+  max_cycles: 3
+  verifier_config:
+    default_verifiers: [verifier]
+    audit_sample_rate: 0.0
+
+tasks:
+  # ============================================================
+  # 1. 项目详情 + 创建（design/project.html / project-detail.html）
+  # ============================================================
+  - id: project-detail-and-create
+    title: '项目详情 + 项目创建/编辑（1:1 复刻 design）'
+    prompt: |
+      ## 目标
+      1:1 复刻 `design/` 下项目相关设计稿到 Vue3 + Element Plus，实现两个页面：
+      - **项目详情页**：`src/views/project/ProjectDetail.vue`（路由 `/project/:id`）
+      - **项目创建/编辑页**：`src/views/project/ProjectCreate.vue`（路由 `/project/create` 或 `/project/:id/edit`）
+
+      ## 必读标杆（先读懂再写）
+      - `frontend/src/views/contract/ContractDetail.vue`：我已写好的标杆，1:1 复刻 design/contract-detail.html。**直接照搬结构、class 名、SCSS**，把数据换成项目。
+      - `design/project.html`：项目列表设计稿（仅作上下文，不需实现）
+      - `design/project-detail.html`：项目详情设计稿（**主要参考**——如不存在就看 design/contract-detail.html 推断，因为项目详情结构类似）
+
+      ## 详情页必含（与 ContractDetail 对齐）
+      1. **Hero 渐变 banner**：项目编号、项目名称、客户名称、起止日期、项目预算金额、状态 tag
+      2. **Tabs**：基本信息 / 里程碑 / 团队成员 / 合同 / 费用 / 回款 / 发票
+      3. **基本信息**（detail-section + info-grid）：项目编号 / 名称 / 客户 / 负责人 / 状态 / 类型 / 预算 / 实际成本 / 毛利率 / 起始日期 / 截止日期 / 进度 / 项目描述
+      4. **里程碑**：横向 4-5 节点流程（启动 / 需求 / 开发 / 验收 / 交付），用 `flow-horizontal` 样式
+      5. **团队成员**：表格（成员 / 角色 / 工时 / 加入时间）
+      6. **合同/费用/回款/发票**：每个 tab 内嵌表格（占位数据即可）
+      7. 顶部操作：返回列表 / 编辑项目 / 归档项目
+
+      ## 创建页必含
+      1. **顶部操作条**：返回 / 保存草稿 / 提交
+      2. **步骤条**（step-bar）：基础信息（current）→ 团队配置 → 里程碑 → 提交审核（4 步）
+      3. **基础信息分组**（form-section）：项目名称、编号、客户（下拉）、负责人（下拉）、类型、预算（el-input-number）、起止日期（el-date-picker daterange）、项目描述（el-input textarea）
+      4. **团队配置分组**：动态行（成员下拉 + 角色 + 占比 + 删除按钮）
+      5. **里程碑分组**：动态行（名称 + 计划日期 + 交付物 + 状态 + 删除按钮）
+      6. **底部 form-foot**：上一步 / 暂存 / 提交审核
+      7. **tip-box 提示**：金额 ≥ 50 万自动触发"总经理审批"步骤
+
+      ## API（已就绪，直接用）
+      - `import { projectApi, type Project } from '@/api/modules'`
+      - `projectApi.detail(id)` / `projectApi.create(data)` / `projectApi.update(id, data)`
+      - 调真接口，404 时 `.catch(() => null)` 占位
+
+      ## 设计系统
+      - 所有样式走 `frontend/src/assets/styles/detail.scss`（已就绪）
+      - class 名严格对齐 design：`.detail-hero` / `.detail-tabs` / `.detail-section` / `.info-grid` / `.flow-horizontal` / `.step-bar` / `.form-section` / `.form-row-2` / `.form-foot` / `.tip-box` / `.term-block`
+      - 不写 inline style 除非必要，**优先用 detail.scss 的 token**
+
+      ## 路由
+      在 `frontend/src/router/index.ts` 已有 `ProjectDetail`（/project/:id）——补一条 `/project/create` + `/project/:id/edit` → ProjectCreate.vue
+
+      ## 自检（必跑）
+      ```bash
+      cd frontend
+      npm run build 2>&1 | tail -10
+      # 0 TS 错误
+      ```
+      不通过不准交。
+
+      ## 交付
+      - 两个 .vue 文件写完 + 路由加完
+      - 写一份 `deliverable.md` 到工作区，列出：修改了哪些文件 / build 结果 / 关键设计决策
+      - 不要碰其他模块
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      独立验证项目详情 + 创建页：
+      1. 读 `frontend/src/views/contract/ContractDetail.vue` 标杆 vs `frontend/src/views/project/ProjectDetail.vue` ——结构必须对齐
+      2. 跑 `cd frontend && npm run build` ——0 错误
+      3. 路由 `/project/:id` 和 `/project/create` 必须存在
+      4. 检查 class 名与 `detail.scss` 定义一致（用 grep）
+      5. 抽查 detail-page 是否用了 `.detail-hero` / `.detail-tabs` / `.detail-section` / `.info-grid`
+      6. 抽查 create-page 是否用了 `.step-bar` / `.form-section` / `.form-row-2` / `.form-foot` / `.tip-box`
+      7. 必须**真调** `projectApi.detail` / `create` / `update`（在 script setup 里出现 import 调用，不是 hardcode）
+      FAIL 给出**精确的缺什么**。
+
+  # ============================================================
+  # 2. 销售费用详情 + 创建（design/sales-expense.html）
+  # ============================================================
+  - id: expense-detail-and-create
+    title: '销售费用详情 + 创建（1:1 复刻 design）'
+    prompt: |
+      ## 目标
+      1:1 复刻销售费用详情 + 创建页：
+      - `src/views/expense/ExpenseDetail.vue`（路由 `/expense/:id`）
+      - `src/views/expense/ExpenseCreate.vue`（路由 `/expense/create`）
+
+      ## 必读标杆
+      - `frontend/src/views/contract/ContractDetail.vue`（详情页 1:1 标杆）
+      - `frontend/src/assets/styles/detail.scss`（已就绪的样式系统）
+      - `design/sales-expense.html`（如存在）+ 推断费用页结构
+
+      ## 详情页必含
+      1. **Hero**：费用单号 / 类别（差旅/招待/办公）/ 金额（红字突出）/ 申请人 / 申请时间 / 状态
+      2. **Tabs**：基本信息 / 费用明细 / 审批流 / 附件
+      3. **基本信息**：单号 / 类别 / 项目（关联链接）/ 申请人 / 部门 / 申请时间 / 用途说明 / 金额大写 / 支付方式
+      4. **费用明细**：表格（日期 / 子项 / 金额 / 备注）
+      5. **审批流**：横向 3-4 节点（提交 → 部门经理 → 财务 → 出纳）
+      6. **附件**：上传列表（占位）
+      7. 顶部：返回 / 审批通过 / 驳回
+
+      ## 创建页必含
+      1. **步骤条**：基础信息 → 费用明细 → 提交（3 步）
+      2. **基础信息**：类别（radio：差旅/招待/办公/其他）、关联项目、申请人自动填、申请日期、用途摘要
+      3. **费用明细**：动态行（费用日期 / 子类别 / 金额 / 备注 / 删除）
+      4. **总金额实时计算**（合计 + 大写转换可省，用 toLocaleString）
+      5. **tip-box**：单笔 ≥ 5000 触发"财务总监审批"
+      6. **form-foot**：暂存 / 提交审批
+
+      ## API
+      - `import { expenseApi, type Expense } from '@/api/modules'`
+      - `expenseApi.detail / create / update`
+
+      ## 自检
+      ```bash
+      cd frontend && npm run build 2>&1 | tail -10
+      ```
+      0 错误。
+
+      ## 交付
+      - 两个 .vue + 路由补全
+      - `deliverable.md` 列文件清单 + build 结果
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      验证：
+      1. 读 `frontend/src/views/expense/ExpenseDetail.vue` vs `ContractDetail.vue` ——结构对齐
+      2. 跑 `cd frontend && npm run build` ——0 错误
+      3. 路由 `/expense/:id` 和 `/expense/create` 存在
+      4. 详情页用 `.detail-hero` / `.detail-tabs` / `.detail-section` / `.info-grid` / `.flow-horizontal`
+      5. 创建页用 `.step-bar` / `.form-section` / `.form-row-2` / `.form-foot` / `.tip-box`
+      6. 费用明细动态行用 `v-for` 渲染 + `el-button` 删除
+      FAIL 精确指出缺什么。
+
+  # ============================================================
+  # 3. 回款详情 + 创建（design/receivable.html）
+  # ============================================================
+  - id: receivable-detail-and-create
+    title: '回款详情 + 创建（1:1 复刻 design）'
+    prompt: |
+      ## 目标
+      1:1 复刻回款详情 + 创建页：
+      - `src/views/receivable/ReceivableDetail.vue`（路由 `/receivable/:id`）
+      - `src/views/receivable/ReceivableCreate.vue`（路由 `/receivable/create`）
+
+      ## 必读标杆
+      - `frontend/src/views/contract/ContractDetail.vue`
+      - `frontend/src/assets/styles/detail.scss`
+
+      ## 详情页必含
+      1. **Hero**：回款单号 / 关联合同 / 客户 / 应收金额 / 已收 / 未收 / 状态（已收/部分/逾期/待收）
+      2. **Tabs**：基本信息 / 回款计划 / 到账记录 / 发票
+      3. **基本信息**：单号 / 合同 / 客户 / 应收 / 已收 / 未收 / 到期日 / 账期 / 收款账户 / 备注
+      4. **回款计划**：表格（期次 / 应收金额 / 计划日期 / 实际日期 / 状态）
+      5. **到账记录**：表格（到账日期 / 金额 / 银行流水号 / 录入人）
+      6. **发票**：关联发票列表
+      7. 顶部：返回 / 登记到账 / 导出明细
+
+      ## 创建页必含
+      1. **顶部**：返回 / 保存
+      2. **基础信息**：关联合同（select，远程搜索可选）/ 客户自动 / 应收总额 / 账期 / 起始日期
+      3. **回款计划**：动态行（期次 / 金额 / 计划日期） + 自动均分按钮
+      4. **收款账户**：开户行 / 账号 / 账户名
+      5. **底部**：取消 / 保存草稿 / 提交
+
+      ## API
+      - `receivableApi.detail / create / update`
+
+      ## 自检
+      ```bash
+      cd frontend && npm run build 2>&1 | tail -10
+      ```
+      0 错误。
+
+      ## 交付
+      - 两个 .vue + 路由
+      - `deliverable.md`
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      验证：
+      1. 详情页结构对齐 ContractDetail
+      2. `npm run build` 0 错误
+      3. 路由 `/receivable/:id` 和 `/receivable/create` 存在
+      4. 必含 `.detail-hero` / `.detail-tabs` / `.detail-section` / `.info-grid` / `.flow-horizontal`
+      5. 创建页含动态行 + 自动均分按钮（金额均分到每期）
+      FAIL 精确指出。
+
+  # ============================================================
+  # 4. 发票识别详情 + AI 抽取增强（design/invoice-ocr.html / ai-extract-demo.html）
+  # ============================================================
+  - id: invoice-detail-ai-extract
+    title: '发票识别详情 + AI 抽取 demo 增强（1:1 复刻 design）'
+    prompt: |
+      ## 目标
+      1:1 复刻发票识别详情 + 增强 AI 抽取 demo：
+      - `src/views/invoice/InvoiceDetail.vue`（路由 `/invoice/ocr/:id`，识别记录详情）
+      - 增强 `src/views/ai/AiExtract.vue`（参考 `design/ai-extract-demo.html` 加可视化）
+
+      ## 必读标杆
+      - `frontend/src/views/contract/ContractDetail.vue`
+      - `frontend/src/views/invoice/InvoiceOcr.vue`（现有 OCR 上传页）
+      - `frontend/src/views/ai/AiExtract.vue`（现有 AI 抽取页）
+      - `design/invoice-detail.html`（如存在）+ `design/ai-extract-demo.html`
+      - `frontend/src/assets/styles/detail.scss`
+
+      ## 发票识别详情必含
+      1. **Hero**：发票代码 / 发票号码 / 金额（红字）/ 销售方 / 购买方 / 状态（识别成功/待复核/识别失败）
+      2. **Tabs**：识别结果 / 查验记录 / 报销记录 / 附件原图
+      3. **识别结果**：双列 info-grid（所有 OCR 字段）+ 置信度进度条
+      4. **商品明细**：表格（名称 / 数量 / 单价 / 金额 / 税率 / 税额）
+      5. **查验记录**：表格（查验时间 / 结果 / 数据源 / 风险原因）
+      6. **报销记录**：关联的费用单列表
+      7. **附件原图**：图片预览（用 previewUrl）
+      8. 顶部：返回 / 重新识别 / 加入报销
+
+      ## AI 抽取 demo 增强（ai-extract-demo.html 风格）
+      1. 现有 4 步骤条保留
+      2. **左右分栏**：左侧原图（如果有），右侧抽取结果卡片
+      3. **抽取结果用 `.term-block` 展示**：每条字段一个块
+      4. **采纳/转人工**按钮颜色对齐 design（绿/灰）
+      5. 加"导出 JSON" / "复制到剪贴板"小按钮
+
+      ## API
+      - `invoiceOcrApi.upload / records / verify`
+      - `aiApi.extractInvoice / taskDetail`
+
+      ## 自检
+      ```bash
+      cd frontend && npm run build 2>&1 | tail -10
+      ```
+
+      ## 交付
+      - InvoiceDetail.vue + AiExtract.vue 增强
+      - 路由补 `/invoice/ocr/:id`
+      - `deliverable.md`
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      验证：
+      1. 详情页结构对齐 ContractDetail
+      2. `npm run build` 0 错误
+      3. 路由 `/invoice/ocr/:id` 存在
+      4. 商品明细表格用 el-table 渲染
+      5. AiExtract.vue 用了 `.term-block` 展示字段
+      6. 顶部"重新识别" / "加入报销"按钮存在
+      FAIL 精确指出。
+
+  # ============================================================
+  # 5. 发票模板详情 + 模板编辑器（design/invoice-template.html）
+  # ============================================================
+  - id: invoice-template-detail-and-edit
+    title: '发票模板详情 + 模板编辑器（1:1 复刻 design）'
+    prompt: |
+      ## 目标
+      1:1 复刻发票模板详情 + 模板字段编辑器：
+      - `src/views/invoice/InvoiceTemplateDetail.vue`（路由 `/invoice/template/:id`）
+      - `src/views/invoice/InvoiceTemplateEdit.vue`（路由 `/invoice/template/:id/edit`）
+
+      ## 必读标杆
+      - `frontend/src/views/contract/ContractDetail.vue`
+      - `frontend/src/views/invoice/InvoiceTemplateList.vue`（现有列表）
+      - `frontend/src/assets/styles/detail.scss`
+
+      ## 详情页必含
+      1. **Hero**：模板编号 / 模板名称 / 类别（差旅/办公/招待/其他）/ 字段数 / 状态
+      2. **Tabs**：基本信息 / 字段配置 / 预览 / 使用记录
+      3. **基本信息**：编号 / 名称 / 类别 / 描述 / 创建人 / 创建时间 / 更新人 / 更新时间
+      4. **字段配置**：表格（字段名 / 字段标识 / 类型（文本/数字/日期/选择）/ 必填 / 顺序）—— 可拖拽（`el-table` + `row-draggable` 自带即可）
+      5. **预览**：根据字段配置渲染一个表单（用 el-form 渲染只读预览）
+      6. **使用记录**：表格（单据号 / 金额 / 使用人 / 时间）
+      7. 顶部：返回 / 编辑 / 复制模板
+
+      ## 编辑器必含
+      1. **基础信息**：名称、类别（下拉）、描述
+      2. **字段配置**：动态行 + 上移/下移按钮 + 添加新字段
+         每行：字段名 / 标识（auto-suggest）/ 类型（select）/ 必填（switch）/ 默认值 / 删除
+      3. **预览**：右侧实时预览（用 el-form 渲染）
+      4. **底部**：取消 / 保存
+
+      ## API
+      - `invoiceTemplateApi.detail / update / create / delete`
+
+      ## 自检
+      ```bash
+      cd frontend && npm run build 2>&1 | tail -10
+      ```
+
+      ## 交付
+      - 两个 .vue + 路由 `/invoice/template/:id` 和 `/invoice/template/:id/edit`
+      - `deliverable.md`
+    assigned_to: coder
+    verified_by: verifier
+    verify_prompt: |
+      验证：
+      1. 详情页对齐 ContractDetail 结构
+      2. `npm run build` 0 错误
+      3. 路由 `/invoice/template/:id` 存在
+      4. 字段配置表格用 el-table
+      5. 编辑器含动态行 + 上移/下移
+      6. 预览区用 el-form 渲染
+      FAIL 精确指出。
+
+  # ============================================================
+  # 6. 集成验证（最终冒烟：build + 容器内起 + 路由全跳）
+  # ============================================================
+  - id: integration-build-and-smoke
+    title: '集成验证：5 模块全 build + 容器内端到端冒烟'
+    prompt: |
+      ## 目标
+      验证 5 个详情/编辑器全部接通，跑 build + 容器 reload + 路由冒烟。
+
+      ## 步骤
+      1. **重新 build**：
+         ```bash
+         cd /Users/trisome/Desktop/开发/数智化系统new/frontend
+         rm -rf dist
+         npm run build 2>&1 | tail -20
+         ```
+         0 错误 0 警告（chunk 大小警告忽略）。
+
+      2. **容器 reload frontend**（dist 通过 bind mount 已经在容器内）：
+         ```bash
+         docker exec shuzhi-frontend nginx -s reload 2>&1 | head -3
+         # 或强重启：
+         docker restart shuzhi-frontend
+         sleep 3
+         ```
+
+      3. **端到端冒烟**（每条都要有输出）：
+         ```bash
+         # 入口
+         curl -s -m 5 -o /dev/null -w "GET / = %{http_code}\n" http://localhost
+         # 登录
+         TOKEN=$(curl -s -X POST http://localhost/api/v1/auth/login \
+           -H "Content-Type: application/json" \
+           -d '{"account":"admin","password":"admin123"}' \
+           | python3 -c "import sys,json; print(json.load(sys.stdin)['token'])")
+         echo "TOKEN len: ${#TOKEN}"
+         # 项目/合同/费用/回款 详情端点
+         for ep in project contract expense receivable; do
+           curl -s -m 5 -o /dev/null -w "GET /api/v1/$ep/1 = %{http_code}\n" \
+             -H "Authorization: Bearer $TOKEN" http://localhost/api/v1/$ep/1
+         done
+         ```
+
+      4. **路由 SPA fallback 测试**：
+         ```bash
+         # 直接 GET 详情路由，应返 index.html（SPA fallback）
+         for path in /project/1 /contract/1 /expense/1 /receivable/1 /invoice/ocr/1 /invoice/template/1; do
+           curl -s -m 5 -o /dev/null -w "GET $path = %{http_code}\n" http://localhost$path
+         done
+         # 全部应返 200（SPA fallback 返 index.html）
+         ```
+
+      5. **写 `deliverable.md`**：列出所有 build/冒烟结果，标注通过/失败。
+
+      ## 失败处理
+      如有 TS 错误 / 路由 404 / 容器错：
+      - 标 FAIL，**指出哪个 task 出问题**
+      - 给出具体文件:行号
+      - **不自己改代码**——返回 CycleReport 给 owner 决定
+    assigned_to: verifier
+    verified_by: verifier
+    verify_prompt: |
+      复核集成验证的 deliverable.md：
+      1. build 输出 0 错误（警告可接受）
+      2. 5 个详情路由 fallback 全 200
+      3. 5 个 API 详情端点**至少 3 个返 200/404**（404 是后端没 seed 也算通过，证明路由可达）
+      4. 容器 shuzhi-frontend 状态 healthy
+      FAIL 精确指出哪个步骤没过。

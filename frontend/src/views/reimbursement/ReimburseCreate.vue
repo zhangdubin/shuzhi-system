@@ -1,0 +1,331 @@
+<template>
+  <div class="page-container" v-loading="loading">
+    <div class="page-header">
+      <div>
+        <div class="breadcrumb">
+          <a @click="router.push('/reimbursement/list')">报销中心</a>
+          <span class="sep">/</span>
+          <span class="current">新建报销单</span>
+        </div>
+        <h1>📝 新建报销单</h1>
+        <p class="page-desc">选择多条销售费用记录，一键生成报销单</p>
+      </div>
+      <div class="page-actions">
+        <el-button @click="router.push('/reimbursement/list')">取消</el-button>
+        <el-button type="primary" :loading="submitting" @click="onSubmit">⚡ 生成报销单</el-button>
+      </div>
+    </div>
+
+    <div class="form-grid">
+      <!-- 左：选择费用 -->
+      <div class="page-card">
+        <div class="card-head">
+          <h3>① 选择销售费用</h3>
+          <span class="meta">已选 <b>{{ selectedIds.length }}</b> 笔，合计 <b class="money">¥{{ fmtMoney(totalSelected) }}</b></span>
+        </div>
+
+        <div class="filter-row">
+          <el-input v-model="filterKw" placeholder="搜索费用单号 / 标题" clearable @input="loadExpenses" style="width:200px" />
+          <el-select v-model="filterStatus" placeholder="费用状态" clearable @change="loadExpenses" style="width:130px">
+            <el-option label="草稿" value="draft" />
+            <el-option label="审批中" value="pending" />
+            <el-option label="已通过" value="approved" />
+            <el-option label="已驳回" value="rejected" />
+            <el-option label="已报销" value="paid" />
+          </el-select>
+          <el-checkbox v-model="filterOnlyUnreimbursed" @change="loadExpenses" style="margin-left:8px">
+            只显示未报销
+          </el-checkbox>
+        </div>
+
+        <el-table ref="tableRef" :data="expenseList" max-height="520" @selection-change="onSelectionChange" row-key="expenseId">
+          <el-table-column type="selection" width="44" :selectable="(r) => r.status !== 'paid'" />
+          <el-table-column prop="code" label="单号" width="150" />
+          <el-table-column label="类型" width="80">
+            <template #default="{ row }">{{ row.category }}</template>
+          </el-table-column>
+          <el-table-column prop="title" label="标题" min-width="200" show-overflow-tooltip />
+          <el-table-column label="金额" width="100" align="right">
+            <template #default="{ row }">¥{{ fmtMoney(row.amount) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="80">
+            <template #default="{ row }">
+              <span :class="['tag', statusTag(row.status)]">{{ statusLabel(row.status) }}</span>
+            </template>
+          </el-table-column>
+        </el-table>
+        <div v-if="!loading && expenseList.length === 0" class="empty">暂无未报销费用</div>
+      </div>
+
+      <!-- 右：表单 + 模板 + AI -->
+      <div class="page-card">
+        <div class="card-head" style="display:flex;justify-content:space-between;align-items:center">
+          <h3>② 选择模板</h3>
+          <a class="link" @click="$router.push('/reimbursement/templates')">🧩 管理模板</a>
+        </div>
+
+        <div v-if="builtinTpls.length" class="tpl-section-title">系统内置</div>
+        <div class="template-grid">
+          <div v-for="t in builtinTpls" :key="t.code"
+               :class="['tpl-card', { active: form.templateType === t.code }]"
+               :style="{ '--c': t.color || '#4F6BFF' }"
+               @click="form.templateType = t.code">
+            <div class="tpl-icon">{{ t.icon }}</div>
+            <div class="tpl-name">{{ t.name }}</div>
+            <div class="tpl-desc">{{ t.description }}</div>
+          </div>
+        </div>
+
+        <template v-if="customTpls.length">
+          <div class="tpl-section-title" style="margin-top:10px">自定义模板</div>
+          <div class="template-grid">
+            <div v-for="t in customTpls" :key="t.code"
+                 :class="['tpl-card', { active: form.templateType === t.code }]"
+                 :style="{ '--c': t.color || '#4F6BFF' }"
+                 @click="form.templateType = t.code">
+              <div class="tpl-icon">{{ t.icon }}</div>
+              <div class="tpl-name">{{ t.name }}</div>
+              <div class="tpl-desc">{{ t.description || '—' }}</div>
+            </div>
+          </div>
+        </template>
+
+        <div v-if="templates.length === 0" class="empty">
+          暂无模板，请先到「管理模板」新建
+        </div>
+
+        <el-divider />
+
+        <div class="card-head"><h3>③ 报销单信息</h3></div>
+        <el-form :model="form" label-width="80" size="default">
+          <el-form-item label="标题">
+            <el-input v-model="form.title" :placeholder="titleHint" maxlength="60" show-word-limit />
+          </el-form-item>
+          <el-form-item label="费用日期">
+            <el-date-picker v-model="form.expenseDate" type="date" value-format="YYYY-MM-DD" style="width:100%" />
+          </el-form-item>
+          <el-form-item label="备注">
+            <el-input v-model="form.remark" type="textarea" :rows="2" maxlength="200" />
+          </el-form-item>
+        </el-form>
+
+        <el-divider />
+
+        <div class="card-head">
+          <h3>④ AI 辅助</h3>
+          <el-button size="small" :loading="aiBusy" @click="onAIDescription">✨ AI 生成说明</el-button>
+        </div>
+        <el-input v-model="form.aiDescription" type="textarea" :rows="3" placeholder="点击上方按钮，AI 将根据选中的费用自动生成" maxlength="300" show-word-limit />
+
+        <div class="risk-box" v-if="aiRisk">
+          <div :class="['risk-head', 'risk-' + aiRisk.level]">
+            <span class="risk-icon">{{ aiRisk.level === 'none' ? '✅' : aiRisk.level === 'low' ? '⚠️' : aiRisk.level === 'medium' ? '⚠️' : '🚨' }}</span>
+            <span>AI 风险检测：{{ aiRisk.level === 'none' ? '无风险' : aiRisk.level === 'low' ? '低风险' : aiRisk.level === 'medium' ? '中风险' : '高风险' }}</span>
+            <el-button size="small" link @click="loadRisk">↻ 重检</el-button>
+          </div>
+          <ul v-if="aiRisk.reasons.length" class="risk-list">
+            <li v-for="(r, i) in aiRisk.reasons" :key="i">{{ r }}</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<script setup lang="ts">
+import { ref, reactive, computed, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { reimburseApi, expenseApi } from '@/api/modules'
+
+const router = useRouter()
+
+const builtinTpls = computed(() => templates.value.filter((t: any) => t.isSystem))
+const customTpls  = computed(() => templates.value.filter((t: any) => !t.isSystem))
+const loading = ref(false)
+const submitting = ref(false)
+const aiBusy = ref(false)
+const expenseList = ref<any[]>([])
+const selectedIds = ref<number[]>([])
+const templates = ref<any[]>([])
+const tableRef = ref<any>()
+
+const filterKw = ref('')
+const filterStatus = ref('')
+const filterOnlyUnreimbursed = ref(true)  // 触点 #47：默认只显示未被任何报销单关联的费用
+
+const form = reactive({
+  templateType: 'general',
+  title: '',
+  expenseDate: new Date().toISOString().substring(0, 10),
+  remark: '',
+  aiDescription: '',
+})
+
+const aiRisk = ref<{ level: string; reasons: string[] } | null>(null)
+
+const selectedRows = computed(() => expenseList.value.filter(x => selectedIds.value.includes(x.expenseId)))
+const totalSelected = computed(() => selectedRows.value.reduce((s, x) => s + (x.amount || 0), 0))
+
+const titleHint = computed(() => {
+  if (selectedRows.value.length === 0) return '将自动使用申请人姓名 + 模板名'
+  const first = selectedRows.value[0]
+  return `${first.applicantName || ''}的${form.templateType === 'general' ? '通用费用' : '报销'}`
+})
+
+function fmtMoney(v: number) { return (Number(v) || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }
+function statusTag(s: string) {
+  return { draft: 'tag-info', pending: 'tag-warning', pending_review: 'tag-warning', submitted: 'tag-warning', approved: 'tag-primary', paid: 'tag-success', rejected: 'tag-danger' }[s] || 'tag-info'
+}
+
+function statusLabel(s: string) {
+  return {
+    draft: '草稿',
+    pending: '审批中',
+    pending_review: '审批中',
+    submitted: '审批中',
+    approved: '已通过',
+    paid: '已报销',
+    rejected: '已驳回',
+  }[s] || s
+}
+
+async function loadExpenses() {
+  loading.value = true
+  try {
+    const r: any = await expenseApi.list({ page: 1, pageSize: 100, keyword: filterKw.value, filters: { status: filterStatus.value, unreimbursed: filterOnlyUnreimbursed.value } })
+    expenseList.value = r?.list || r?.data?.list || []
+  } catch (e: any) {
+    ElMessage.error('加载费用失败：' + (e?.message || ''))
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadTemplates() {
+  try {
+    const r: any = await reimburseApi.templates()
+    templates.value = r || r?.data || []
+  } catch (e) { console.warn(e) }
+}
+
+function onSelectionChange(rows: any[]) {
+  selectedIds.value = rows.map(r => r.expenseId)
+  // AI 风险检测 - 自动跑
+  if (selectedIds.value.length > 0) {
+    loadRisk()
+  } else {
+    aiRisk.value = null
+  }
+}
+
+async function loadRisk() {
+  if (selectedIds.value.length === 0) return
+  try {
+    const r: any = await reimburseApi.aiRisk({ expenseIds: selectedIds.value })
+    aiRisk.value = r || r?.data
+  } catch (e) { console.warn(e) }
+}
+
+async function onAIDescription() {
+  if (selectedIds.value.length === 0) {
+    ElMessage.warning('请先选择费用')
+    return
+  }
+  aiBusy.value = true
+  try {
+    const r: any = await reimburseApi.aiDescription({ expenseIds: selectedIds.value })
+    form.aiDescription = r?.description || r?.data?.description || ''
+    ElMessage.success('已生成报销说明')
+  } catch (e: any) {
+    ElMessage.error('生成失败：' + (e?.message || ''))
+  } finally {
+    aiBusy.value = false
+  }
+}
+
+async function onSubmit() {
+  if (selectedIds.value.length === 0) {
+    ElMessage.warning('请至少选择一条费用')
+    return
+  }
+  submitting.value = true
+  try {
+    const r: any = await reimburseApi.create({
+      templateType: form.templateType,
+      title: form.title || undefined,
+      expenseIds: selectedIds.value,
+      expenseDate: form.expenseDate,
+      remark: form.remark,
+      aiDescription: form.aiDescription,
+    } as any)
+    const newId = r?.formId || r?.data?.formId || r?.id
+    ElMessage.success('报销单已生成：' + (r?.formNo || r?.data?.formNo || ''))
+    if (newId) router.push(`/reimbursement/${newId}`)
+    else router.push('/reimbursement/list')
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    const msg = typeof detail === 'string' ? detail : (detail ? JSON.stringify(detail) : (e?.message || '失败'))
+    ElMessage.error('生成失败：' + msg)
+  } finally {
+    submitting.value = false
+  }
+}
+
+onMounted(() => {
+  loadTemplates()
+  loadExpenses()
+})
+</script>
+
+<style lang="scss" scoped>
+@use "@/assets/styles/variables.scss" as *;
+@use "@/assets/styles/mixins.scss" as *;
+
+.page-header h1 { @include page-title-h1; margin: 0; }
+.page-header .page-desc { color: $color-text-secondary; font-size: 13px; margin: 4px 0 0 0; }
+.page-header .breadcrumb { font-size: 12px; color: $color-text-tertiary; margin-bottom: 4px; a { cursor: pointer; } a:hover { color: $color-primary; } .sep { margin: 0 6px; opacity: 0.5; } .current { color: $color-text-secondary; } }
+.page-header .page-actions { display: flex; gap: 8px; }
+
+.form-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 12px; align-items: start; }
+.page-card { background: #fff; border: 1px solid $color-border; border-radius: $radius-lg; padding: 16px; }
+.card-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;
+  h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  .meta { font-size: 12px; color: $color-text-tertiary; }
+  .meta .money { color: #DC2626; font-weight: 600; }
+}
+.filter-row { display: flex; gap: 8px; margin-bottom: 12px; }
+
+.template-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.tpl-card {
+  border: 1.5px solid $color-border; border-radius: $radius-md; padding: 10px 12px;
+  cursor: pointer; transition: all 0.15s;
+  &:hover { border-color: var(--c); box-shadow: 0 2px 8px rgba(0,0,0,0.05); }
+  &.active { border-color: var(--c); background: linear-gradient(135deg, rgba(79,107,255,0.05), rgba(124,58,237,0.05)); }
+  .tpl-icon { font-size: 22px; }
+  .tpl-name { font-size: 13px; font-weight: 600; margin-top: 4px; color: $color-text-primary; }
+  .tpl-desc { font-size: 11px; color: $color-text-tertiary; margin-top: 2px; line-height: 1.4; }
+}
+
+.risk-box { margin-top: 12px; padding: 10px 12px; background: $color-bg; border-radius: $radius-md; }
+.risk-head { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; }
+.risk-low    { color: #F59E0B; }
+.risk-medium { color: #EA580C; }
+.risk-high   { color: #DC2626; }
+.risk-none   { color: #10B981; }
+.risk-list { margin: 8px 0 0 0; padding-left: 18px; font-size: 11.5px; color: $color-text-secondary; line-height: 1.6; }
+.risk-list li { margin-bottom: 2px; }
+
+.money { color: #DC2626; font-weight: 600; }
+.tag { display: inline-block; padding: 1px 6px; border-radius: 3px; font-size: 10px; }
+.tag-success { background: rgba(16,185,129,0.1); color: #10B981; }
+.tag-warning { background: rgba(245,158,11,0.1); color: #F59E0B; }
+.tag-primary { background: rgba(79,107,255,0.1); color: #4F6BFF; }
+.tag-info    { background: rgba(148,163,184,0.15); color: #64748B; }
+.tag-danger  { background: rgba(239,68,68,0.1);  color: #EF4444; }
+.empty { padding: 30px; text-align: center; color: $color-text-tertiary; font-size: 12px; }
+
+.link { color: #4F6BFF; font-size: 12.5px; cursor: pointer; }
+.link:hover { text-decoration: underline; }
+.tpl-section-title { font-size: 12px; color: #6B7280; margin: 4px 0 6px 0; font-weight: 600; }
+</style>

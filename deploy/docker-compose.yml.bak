@@ -1,0 +1,291 @@
+# ============================================================
+# 一键启动整套系统
+# 用法：docker compose up -d
+# ============================================================
+version: '3.8'
+
+services:
+  # ============================================================
+  # 1. 前端（Nginx 静态服务）
+  # ============================================================
+  frontend:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+    container_name: shuzhi-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      - backend
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 2. 后端（FastAPI）
+  # ============================================================
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shuzhi-backend
+    restart: unless-stopped
+    environment:
+      # 数据库
+      DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi
+      # Redis
+      REDIS_URL: redis://redis:6379/0
+      # JWT
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY:-change-me-in-prod}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 120
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # CORS
+      CORS_ORIGINS: '["http://localhost", "http://localhost:80"]'
+      # OCR 服务地址
+      OCR_SERVICE_URL: http://ocr-service:8001
+      # 诺诺发票云
+      NUONUO_API_KEY: ${NUONUO_API_KEY:-}
+      NUONUO_API_SECRET: ${NUONUO_API_SECRET:-}
+      # Sentry
+      SENTRY_DSN: ${SENTRY_DSN:-}
+      # 环境
+      ENV: ${ENV:-development}
+      LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      ocr-service:
+        condition: service_healthy
+    networks:
+      - shuzhi-net
+    volumes:
+      - uploads:/app/uploads
+
+  # ============================================================
+  # 3. Celery Worker（异步任务：OCR、查验、邮件）
+  # ============================================================
+  celery-worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: shuzhi-celery-worker
+    restart: unless-stopped
+    command: ["celery", "-A", "app.tasks.celery_app", "worker", "--loglevel=info", "--concurrency=4"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi
+      REDIS_URL: redis://redis:6379/0
+      OCR_SERVICE_URL: http://ocr-service:8001
+      NUONUO_API_KEY: ${NUONUO_API_KEY:-}
+      NUONUO_API_SECRET: ${NUONUO_API_SECRET:-}
+    depends_on:
+      - postgres
+      - redis
+      - ocr-service
+    networks:
+      - shuzhi-net
+    volumes:
+      - uploads:/app/uploads
+
+  # ============================================================
+  # 4. PaddleOCR 服务（独立微服务）
+  # ============================================================
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    container_name: shuzhi-ocr
+    restart: unless-stopped
+    environment:
+      # 后端 URL（让 OCR 容器能访问后端的 /static/uploads/...）
+      BACKEND_URL: http://backend:8000
+      # 上传目录
+      OCR_UPLOAD_DIR: /app/uploads
+      # 日志级别
+      LOG_LEVEL: INFO
+    deploy:
+      resources:
+        limits:
+          cpus: '2'
+          memory: 2G
+        reservations:
+          cpus: '1'
+          memory: 1G
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 30s
+      timeout: 10s
+      start_period: 90s
+      retries: 3
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 5. PostgreSQL
+  # ============================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: shuzhi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shuzhi
+      POSTGRES_PASSWORD: shuzhi
+      POSTGRES_DB: shuzhi
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./initdb.d:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shuzhi -d shuzhi"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 6. Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: shuzhi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "512mb", "--maxmemory-policy", "allkeys-lru"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 7. 监控（可选）— R7.2 完整版
+  # ============================================================
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: shuzhi-prometheus
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml
+      - prometheus-data:/prometheus
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  # 告警管理器（R7.2）
+  alertmanager:
+    image: prom/alertmanager:latest
+    container_name: shuzhi-alertmanager
+    restart: unless-stopped
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./monitoring/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  # cAdvisor — 容器指标（CPU/内存/网络/磁盘）
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: shuzhi-cadvisor
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  # Node Exporter — 主机指标
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: shuzhi-node-exporter
+    restart: unless-stopped
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.sysfs=/host/sys'
+      - '--path.rootfs=/rootfs'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  # Postgres Exporter — 数据库指标
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: shuzhi-postgres-exporter
+    restart: unless-stopped
+    ports:
+      - "9187:9187"
+    environment:
+      DATA_SOURCE_NAME: "postgresql://shuzhi:shuzhi@postgres:5432/shuzhi?sslmode=disable"
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  # Redis Exporter
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: shuzhi-redis-exporter
+    restart: unless-stopped
+    ports:
+      - "9121:9121"
+    environment:
+      REDIS_ADDR: "redis://redis:6379"
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: shuzhi-grafana
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ./monitoring/grafana-provisioning:/etc/grafana/provisioning
+      - ./monitoring/grafana-dashboard.json:/var/lib/grafana/dashboards/shuzhi-overview.json
+    depends_on:
+      - prometheus
+    networks:
+      - shuzhi-net
+    profiles: ["monitoring"]
+
+# ============================================================
+# 网络 + 卷
+# ============================================================
+networks:
+  shuzhi-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  uploads:
+  prometheus-data:
+  grafana-data:

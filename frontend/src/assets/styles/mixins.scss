@@ -1,0 +1,455 @@
+// ============================================================
+// 公共 Mixin（与 design/assets/common.css 1:1 对齐）
+// 风格：科技金融（深色侧栏 + 蓝紫渐变）
+//
+// 用法：
+//   @import "@/assets/styles/mixins.scss";
+//   .my-btn { @include btn-primary; }
+//   .my-card { @include page-card; }
+// ============================================================
+
+@use "sass:color";
+
+// ------------------------------------------------------------
+// 颜色变亮 / 变暗（替代 darken / lighten，已弃用）
+// ------------------------------------------------------------
+@function ds($amount) { @return color.adjust(#4F6BFF, $lightness: $amount); }
+@function ds-s($amount) { @return color.adjust(#10B981, $lightness: $amount); }
+@function ds-d($amount) { @return color.adjust(#EF4444, $lightness: $amount); }
+@function ds-w($amount) { @return color.adjust(#F59E0B, $lightness: $amount); }
+
+// ------------------------------------------------------------
+// 页面卡片（design: .card / .page-card）
+// ------------------------------------------------------------
+@mixin page-card {
+  background: #fff;
+  border-radius: 10px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  padding: 16px;
+}
+
+@mixin page-card-elevated {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+}
+
+// ------------------------------------------------------------
+// 按钮 5 变体（design: .btn-{primary|outline|ghost|danger}）
+// ------------------------------------------------------------
+@mixin btn-base {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  padding: 0 18px;
+  font-size: 14px;
+  font-weight: 500;
+  border-radius: 10px;
+  transition: all 0.18s ease;
+  white-space: nowrap;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-family: inherit;
+  &:hover { transform: translateY(-1px); }
+  &:active { transform: translateY(0); }
+}
+
+@mixin btn-primary {
+  @include btn-base;
+  background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  color: #fff;
+  box-shadow: 0 8px 32px -4px rgba(79, 107, 255, 0.35);
+  &:hover { box-shadow: 0 12px 32px -4px rgba(79, 107, 255, 0.5); }
+}
+
+@mixin btn-outline {
+  @include btn-base;
+  background: #fff;
+  color: #0F172A;
+  border-color: #E2E8F0;
+  &:hover { border-color: #4F6BFF; color: #4F6BFF; }
+}
+
+@mixin btn-ghost {
+  @include btn-base;
+  background: transparent;
+  color: #475569;
+  &:hover { background: rgba(79, 107, 255, 0.08); color: #4F6BFF; }
+}
+
+@mixin btn-danger {
+  @include btn-base;
+  background: #fff;
+  color: #EF4444;
+  border-color: rgba(239, 68, 68, 0.3);
+  &:hover { background: rgba(239, 68, 68, 0.08); }
+}
+
+@mixin btn-sm {
+  height: 32px;
+  padding: 0 12px;
+  font-size: 12px;
+}
+
+// ------------------------------------------------------------
+// 状态 tag / pill（design: .tag / .s-pill / .v-pill）
+// ------------------------------------------------------------
+@mixin tag-base {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  border-radius: 9999px;
+  line-height: 1.5;
+}
+
+@mixin tag-success { @include tag-base; background: #D1FAE5; color: #047857; }
+@mixin tag-warning { @include tag-base; background: #FEF3C7; color: #B45309; }
+@mixin tag-danger  { @include tag-base; background: #FEE2E2; color: #B91C1C; }
+@mixin tag-info    { @include tag-base; background: #CFFAFE; color: #0E7490; }
+@mixin tag-primary { @include tag-base; background: #E0E6FF; color: #4F6BFF; }
+@mixin tag-purple  { @include tag-base; background: #FAE8FF; color: #86198F; }
+@mixin tag-gray    { @include tag-base; background: #F1F5F9; color: #475569; }
+
+// ------------------------------------------------------------
+// 数据卡片（design: .stat-card）— 带渐变光晕
+// ------------------------------------------------------------
+@mixin stat-card {
+  position: relative;
+  background: #fff;
+  border-radius: 14px;
+  padding: 22px;
+  border: 1px solid #E2E8F0;
+  overflow: hidden;
+  transition: all 0.2s;
+  &:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px -8px rgba(15, 23, 42, 0.12);
+    border-color: transparent;
+  }
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0; right: 0;
+    width: 120px; height: 120px;
+    background: linear-gradient(135deg, rgba(79,107,255,0.12) 0%, rgba(124,58,237,0.12) 100%);
+    border-radius: 50%;
+    filter: blur(20px);
+    opacity: 0.6;
+    pointer-events: none;
+  }
+}
+
+@mixin stat-card-mini {
+  @include page-card;
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+  overflow: hidden;
+}
+
+// ------------------------------------------------------------
+// 表单（design: .field / .form-row-3）
+// ------------------------------------------------------------
+@mixin field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  label {
+    font-size: 12.5px;
+    font-weight: 500;
+    color: #475569;
+  }
+  input, select, textarea {
+    padding: 10px 14px;
+    border: 1.5px solid #E2E8F0;
+    border-radius: 10px;
+    font-size: 13.5px;
+    color: #0F172A;
+    background: #fff;
+    transition: all 0.15s;
+    outline: none;
+    font-family: inherit;
+    &:focus {
+      border-color: #4F6BFF;
+      box-shadow: 0 0 0 4px rgba(79, 107, 255, 0.08);
+    }
+  }
+  textarea { resize: vertical; min-height: 80px; }
+  .req { color: #EF4444; }
+  .opt { color: #94A3B8; font-weight: 400; font-size: 11px; margin-left: 4px; }
+}
+
+@mixin form-row($cols: 3) {
+  display: grid;
+  grid-template-columns: repeat($cols, 1fr);
+  gap: 12px 16px;
+  @media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); }
+  @media (max-width: 640px) { grid-template-columns: 1fr; }
+}
+
+// ------------------------------------------------------------
+// 表格（design: table / thead / tbody）
+// ------------------------------------------------------------
+@mixin table-base {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13.5px;
+  th {
+    background: #F8FAFC;
+    text-align: left;
+    padding: 12px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid #E2E8F0;
+  }
+  td {
+    padding: 14px 16px;
+    font-size: 13.5px;
+    border-bottom: 1px solid #E2E8F0;
+    color: #0F172A;
+  }
+  tr:last-child td { border-bottom: none; }
+  tr:hover { background: #F8FAFC; }
+  tr.selected { background: rgba(79, 107, 255, 0.05); }
+  .cell-mono { font-family: "SF Mono", Monaco, Consolas, monospace; color: #4F6BFF; font-weight: 500; }
+  .cell-amount { font-weight: 600; }
+}
+
+// ------------------------------------------------------------
+// 详情页（design: .detail-section）
+// ------------------------------------------------------------
+@mixin detail-section {
+  background: #fff;
+  border: 1px solid #E2E8F0;
+  border-radius: 14px;
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+
+@mixin detail-section-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid #E2E8F0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FAFBFF;
+  h4 {
+    font-size: 13.5px;
+    font-weight: 600;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+@mixin detail-section-body { padding: 18px 20px; }
+
+@mixin info-grid($cols: 2) {
+  display: grid;
+  grid-template-columns: repeat($cols, 1fr);
+  gap: 14px 20px;
+  @media (max-width: 640px) { grid-template-columns: 1fr; }
+}
+
+@mixin info-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  .l { font-size: 11.5px; color: #94A3B8; }
+  .v { font-size: 13.5px; color: #0F172A; font-weight: 500; }
+  .v.mono { font-family: "SF Mono", Monaco, Consolas, monospace; color: #4F6BFF; }
+  .v.amount { font-weight: 700; }
+  .v.lg { font-size: 22px; font-weight: 700; }
+  &.full { grid-column: 1 / -1; }
+}
+
+// ------------------------------------------------------------
+// 顶栏 h1 + breadcrumb（design: .topbar）
+// ------------------------------------------------------------
+@mixin page-title-h1 {
+  font-size: 17px;
+  font-weight: 600;
+  color: #0F172A;
+  margin: 0;
+}
+
+@mixin breadcrumb {
+  font-size: 12px;
+  color: #94A3B8;
+  margin-bottom: 4px;
+  a { color: #94A3B8; }
+  a:hover { color: #4F6BFF; }
+  .sep { margin: 0 6px; opacity: 0.5; }
+  .current { color: #475569; }
+}
+
+// ------------------------------------------------------------
+// 筛选面板（design: .filter-panel）
+// ------------------------------------------------------------
+@mixin filter-panel {
+  background: #fff;
+  border-radius: 14px;
+  border: 1px solid #E2E8F0;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  padding: 16px 20px;
+  margin-bottom: 16px;
+  .filter-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid #E2E8F0;
+    h3 {
+      font-size: 14px;
+      font-weight: 600;
+      margin: 0;
+      color: #0F172A;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 16px;
+    margin-bottom: 16px;
+    @media (max-width: 900px) { grid-template-columns: repeat(2, 1fr); }
+    @media (max-width: 640px) { grid-template-columns: 1fr; }
+  }
+  .filter-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid #E2E8F0;
+  }
+}
+
+// ------------------------------------------------------------
+// status-tabs（design: .status-tabs / .verify-tabs）
+// ------------------------------------------------------------
+@mixin status-tabs {
+  display: flex;
+  gap: 4px;
+  background: #fff;
+  padding: 4px;
+  border-radius: 10px;
+  box-shadow: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  margin-bottom: 16px;
+  width: fit-content;
+  flex-wrap: wrap;
+  a {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #475569;
+    font-weight: 500;
+    text-decoration: none;
+    cursor: pointer;
+    user-select: none;
+    &:hover { background: #F1F5F9; color: #4F6BFF; }
+    &.active {
+      background: #4F6BFF;
+      color: #fff;
+      font-weight: 600;
+      .num { background: rgba(255, 255, 255, 0.2); color: #fff; }
+    }
+    .num {
+      margin-left: 4px;
+      padding: 1px 6px;
+      border-radius: 8px;
+      background: #F1F5F9;
+      color: #94A3B8;
+      font-size: 11px;
+      font-weight: 500;
+    }
+  }
+}
+
+// ------------------------------------------------------------
+// 渐变 / 阴影 / 圆角 shortcut
+// ------------------------------------------------------------
+@mixin gradient-text {
+  background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+@mixin truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+// fadeUp 动画
+@mixin fade-up {
+  animation: fadeUp 0.4s ease-out both;
+}
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+// ============================================================
+// 响应式断点（移动优先，向上兼容）
+// ============================================================
+$bp-mobile: 640px;
+$bp-tablet: 768px;
+$bp-desktop: 1024px;
+$bp-wide: 1280px;
+$bp-full: 1536px;
+
+// 向上兼容：>= mobile（默认已适配，桌面端更宽松）
+// 平板：768px - 1023px
+@mixin tablet {
+  @media (min-width: #{$bp-tablet}) {
+    @content;
+  }
+}
+// 桌面：>= 1024px
+@mixin desktop {
+  @media (min-width: #{$bp-desktop}) {
+    @content;
+  }
+}
+// 宽屏：>= 1280px
+@mixin wide {
+  @media (min-width: #{$bp-wide}) {
+    @content;
+  }
+}
+// 全屏：>= 1536px
+@mixin full {
+  @media (min-width: #{$bp-full}) {
+    @content;
+  }
+}
+// 移动端 only：< 640px
+@mixin mobile-only {
+  @media (max-width: #{$bp-mobile - 1}) {
+    @content;
+  }
+}
+// 平板及以下：< 1024px
+@mixin not-desktop {
+  @media (max-width: #{$bp-desktop - 1}) {
+    @content;
+  }
+}
+// 平板 only：640px - 1023px
+@mixin tablet-only {
+  @media (min-width: #{$bp-tablet}) and (max-width: #{$bp-desktop - 1}) {
+    @content;
+  }
+}

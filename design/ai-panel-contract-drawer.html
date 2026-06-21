@@ -1,0 +1,663 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>合同详情 · AI 体检抽屉 · 演示 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 老详情页 hero（简化） */
+  .contract-hero {
+    background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #312E81 100%);
+    border-radius: var(--radius-lg);
+    padding: 22px 28px;
+    color: #fff;
+    margin-bottom: 16px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .ch-id { font-size: 12px; color: rgba(255,255,255,0.6); font-family: var(--font-mono); }
+  .ch-left h2 { font-size: 20px; font-weight: 600; margin: 4px 0 6px; }
+  .ch-meta { font-size: 12.5px; color: rgba(255,255,255,0.75); }
+  .ch-amount-l { font-size: 12px; color: rgba(255,255,255,0.6); text-align: right; }
+  .ch-amount { font-size: 26px; font-weight: 700; font-family: var(--font-mono); }
+
+  /* 老详情页（模拟"基本信息"Tab 内容，故意压暗） */
+  .dimmed {
+    filter: brightness(0.7);
+    pointer-events: none;
+  }
+  .demo-info-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    margin-bottom: 16px;
+  }
+  .demo-info-card h4 {
+    font-size: 14px; font-weight: 600;
+    color: var(--color-text-primary);
+    margin-bottom: 12px;
+  }
+  .info-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 16px;
+  }
+  .info-grid .item {
+    font-size: 12px;
+  }
+  .info-grid .item .l {
+    color: var(--color-text-tertiary);
+    margin-bottom: 4px;
+  }
+  .info-grid .item .v {
+    color: var(--color-text-primary);
+    font-weight: 500;
+  }
+
+  /* ===== Drawer（核心演示区） ===== */
+  .drawer-mask {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.5);
+    backdrop-filter: blur(2px);
+    z-index: 100;
+    animation: fade-in 0.25s ease;
+  }
+  .drawer {
+    position: fixed;
+    top: 0; right: 0; bottom: 0;
+    width: 480px;
+    max-width: 95vw;
+    background: #fff;
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    box-shadow: -8px 0 24px rgba(0,0,0,0.15);
+    animation: slide-in 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+  @keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+
+  /* Drawer 头 */
+  .drawer-head {
+    padding: 16px 20px;
+    background: var(--gradient-ai);
+    color: #fff;
+    flex-shrink: 0;
+    position: relative;
+    overflow: hidden;
+  }
+  .drawer-head::before {
+    content: '';
+    position: absolute;
+    right: -40px; top: -40px;
+    width: 160px; height: 160px;
+    background: radial-gradient(circle, rgba(255,255,255,0.18), transparent 70%);
+    border-radius: 50%;
+  }
+  .drawer-head::after {
+    content: '✦';
+    position: absolute;
+    right: 16px; bottom: -16px;
+    font-size: 100px;
+    color: rgba(255,255,255,0.08);
+    font-weight: 700;
+    pointer-events: none;
+  }
+  .drawer-head .h {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 4px;
+    position: relative;
+    z-index: 1;
+  }
+  .drawer-head .title {
+    font-size: 16px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .drawer-head .close {
+    width: 28px; height: 28px;
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+    border: none;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 14px;
+    display: grid; place-items: center;
+  }
+  .drawer-head .close:hover { background: rgba(255,255,255,0.3); }
+  .drawer-head .sub {
+    font-size: 12px;
+    color: rgba(255,255,255,0.85);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Drawer 主体（可滚动） */
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+  }
+  .drawer-body::-webkit-scrollbar { width: 6px; }
+  .drawer-body::-webkit-scrollbar-thumb { background: #CBD5E1; border-radius: 3px; }
+
+  /* Drawer 底部（操作栏） */
+  .drawer-foot {
+    padding: 12px 20px;
+    border-top: 1px solid var(--color-border);
+    background: #F8FAFC;
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  .drawer-foot .meta {
+    flex: 1;
+    font-size: 11.5px;
+    color: var(--color-text-tertiary);
+    align-self: center;
+  }
+
+  /* 综合评分（居中） */
+  .drawer-score {
+    text-align: center;
+    padding: 16px 0 14px;
+    background: var(--color-ai-bg);
+    border-radius: var(--radius-md);
+    margin-bottom: 16px;
+    border: 1px solid var(--color-ai-border);
+  }
+  .drawer-score .num {
+    font-size: 48px;
+    font-weight: 700;
+    background: var(--gradient-ai);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    font-family: var(--font-mono);
+    line-height: 1;
+  }
+  .drawer-score .label {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin-top: 4px;
+  }
+  .drawer-score .risk {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    margin-top: 8px;
+    padding: 2px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-weight: 600;
+  }
+  .drawer-score .risk.medium { background: var(--color-warning-bg); color: var(--color-warning); }
+  .drawer-score .risk .dot { width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+
+  /* 智能摘要 */
+  .drawer-summary {
+    background: var(--color-ai-bg);
+    border-left: 3px solid var(--color-ai);
+    padding: 10px 12px;
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    line-height: 1.65;
+    margin-bottom: 16px;
+  }
+  .drawer-summary strong { color: var(--color-ai); }
+
+  /* 5 维评分（紧凑） */
+  .drawer-dim {
+    margin-bottom: 16px;
+  }
+  .drawer-dim .d {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 0;
+    font-size: 12px;
+  }
+  .drawer-dim .d .n { width: 70px; color: var(--color-text-secondary); }
+  .drawer-dim .d .b {
+    flex: 1;
+    height: 5px;
+    background: #F1F5F9;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .drawer-dim .d .b .f {
+    height: 100%;
+    background: var(--gradient-ai);
+  }
+  .drawer-dim .d .b .f.warn { background: var(--color-warning); }
+  .drawer-dim .d .s {
+    width: 28px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-size: 11.5px;
+  }
+
+  /* 风险预警（紧凑） */
+  .drawer-warn {
+    padding: 10px 12px;
+    background: var(--color-warning-bg);
+    border-left: 3px solid var(--color-warning);
+    border-radius: var(--radius-sm);
+    margin-bottom: 8px;
+    font-size: 12.5px;
+  }
+  .drawer-warn.high { background: var(--color-danger-bg); border-left-color: var(--color-danger); }
+  .drawer-warn .head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 3px;
+  }
+  .drawer-warn .title {
+    font-weight: 600;
+    color: var(--color-text-primary);
+    font-size: 13px;
+  }
+  .drawer-warn .desc {
+    color: var(--color-text-secondary);
+    line-height: 1.55;
+    margin-bottom: 6px;
+  }
+  .drawer-warn .actions {
+    display: flex;
+    gap: 6px;
+  }
+  .drawer-warn .actions .btn {
+    font-size: 11.5px;
+    padding: 3px 10px;
+  }
+
+  /* 相似合同（卡片式） */
+  .drawer-similar {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .sim-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #F8FAFC;
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+  }
+  .sim-row.current {
+    background: var(--color-ai-bg);
+    border: 1px solid var(--color-ai-border);
+  }
+  .sim-row .name {
+    flex: 1;
+    color: var(--color-text-primary);
+    font-weight: 500;
+  }
+  .sim-row.current .name { color: var(--color-ai); }
+  .sim-row .v {
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+  }
+  .sim-row .score {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    width: 32px;
+    text-align: right;
+  }
+  .sim-row .score.good { color: var(--color-success); }
+  .sim-row .score.warn { color: var(--color-warning); }
+  .sim-row .score.bad { color: var(--color-danger); }
+
+  /* 区块标题 */
+  .section-h {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin: 18px 0 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .section-h:not(:first-child) { margin-top: 22px; }
+  .section-h::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  /* 演示提示卡（仅 demo 页用） */
+  .demo-hint {
+    position: fixed;
+    top: 90px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #0F172A;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: var(--radius-full);
+    font-size: 12.5px;
+    box-shadow: var(--shadow-lg);
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    animation: bounce-in 0.4s 0.3s both;
+  }
+  @keyframes bounce-in {
+    from { opacity: 0; transform: translate(-50%, -10px); }
+    to { opacity: 1; transform: translate(-50%, 0); }
+  }
+  .demo-hint .icon {
+    width: 18px; height: 18px;
+    background: var(--gradient-ai);
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 11px;
+    color: #fff;
+    font-weight: 700;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>业务</span><span class="sep">/</span>
+            <span>合同管理</span><span class="sep">/</span>
+            <span>HT-2026-031</span>
+          </div>
+          <h1 class="page-title">合同详情 <span class="tag tag-warning" style="margin-left:8px;">审批中</span></h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">⇩ 下载 PDF</button>
+        <button class="btn btn-outline btn-sm">📤 分享</button>
+        <button class="btn btn-outline btn-sm" style="color:var(--color-danger);border-color:rgba(239,68,68,0.3);">✕ 驳回</button>
+        <button class="btn btn-primary btn-sm">✓ 审批通过</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 演示提示 -->
+      <div class="demo-hint">
+        <div class="icon">✦</div>
+        <span>演示场景：点击顶栏的 <strong>「AI 合同体检」</strong> 按钮，从右侧唤起 AI 抽屉</span>
+      </div>
+
+      <!-- 合同 hero（变暗，演示 Drawer 叠层效果） -->
+      <div class="contract-hero dimmed" style="margin-top:40px;">
+        <div class="ch-left">
+          <div class="ch-id">HT-2026-031</div>
+          <h2>万象科技 SaaS 服务合同 2026Q2</h2>
+          <div class="ch-meta">客户：<strong style="color:#fff;">万象科技有限公司</strong> · 销售合同</div>
+        </div>
+        <div class="ch-right">
+          <div class="ch-amount-l">合同总金额</div>
+          <div class="ch-amount">¥ 86,500.00</div>
+        </div>
+      </div>
+
+      <!-- 老详情页（基本信息 Tab 状态，故意变暗） -->
+      <div class="dimmed">
+        <div class="detail-tabs">
+          <a href="#" class="active">基本信息</a>
+          <a href="#">合同条款</a>
+          <a href="#">审批流</a>
+          <a href="#">附件</a>
+          <a href="#">履约记录</a>
+          <a href="#">发票/回款</a>
+        </div>
+
+        <div class="demo-info-card">
+          <h4>📋 合同基本信息</h4>
+          <div class="info-grid">
+            <div class="item"><div class="l">合同编号</div><div class="v">HT-2026-031</div></div>
+            <div class="item"><div class="l">合同类型</div><div class="v">销售合同</div></div>
+            <div class="item"><div class="l">业务分类</div><div class="v">SaaS 服务</div></div>
+            <div class="item"><div class="l">客户名称</div><div class="v">万象科技有限公司</div></div>
+            <div class="item"><div class="l">签约日期</div><div class="v">2026-06-11</div></div>
+            <div class="item"><div class="l">有效期</div><div class="v">2026-06-11 ~ 2027-06-10</div></div>
+            <div class="item"><div class="l">合同金额</div><div class="v" style="font-family:var(--font-mono);font-weight:600;">¥ 86,500.00</div></div>
+            <div class="item"><div class="l">币种</div><div class="v">人民币</div></div>
+            <div class="item"><div class="l">我方签约人</div><div class="v">张明</div></div>
+            <div class="item"><div class="l">客户签约人</div><div class="v">王磊</div></div>
+            <div class="item"><div class="l">所属项目</div><div class="v">万象科技二期</div></div>
+            <div class="item"><div class="l">关联销售</div><div class="v">王芳</div></div>
+          </div>
+        </div>
+
+        <div class="demo-info-card">
+          <h4>📌 备注信息</h4>
+          <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.6;">
+            客户为续约客户，去年同期签订 HT-2025-118（金额 9.2 万，付款周期 45 天，状态：已履约完成）。
+            本次续约由销售王芳跟进，付款条件有所调整。
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- ===== Drawer 遮罩 ===== -->
+<div class="drawer-mask"></div>
+
+<!-- ===== Drawer 主区（核心演示） ===== -->
+<div class="drawer">
+  <div class="drawer-head">
+    <div class="h">
+      <div class="title">
+        <span style="font-size:18px;">✦</span>
+        <span>AI 合同体检</span>
+      </div>
+      <button class="close">✕</button>
+    </div>
+    <div class="sub">HT-2026-031 · 万象科技 SaaS 服务合同 · 耗时 0.6s</div>
+  </div>
+
+  <div class="drawer-body">
+
+    <!-- 综合评分 -->
+    <div class="drawer-score">
+      <div class="num">72</div>
+      <div class="label">综合健康分</div>
+      <div class="risk medium"><span class="dot"></span>中风险 · 建议补充 2 项条款</div>
+    </div>
+
+    <!-- 智能摘要 -->
+    <div class="drawer-summary">
+      AI 已识别 <strong>3 个风险点</strong>（2 高 1 中），<strong>2 个最关键</strong>：
+      付款周期短于行业 33% + 缺少违约金条款。
+      建议采纳下方 3 条 AI 建议。
+    </div>
+
+    <!-- 5 维评分 -->
+    <div class="section-h">5 维评分</div>
+    <div class="drawer-dim">
+      <div class="d">
+        <span class="n">📋 条款完整</span>
+        <div class="b"><div class="f" style="width:78%;"></div></div>
+        <span class="s">78</span>
+      </div>
+      <div class="d">
+        <span class="n">💰 付款条件</span>
+        <div class="b"><div class="f warn" style="width:55%;"></div></div>
+        <span class="s">55</span>
+      </div>
+      <div class="d">
+        <span class="n">⚖️ 法务合规</span>
+        <div class="b"><div class="f warn" style="width:62%;"></div></div>
+        <span class="s">62</span>
+      </div>
+      <div class="d">
+        <span class="n">💵 金额风险</span>
+        <div class="b"><div class="f" style="width:88%;"></div></div>
+        <span class="s">88</span>
+      </div>
+      <div class="d">
+        <span class="n">🤝 客户资质</span>
+        <div class="b"><div class="f" style="width:92%;"></div></div>
+        <span class="s">92</span>
+      </div>
+    </div>
+
+    <!-- 风险预警 -->
+    <div class="section-h">⚠️ 风险预警 · 3 项</div>
+    <div class="drawer-warn high">
+      <div class="head">
+        <div class="title">付款周期短于行业</div>
+        <span class="ai-risk-chip high"><span class="dot"></span>高</span>
+      </div>
+      <div class="desc">约定 30 天，行业平均 45 天。回款及时率可能下降 22%。</div>
+      <div class="actions">
+        <button class="btn primary">📝 协商邮件</button>
+        <button class="btn">查看条款</button>
+      </div>
+    </div>
+    <div class="drawer-warn high">
+      <div class="head">
+        <div class="title">未约定违约金</div>
+        <span class="ai-risk-chip high"><span class="dot"></span>高</span>
+      </div>
+      <div class="desc">逾期无任何约束。维权成本可能超过合同金额。</div>
+      <div class="actions">
+        <button class="btn primary">📝 补充条款</button>
+      </div>
+    </div>
+    <div class="drawer-warn">
+      <div class="head">
+        <div class="title">数据归属未约定</div>
+        <span class="ai-risk-chip medium"><span class="dot"></span>中</span>
+      </div>
+      <div class="desc">服务终止后可能产生数据迁移纠纷。</div>
+      <div class="actions">
+        <button class="btn primary">📝 应用模板</button>
+      </div>
+    </div>
+
+    <!-- AI 建议 -->
+    <div class="section-h">💡 AI 建议 · 3 条</div>
+    <div class="ai-suggestion warning" style="margin-bottom:8px;">
+      <div class="ai-s-icon">1</div>
+      <div class="ai-s-body">
+        <div class="ai-s-title" style="font-size:13px;">付款周期延至 45 天</div>
+        <div class="ai-s-desc" style="font-size:12px;">基于 12 个相似合同，回款及时率提升 22%。</div>
+        <div class="ai-s-actions">
+          <button class="btn primary" style="font-size:11.5px;padding:3px 10px;">📝 起草邮件</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-suggestion" style="margin-bottom:8px;">
+      <div class="ai-s-icon">2</div>
+      <div class="ai-s-body">
+        <div class="ai-s-title" style="font-size:13px;">补充违约金条款</div>
+        <div class="ai-s-desc" style="font-size:12px;">法务库 v3.2 模板，AI 已生成 v2 草稿。</div>
+        <div class="ai-s-actions">
+          <button class="btn primary" style="font-size:11.5px;padding:3px 10px;">✓ 查看草稿</button>
+        </div>
+      </div>
+    </div>
+    <div class="ai-suggestion success" style="margin-bottom:8px;">
+      <div class="ai-s-icon">3</div>
+      <div class="ai-s-body">
+        <div class="ai-s-title" style="font-size:13px;">数据归属 + 3 年保密</div>
+        <div class="ai-s-desc" style="font-size:12px;">参考法务库 v3.2 通用模板。</div>
+        <div class="ai-s-actions">
+          <button class="btn primary" style="font-size:11.5px;padding:3px 10px;">应用</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 相似合同 -->
+    <div class="section-h">📊 相似合同</div>
+    <div class="drawer-similar">
+      <div class="sim-row current">
+        <div class="name">📌 HT-2026-031（当前）</div>
+        <div class="v">30天</div>
+        <div class="v">—</div>
+        <div class="score warn">72</div>
+      </div>
+      <div class="sim-row">
+        <div class="name">HT-2025-118（万象续约）</div>
+        <div class="v">45天</div>
+        <div class="v">0.05%/天</div>
+        <div class="score good">88</div>
+      </div>
+      <div class="sim-row">
+        <div class="name">HT-2025-203（智云）</div>
+        <div class="v">60天</div>
+        <div class="v">0.1%/天</div>
+        <div class="score good">91</div>
+      </div>
+      <div class="sim-row">
+        <div class="name">HT-2026-089（远见）</div>
+        <div class="v">30天</div>
+        <div class="v">—</div>
+        <div class="score bad">68</div>
+      </div>
+    </div>
+    <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;line-height:1.5;">
+      💡 <strong>洞察：</strong>与去年同客户相比，付款周期缩短 15 天，违约金被删，AI 推测为销售冲业绩让步。
+    </div>
+
+    <!-- 反馈 -->
+    <div style="margin-top:20px;text-align:center;font-size:12px;color:var(--color-text-secondary);">
+      这次 AI 体检对你有帮助吗？
+      <div class="ai-feedback" style="display:inline-flex;margin-left:6px;">
+        <button class="up" title="有用">👍</button>
+        <button title="没用">👎</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="drawer-foot">
+    <div class="meta">
+      ✦ 模型 risk-v2.3 · 成本 0.01 元
+    </div>
+    <button class="btn">📥 完整报告</button>
+    <button class="btn primary">✓ 采纳全部建议</button>
+  </div>
+</div>
+
+</body>
+</html>

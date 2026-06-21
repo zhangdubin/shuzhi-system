@@ -1,0 +1,405 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>页面预览 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  body { background: var(--color-bg); min-height: 100vh; padding: 40px 24px; }
+  .container { max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 28px; margin-bottom: 8px; letter-spacing: -0.5px; }
+  .sub { color: var(--color-text-secondary); margin-bottom: 32px; font-size: 14px; }
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 18px;
+  }
+  .grid.three { grid-template-columns: repeat(3, 1fr); }
+  .page-card {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    padding: 18px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    gap: 14px;
+    align-items: center;
+    text-decoration: none;
+    color: inherit;
+  }
+  .page-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    border-color: transparent;
+  }
+  .page-card .thumb {
+    width: 100px; height: 68px;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+    overflow: hidden;
+    background: var(--gradient-brand);
+    position: relative;
+  }
+  .page-card .thumb.login { background: var(--gradient-hero); }
+  .page-card .thumb.ocr { background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%); }
+  .page-card .thumb.dashboard { background: linear-gradient(135deg, #0F172A 0%, #312E81 100%); }
+  .page-card .thumb.detail { background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%); }
+  .page-card .thumb.modal { background: linear-gradient(135deg, #10B981 0%, #059669 100%); }
+  .page-card .thumb.editor { background: linear-gradient(135deg, #06B6D4 0%, #0891B2 100%); }
+  .page-card .thumb.doc { background: linear-gradient(135deg, #475569 0%, #1E293B 100%); }
+  .page-card .thumb::before {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    background: rgba(255,255,255,0.95);
+    border-radius: 4px;
+  }
+  .page-card .thumb::after {
+    content: '';
+    position: absolute;
+    left: 20px; top: 24px;
+    width: 30%; height: 6px;
+    background: rgba(79,107,255,0.4);
+    border-radius: 2px;
+    box-shadow:
+      0 12px 0 rgba(79,107,255,0.3),
+      0 24px 0 rgba(79,107,255,0.2),
+      50px 0 0 rgba(124,58,237,0.3),
+      50px 12px 0 rgba(124,58,237,0.2),
+      50px 24px 0 rgba(124,58,237,0.1);
+  }
+  .page-card .info { flex: 1; min-width: 0; }
+  .page-card .info h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .page-card .info p {
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .page-card .info .meta {
+    margin-top: 6px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+  .stage-tag {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .stage-done { background: #D1FAE5; color: #047857; }
+  .stage-todo { background: #FEF3C7; color: #B45309; }
+
+  .section-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin: 32px 0 14px;
+  }
+  .badge-stage {
+    display: inline-block;
+    background: linear-gradient(135deg,#4F6BFF,#7C3AED);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 1px 6px;
+    border-radius: 4px;
+    margin-left: 4px;
+  }
+  .doc-link {
+    background: #0F172A;
+    color: #fff;
+    border-radius: var(--radius-lg);
+    padding: 18px 22px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    text-decoration: none;
+    margin-top: 8px;
+  }
+  .doc-link:hover { background: #1E293B; }
+  .doc-link .ico {
+    width: 44px; height: 44px;
+    background: var(--gradient-brand);
+    border-radius: 10px;
+    display: grid; place-items: center;
+    font-size: 20px;
+    flex-shrink: 0;
+  }
+  .doc-link .info h3 { font-size: 16px; margin-bottom: 4px; }
+  .doc-link .info p { font-size: 12.5px; color: rgba(255,255,255,0.7); margin: 0; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>数智化管理系统 · 设计稿预览</h1>
+  <p class="sub">完整覆盖 6 大业务模块 + 登录 + 详情页/编辑页/弹窗交互 + 前后端联调 API 文档。共 <strong>14 个页面 + 1 份 API 文档</strong>。</p>
+
+  <a href="API.md" class="doc-link">
+    <div class="ico">📑</div>
+    <div class="info">
+      <h3>前后端联调 API 文档（59 个接口 + SSE）</h3>
+      <p>认证 / Dashboard / 发票 / 模板 / 费用 / 项目 / 合同 / 回款 / 公共 + 错误码 + 字段映射 + <strong style="color:#A5B4FC;">SSE 实时通信约定</strong></p>
+    </div>
+    <div style="margin-left:auto;color:rgba(255,255,255,0.5);font-size:24px;">→</div>
+  </a>
+  <a href="OCR-选型.md" class="doc-link" style="background:linear-gradient(135deg,#1E1B4B,#312E81);margin-top:8px;">
+    <div class="ico" style="background:linear-gradient(135deg,#10B981,#059669);">🤖</div>
+    <div class="info">
+      <h3>OCR 服务选型（免费方案，月成本 &lt; ¥300）</h3>
+      <p>PaddleOCR 自建（95% 场景，免费）+ 诺诺发票云兜底（5% 场景，合规查验）</p>
+    </div>
+    <div style="margin-left:auto;color:rgba(255,255,255,0.5);font-size:24px;">→</div>
+  </a>
+  <a href="BACKEND.md" class="doc-link" style="background:linear-gradient(135deg,#0F172A,#1E293B);margin-top:8px;">
+    <div class="ico" style="background:linear-gradient(135deg,#7C3AED,#EC4899);">⚙️</div>
+    <div class="info">
+      <h3>后端架构基线 · <strong style="color:#A5B4FC;">后端进场必读</strong></h3>
+      <p>FastAPI + PostgreSQL 技术栈 · 25 张表 DDL · ER 图 · 5 个状态流转 · RBAC 权限矩阵（9 角色）· 4 周进场清单</p>
+    </div>
+    <div style="margin-left:auto;color:rgba(255,255,255,0.5);font-size:24px;">→</div>
+  </a>
+
+  <div class="section-title">第一阶段（已交付）</div>
+  <div class="grid">
+    <a href="login.html" class="page-card">
+      <div class="thumb login"></div>
+      <div class="info">
+        <h3>登录页 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>左渐变品牌区 + 右表单；账号密码、微信/钉钉/飞书扫码、记住我、忘记密码。</p>
+        <div class="meta"><span class="tag">登录</span><span class="tag">3 种 SSO</span></div>
+      </div>
+    </a>
+    <a href="dashboard.html" class="page-card">
+      <div class="thumb dashboard"></div>
+      <div class="info">
+        <h3>Dashboard 总览 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>欢迎条 + 6 模块入口 + 4 指标 + 收支趋势 + 待办 + 团队 + 活动动态。</p>
+        <div class="meta"><span class="tag">总览</span><span class="tag">数据驾驶舱</span></div>
+      </div>
+    </a>
+    <a href="invoice-ocr.html" class="page-card">
+      <div class="thumb ocr"></div>
+      <div class="info">
+        <h3>发票识别 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>OCR 上传、AI 字段识别、票面预览、AI 置信度、识别记录。</p>
+        <div class="meta"><span class="tag">OCR</span><span class="tag">AI</span></div>
+      </div>
+    </a>
+    <a href="invoice-ocr-batch.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#4F6BFF,#7C3AED);"></div>
+      <div class="info">
+        <h3>· 批量上传 <span class="stage-tag stage-done">子模块</span></h3>
+        <p>文件夹拖拽 + 实时识别队列 + 批量入账/导出，月末报销神器。</p>
+        <div class="meta"><span class="tag">批量</span><span class="tag">队列</span></div>
+      </div>
+    </a>
+    <a href="invoice-ocr-records.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#06B6D4,#0891B2);"></div>
+      <div class="info">
+        <h3>· 识别记录 <span class="stage-tag stage-done">子模块</span></h3>
+        <p>7 状态分组 + 高级筛选（金额/税率/合同）+ 批量操作 + 关联图标。</p>
+        <div class="meta"><span class="tag">审计</span><span class="tag">导出</span></div>
+      </div>
+    </a>
+    <a href="invoice-ocr-verify.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#10B981,#059669);"></div>
+      <div class="info">
+        <h3>· 查验真伪 <span class="stage-tag stage-done">子模块</span></h3>
+        <p>国税接口 + 单张/批量 + 风险告警（重复报销/假票/超期）+ 查验凭证。</p>
+        <div class="meta"><span class="tag">国税</span><span class="tag">合规</span></div>
+      </div>
+    </a>
+    <a href="invoice-template.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#06B6D4,#0891B2);"></div>
+      <div class="info">
+        <h3>发票模板 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>模板分类、卡片网格、字段/使用统计、创建人/快捷操作。</p>
+        <div class="meta"><span class="tag">模板</span><span class="tag">12 个示例</span></div>
+      </div>
+    </a>
+    <a href="sales-expense.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#10B981,#059669);"></div>
+      <div class="info">
+        <h3>销售费用 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>预算趋势折线 + 分类占比环形 + 9 行明细 + 3 种状态。</p>
+        <div class="meta"><span class="tag">报销</span><span class="tag">统计图表</span></div>
+      </div>
+    </a>
+    <a href="project.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#F59E0B,#D97706);"></div>
+      <div class="info">
+        <h3>项目管理 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>6 张项目卡 + 进度条 + 头像组 + 视图切换。</p>
+        <div class="meta"><span class="tag">项目</span><span class="tag">6 个示例</span></div>
+      </div>
+    </a>
+    <a href="contract.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#EC4899,#BE185D);"></div>
+      <div class="info">
+        <h3>合同管理 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>11 行合同表 + 6 步审批流可视化 + 电子签状态。</p>
+        <div class="meta"><span class="tag">合同</span><span class="tag">审批流</span></div>
+      </div>
+    </a>
+    <a href="receivable.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);"></div>
+      <div class="info">
+        <h3>回款管理 <span class="stage-tag stage-done">已交付</span></h3>
+        <p>逾期告警 + 回款表 + 进度条 + 月度时间线 + 客户排名 TOP 5。</p>
+        <div class="meta"><span class="tag">回款</span><span class="tag">预警</span></div>
+      </div>
+    </a>
+  </div>
+
+  <div class="section-title">第三阶段：详情页 / 编辑页 / 弹窗交互（已交付）<span class="badge-stage">NEW</span></div>
+  <div class="grid">
+    <a href="invoice-detail.html" class="page-card">
+      <div class="thumb detail"></div>
+      <div class="info">
+        <h3>发票详情 · 报销入账 <span class="stage-tag stage-done">详情页</span></h3>
+        <p>票面预览大图 + AI 字段核验对比 + 商品明细 + 报销关联 + 审批时间线。</p>
+        <div class="meta"><span class="tag">详情</span><span class="tag">AI 核验</span></div>
+      </div>
+    </a>
+    <a href="invoice-template-edit.html" class="page-card">
+      <div class="thumb editor"></div>
+      <div class="info">
+        <h3>发票模板编辑器 <span class="stage-tag stage-done">编辑器</span></h3>
+        <p>三栏：字段库 + 画布 + 属性面板。拖拽配置、AI/必填/联动。</p>
+        <div class="meta"><span class="tag">编辑器</span><span class="tag">拖拽</span></div>
+      </div>
+    </a>
+    <a href="sales-expense-create.html" class="page-card">
+      <div class="thumb modal"></div>
+      <div class="info">
+        <h3>费用录入 · Drawer <span class="stage-tag stage-done">抽屉弹层</span></h3>
+        <p>类型选择器 + 金额明细 + 附件上传 + 4 步审批流可视化。</p>
+        <div class="meta"><span class="tag">Drawer</span><span class="tag">审批</span></div>
+      </div>
+    </a>
+    <a href="project-detail.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#0F172A,#312E81);"></div>
+      <div class="info">
+        <h3>项目详情 <span class="stage-tag stage-done">详情页</span></h3>
+        <p>深色 hero + 4 指标 + 6 步里程碑 + 团队网格 + 风险预警 + 关联合同发票。</p>
+        <div class="meta"><span class="tag">详情</span><span class="tag">里程碑</span></div>
+      </div>
+    </a>
+    <a href="contract-detail.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#7C3AED,#EC4899);"></div>
+      <div class="info">
+        <h3>合同详情 <span class="stage-tag stage-done">详情页</span></h3>
+        <p>紫色 hero + 横向 6 步审批流 + 关键条款 + 签章区 + 履约情况。</p>
+        <div class="meta"><span class="tag">详情</span><span class="tag">电子签</span></div>
+      </div>
+    </a>
+    <a href="receivable-detail.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#DC2626,#EF4444);"></div>
+      <div class="info">
+        <h3>回款详情 · 催收 <span class="stage-tag stage-done">详情页</span></h3>
+        <p>红色 hero + 逾期大告警 + 回款进度 + 催收记录 + 客户回款历史 + AI 风险评估。</p>
+        <div class="meta"><span class="tag">详情</span><span class="tag">催收</span></div>
+      </div>
+    </a>
+  </div>
+
+  <div class="section-title">第五阶段：创建表单页（已交付）<span class="badge-stage">NEW</span></div>
+  <div class="grid">
+    <a href="contract-create.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#7C3AED,#EC4899);"></div>
+      <div class="info">
+        <h3>合同起草 <span class="stage-tag stage-done">表单</span></h3>
+        <p>4 步流程：选模板 → 填信息 → 上传附件 → 提交审批。5 条款可拖拽编辑，审批流预览。</p>
+        <div class="meta"><span class="tag">表单</span><span class="tag">审批流</span></div>
+      </div>
+    </a>
+    <a href="project-create.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#F59E0B,#D97706);"></div>
+      <div class="info">
+        <h3>项目立项 <span class="stage-tag stage-done">表单</span></h3>
+        <p>基本信息 + 团队组建（4 角色）+ 5 里程碑 + 5 项预算拆分，预算合计实时校验。</p>
+        <div class="meta"><span class="tag">表单</span><span class="tag">团队</span></div>
+      </div>
+    </a>
+    <a href="receivable-create.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);"></div>
+      <div class="info">
+        <h3>回款计划 <span class="stage-tag stage-done">表单</span></h3>
+        <p>选合同 → 自动带出剩余应收 → 设分期（3 期 / 月度 / 季度）+ 时间线预览。</p>
+        <div class="meta"><span class="tag">表单</span><span class="tag">分期</span></div>
+      </div>
+    </a>
+    <a href="client-create.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#06B6D4,#0891B2);"></div>
+      <div class="info">
+        <h3>客户档案 <span class="stage-tag stage-done">表单</span></h3>
+        <p>基本信息 + 联系人 + 财务 + 4 级客户分级 + 实时查重（避免重复录入）。</p>
+        <div class="meta"><span class="tag">表单</span><span class="tag">查重</span></div>
+      </div>
+    </a>
+    <a href="template-create.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#06B6D4,#0891B2);"></div>
+      <div class="info">
+        <h3>发票模板新建 <span class="stage-tag stage-done">表单</span></h3>
+        <p>3 种创建方式（空白/复制/AI 提取）+ 三栏字段配置 + 高级设置。</p>
+        <div class="meta"><span class="tag">表单</span><span class="tag">编辑器</span></div>
+      </div>
+    </a>
+  </div>
+
+  <div class="section-title">开发资源</div>
+  <div class="grid">
+    <a href="API.md" class="page-card">
+      <div class="thumb doc"></div>
+      <div class="info">
+        <h3>前后端联调 API 文档 <span class="stage-tag stage-done">46 个接口</span></h3>
+        <p>认证 / Dashboard / 发票 / 模板 / 费用 / 项目 / 合同 / 回款 / 公共 + 错误码 + 字段映射。</p>
+        <div class="meta"><span class="tag">API</span><span class="tag">v1.0</span></div>
+      </div>
+    </a>
+    <a href="README.md" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#475569,#1E293B);"></div>
+      <div class="info">
+        <h3>README + 部署 <span class="stage-tag stage-done">文档</span></h3>
+        <p>本地预览、Docker 部署示例、文件清单。</p>
+        <div class="meta"><span class="tag">文档</span><span class="tag">部署</span></div>
+      </div>
+    </a>
+  </div>
+
+  <div class="section-title">辅助资源（错误页 + 状态组件）</div>
+  <div class="grid">
+    <a href="error-404.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#4F6BFF,#7C3AED);"></div>
+      <div class="info">
+        <h3>错误页 <span class="stage-tag stage-done">4 个</span></h3>
+        <p>404 / 403 / 500 / network，统一视觉，统一返回入口。</p>
+        <div class="meta"><span class="tag">404</span><span class="tag">错误处理</span></div>
+      </div>
+    </a>
+    <a href="components-states.html" class="page-card">
+      <div class="thumb" style="background:linear-gradient(135deg,#06B6D4,#0891B2);"></div>
+      <div class="info">
+        <h3>空状态 / 加载状态 <span class="stage-tag stage-done">组件</span></h3>
+        <p>4 种空状态、4 种骨架屏、全屏 loading，CSS 类即用即调。</p>
+        <div class="meta"><span class="tag">空状态</span><span class="tag">骨架屏</span></div>
+      </div>
+    </a>
+  </div>
+</div>
+</body>
+</html>

@@ -1,0 +1,14 @@
+{
+  "name": "shuzhi-tools",
+  "private": true,
+  "version": "1.0.0",
+  "description": "数智化管理系统 — 顶层工具（gen-sdk, e2e）",
+  "scripts": {
+    "gen-sdk": "node scripts/gen-sdk.js",
+    "e2e": "node e2e/run-all.js"
+  },
+  "devDependencies": {
+    "openapi-typescript": "^7.13.0",
+    "playwright": "1.49"
+  }
+}

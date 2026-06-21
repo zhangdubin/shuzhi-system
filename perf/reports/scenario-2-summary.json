@@ -1,0 +1,215 @@
+{
+    "metrics": {
+        "http_req_sending": {
+            "max": 1.062916,
+            "p(90)": 0.038959,
+            "p(95)": 0.048959,
+            "avg": 0.02866224219292158,
+            "min": 0.005084,
+            "med": 0.027
+        },
+        "iterations": {
+            "count": 1201,
+            "rate": 19.922790064823094
+        },
+        "http_req_connecting": {
+            "max": 0.344667,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.004337843858431644,
+            "min": 0,
+            "med": 0
+        },
+        "iteration_duration": {
+            "avg": 13.590556631140723,
+            "min": 8.239375,
+            "med": 12.078666,
+            "max": 74.803292,
+            "p(90)": 18.91325,
+            "p(95)": 20.417292
+        },
+        "vus": {
+            "value": 0,
+            "min": 0,
+            "max": 1
+        },
+        "http_req_duration": {
+            "avg": 11.268291256766124,
+            "min": 5.24075,
+            "med": 10.841625,
+            "max": 267.77675,
+            "p(90)": 13.19475,
+            "p(95)": 14.139958
+        },
+        "http_req_tls_handshaking": {
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0
+        },
+        "data_received": {
+            "count": 8023898,
+            "rate": 133104.44242760525
+        },
+        "http_req_duration{scenario:business_core}": {
+            "p(95)": 14.126183949999998,
+            "avg": 11.090160382638885,
+            "min": 5.24075,
+            "med": 10.841437500000001,
+            "max": 74.529042,
+            "p(90)": 13.1937753,
+            "thresholds": {
+                "p(95)<800": false,
+                "p(99)<1500": false
+            }
+        },
+        "http_req_waiting": {
+            "med": 10.737583,
+            "max": 267.555042,
+            "p(90)": 13.065333,
+            "p(95)": 13.9905,
+            "avg": 11.164303519083962,
+            "min": 5.186084
+        },
+        "list_duration": {
+            "avg": 11.841694462577962,
+            "min": 8.039,
+            "med": 11.3708125,
+            "max": 74.529042,
+            "p(90)": 13.5918381,
+            "p(95)": 14.389460149999998
+        },
+        "errors": {
+            "passes": 0,
+            "fails": 0,
+            "thresholds": {
+                "rate<0.05": false
+            },
+            "value": 0
+        },
+        "http_reqs": {
+            "count": 1441,
+            "rate": 23.904030377527125
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 11.268291256766124,
+            "min": 5.24075,
+            "med": 10.841625,
+            "max": 267.77675,
+            "p(90)": 13.19475,
+            "p(95)": 14.139958
+        },
+        "detail_duration": {
+            "p(95)": 11.024833599999997,
+            "avg": 8.765121878661084,
+            "min": 5.24075,
+            "med": 8.491291,
+            "max": 18.439042,
+            "p(90)": 10.0981914
+        },
+        "http_req_blocked": {
+            "p(95)": 0.011292,
+            "avg": 0.011690920194309614,
+            "min": 0.001333,
+            "med": 0.005167,
+            "max": 0.752459,
+            "p(90)": 0.008167
+        },
+        "vus_max": {
+            "max": 30,
+            "value": 30,
+            "min": 30
+        },
+        "http_req_receiving": {
+            "avg": 0.07532549548924368,
+            "min": 0.024959,
+            "med": 0.070625,
+            "max": 0.999792,
+            "p(90)": 0.095417,
+            "p(95)": 0.111375
+        },
+        "checks": {
+            "passes": 1201,
+            "fails": 0,
+            "value": 1
+        },
+        "http_req_failed": {
+            "passes": 0,
+            "fails": 1441,
+            "value": 0
+        },
+        "data_sent": {
+            "count": 511931,
+            "rate": 8492.168060512033
+        }
+    },
+    "setup_data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc4MTQ5MzUzOCwidHlwZSI6ImFjY2VzcyJ9.qGufd9N6MoF6Yv9d3u4_dyMBfNRZb5fne3ozK79WrfE"
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "projects/list 200": {
+                    "name": "projects/list 200",
+                    "path": "::projects/list 200",
+                    "id": "1be0304695507c74538b0085ae3cbb1f",
+                    "passes": 234,
+                    "fails": 0
+                },
+                "expenses/list 200": {
+                    "path": "::expenses/list 200",
+                    "id": "2f1938d4101f5f976e2e08a9d7e71bbd",
+                    "passes": 260,
+                    "fails": 0,
+                    "name": "expenses/list 200"
+                },
+                "contracts/list 200": {
+                    "passes": 235,
+                    "fails": 0,
+                    "name": "contracts/list 200",
+                    "path": "::contracts/list 200",
+                    "id": "e37118e7b34ea33400f756a66bbd2923"
+                },
+                "receivables/detail 200": {
+                    "name": "receivables/detail 200",
+                    "path": "::receivables/detail 200",
+                    "id": "2321ca8d83ad072096a9966c9be530cf",
+                    "passes": 61,
+                    "fails": 0
+                },
+                "receivables/list 200": {
+                    "id": "a8923f4166e0d094f057ee907ca0ceb8",
+                    "passes": 233,
+                    "fails": 0,
+                    "name": "receivables/list 200",
+                    "path": "::receivables/list 200"
+                },
+                "projects/detail 200": {
+                    "name": "projects/detail 200",
+                    "path": "::projects/detail 200",
+                    "id": "58590774553dd2118f3b8f8807b5458e",
+                    "passes": 56,
+                    "fails": 0
+                },
+                "contracts/detail 200": {
+                    "name": "contracts/detail 200",
+                    "path": "::contracts/detail 200",
+                    "id": "6f2349b2b627fcc1b473243d887f3b76",
+                    "passes": 67,
+                    "fails": 0
+                },
+                "expenses/detail 200": {
+                    "name": "expenses/detail 200",
+                    "path": "::expenses/detail 200",
+                    "id": "b3509e012207fd338802be9a37603875",
+                    "passes": 55,
+                    "fails": 0
+                }
+            }
+    }
+}

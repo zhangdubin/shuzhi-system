@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>空状态 / 加载状态 · 设计系统 Demo</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .demo-section { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px; margin-bottom: 20px; }
+  .demo-section h3 { font-size: 14px; font-weight: 600; margin-bottom: 16px; color: var(--color-text-tertiary); text-transform: uppercase; letter-spacing: 0.5px; }
+  .demo-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
+  .demo-item { border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 16px; }
+  .demo-item .l { font-size: 11.5px; color: var(--color-text-tertiary); margin-bottom: 8px; }
+  .demo-item .body { background: #F8FAFC; border-radius: var(--radius-sm); padding: 20px; min-height: 200px; display: flex; align-items: center; justify-content: center; }
+  .code { background: #1E293B; color: #E2E8F0; padding: 12px 14px; border-radius: var(--radius-sm); font-family: var(--font-mono); font-size: 12px; line-height: 1.6; margin-top: 8px; overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">系统</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+    </ul>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb"><span>系统</span><span class="sep">/</span><span>设计系统</span><span class="sep">/</span><span>空/加载状态</span></div>
+          <h1 class="page-title">空状态 / 加载状态 Demo</h1>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 空状态 -->
+      <div class="demo-section">
+        <h3>① 空状态（empty-state）</h3>
+        <div class="demo-grid">
+          <div class="demo-item">
+            <div class="l">📦 列表无数据</div>
+            <div class="body">
+              <div class="empty-state" style="padding:30px 0;">
+                <div class="ico">📋</div>
+                <div class="t">还没有任何记录</div>
+                <div class="m">点击下方按钮创建第一条记录</div>
+                <div class="actions">
+                  <button class="btn btn-primary btn-sm">+ 新建记录</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">🔍 搜索无结果</div>
+            <div class="body">
+              <div class="empty-state" style="padding:30px 0;">
+                <div class="ico">🔎</div>
+                <div class="t">没有找到匹配的结果</div>
+                <div class="m">试试调整搜索关键词或清除筛选条件</div>
+                <div class="actions">
+                  <button class="btn btn-outline btn-sm">清空筛选</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">📁 文件夹为空</div>
+            <div class="body">
+              <div class="empty-state" style="padding:30px 0;">
+                <div class="ico">📂</div>
+                <div class="t">文件夹是空的</div>
+                <div class="m">拖拽文件到此处，或点击上传</div>
+                <div class="actions">
+                  <button class="btn btn-primary btn-sm">⇪ 上传文件</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">🔐 权限不足</div>
+            <div class="body">
+              <div class="empty-state" style="padding:30px 0;">
+                <div class="ico">🔒</div>
+                <div class="t">没有访问权限</div>
+                <div class="m">你的账号没有查看此内容的权限</div>
+                <div class="actions">
+                  <button class="btn btn-outline btn-sm">联系管理员</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 骨架屏 -->
+      <div class="demo-section">
+        <h3>② 骨架屏（skeleton）</h3>
+        <div class="demo-grid">
+          <div class="demo-item">
+            <div class="l">📊 卡片骨架</div>
+            <div class="body" style="flex-direction:column;gap:10px;padding:20px;">
+              <div class="skeleton skeleton-line lg" style="width:60%;"></div>
+              <div class="skeleton skeleton-line"></div>
+              <div class="skeleton skeleton-line sm"></div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">📋 表格骨架（行）</div>
+            <div class="body" style="flex-direction:column;gap:14px;padding:16px;">
+              <div class="tbl-loading" style="display:grid;grid-template-columns:60px 1fr 1fr 100px;gap:16px;width:100%;">
+                <div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div>
+              </div>
+              <div class="tbl-loading" style="display:grid;grid-template-columns:60px 1fr 1fr 100px;gap:16px;width:100%;">
+                <div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div>
+              </div>
+              <div class="tbl-loading" style="display:grid;grid-template-columns:60px 1fr 1fr 100px;gap:16px;width:100%;">
+                <div class="ph"></div><div class="ph"></div><div class="ph"></div><div class="ph"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">👤 头像骨架</div>
+            <div class="body" style="gap:12px;padding:20px;">
+              <div class="skeleton skeleton-avatar"></div>
+              <div style="flex:1;">
+                <div class="skeleton skeleton-line" style="width:80%;"></div>
+                <div class="skeleton skeleton-line sm"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">📦 块骨架</div>
+            <div class="body" style="padding:20px;width:100%;">
+              <div class="skeleton skeleton-block" style="width:100%;"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 全屏加载 -->
+      <div class="demo-section">
+        <h3>③ 全屏加载（loading-overlay）</h3>
+        <div class="demo-item">
+          <div class="l">⏳ 整页 loading（如路由切换、提交大表单时）</div>
+          <div class="body">
+            <div class="loading-spinner">
+              <div class="ring"></div>
+              <div class="t">加载中...</div>
+            </div>
+          </div>
+        </div>
+        <div class="code">
+          &lt;div class="loading-overlay show"&gt;
+            &lt;div class="loading-spinner"&gt;
+              &lt;div class="ring"&gt;&lt;/div&gt;
+              &lt;div class="t"&gt;加载中...&lt;/div&gt;
+            &lt;/div&gt;
+          &lt;/div&gt;
+        </div>
+      </div>
+
+      <!-- AI 状态组件（Phase 1 新增） -->
+      <div class="demo-section">
+        <h3>④ AI 状态组件（数智化能力，Phase 1 新增）</h3>
+        <div class="demo-grid">
+          <div class="demo-item">
+            <div class="l">✦ AI 标识</div>
+            <div class="body" style="flex-direction:column;gap:8px;align-items:flex-start;padding:20px;">
+              <span class="ai-badge">AI 抽取</span>
+              <span class="ai-badge outline">AI 推荐</span>
+              <span class="ai-badge" style="background:var(--color-success);font-size:10px;">高置信度 99%</span>
+              <span class="ai-badge" style="background:var(--color-warning);font-size:10px;">需复核 72%</span>
+              <span class="ai-badge" style="background:var(--color-danger);font-size:10px;">低置信度 45%</span>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">⏳ AI 加载态</div>
+            <div class="body" style="flex-direction:column;gap:10px;align-items:flex-start;padding:20px;">
+              <span class="ai-loading">正在抽取字段</span>
+              <div style="font-size:14px;color:var(--color-ai);">AI 思考中
+                <span class="ai-thinking-dots"><span></span><span></span><span></span></span>
+              </div>
+              <div class="ai-skeleton" style="width:180px;"></div>
+              <div class="ai-skeleton" style="width:120px;"></div>
+              <div class="ai-skeleton" style="width:80px;height:20px;border-radius:var(--radius-full);"></div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">🎯 置信度</div>
+            <div class="body" style="flex-direction:column;gap:8px;align-items:flex-start;padding:20px;">
+              <span class="ai-confidence high">99% 高</span>
+              <span class="ai-confidence high">95% 高</span>
+              <span class="ai-confidence mid">78% 中</span>
+              <span class="ai-confidence mid">65% 中</span>
+              <span class="ai-confidence low">42% 低</span>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">⚠️ 风险评级 chip</div>
+            <div class="body" style="flex-direction:column;gap:8px;align-items:flex-start;padding:20px;">
+              <span class="ai-risk-chip high"><span class="dot"></span>高风险</span>
+              <span class="ai-risk-chip medium"><span class="dot"></span>中风险</span>
+              <span class="ai-risk-chip low"><span class="dot"></span>低风险</span>
+              <span class="ai-risk-chip unknown"><span class="dot"></span>未评估</span>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">🏷️ 智能标签</div>
+            <div class="body" style="flex-direction:column;gap:10px;align-items:flex-start;padding:20px;">
+              <div class="ai-tags">
+                <span class="ai-tag">回款逾期</span>
+                <span class="ai-tag warning">客户流失风险</span>
+                <span class="ai-tag danger">成本异常</span>
+                <span class="ai-tag success">按时交付</span>
+              </div>
+              <div class="ai-tags" style="max-width:240px;">
+                <span class="ai-tag">回款逾期</span>
+                <span class="ai-tag warning">客户流失风险</span>
+                <span class="ai-tag danger">成本异常</span>
+                <span class="ai-tag success">按时交付</span>
+                <span class="ai-tag">高优先级</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">📊 任务进度条</div>
+            <div class="body" style="flex-direction:column;gap:14px;padding:20px;align-items:stretch;">
+              <div class="ai-task-progress">
+                <div class="stage">
+                  <span>识别发票联次 3/5</span>
+                  <span class="pct">60%</span>
+                </div>
+                <div class="bar"><div class="fill" style="width:60%;"></div></div>
+              </div>
+              <div class="ai-task-progress">
+                <div class="stage">
+                  <span>字段抽取中</span>
+                  <span class="pct">95%</span>
+                </div>
+                <div class="bar"><div class="fill" style="width:95%;"></div></div>
+              </div>
+              <div class="ai-task-progress">
+                <div class="stage">
+                  <span>已完成</span>
+                  <span class="pct" style="color:var(--color-success);">100%</span>
+                </div>
+                <div class="bar"><div class="fill" style="width:100%;background:var(--color-success);"></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">💡 AI 建议项</div>
+            <div class="body" style="flex-direction:column;gap:8px;padding:16px;align-items:stretch;">
+              <div class="ai-suggestion">
+                <div class="ai-s-icon">💡</div>
+                <div class="ai-s-body">
+                  <div class="ai-s-title">普通建议</div>
+                  <div class="ai-s-desc">AI 给出的一般性建议内容</div>
+                </div>
+              </div>
+              <div class="ai-suggestion warning">
+                <div class="ai-s-icon">⚠</div>
+                <div class="ai-s-body">
+                  <div class="ai-s-title">警告级建议</div>
+                  <div class="ai-s-desc">需要关注的异常情况</div>
+                </div>
+              </div>
+              <div class="ai-suggestion danger">
+                <div class="ai-s-icon">!</div>
+                <div class="ai-s-body">
+                  <div class="ai-s-title">危险级建议</div>
+                  <div class="ai-s-desc">需要立即处理的严重问题</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="demo-item">
+            <div class="l">👍 反馈 + 引用</div>
+            <div class="body" style="flex-direction:column;gap:12px;align-items:flex-start;padding:20px;">
+              <div class="ai-feedback">
+                <button class="up">👍</button>
+                <button>👎</button>
+              </div>
+              <div class="ai-feedback">
+                <button>👍</button>
+                <button class="down">👎</button>
+              </div>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <span class="ai-citation">来源发票</span>
+                <span class="ai-citation">相似项目</span>
+                <span class="ai-citation">历史数据</span>
+              </div>
+              <div class="ai-summary">
+                本月开票 <strong>¥1.2M</strong>，环比 <strong>+18%</strong>，其中 <strong>3 张</strong>为新增客户首次开票。
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 使用说明 -->
+      <div class="demo-section">
+        <h3>📖 使用说明</h3>
+        <div style="font-size:13px;color:var(--color-text-secondary);line-height:1.7;">
+          <p><strong>空状态</strong>：在表格/列表无数据时使用。提供 <code>ico / t / m / actions</code> 4 个槽位。</p>
+          <p><strong>骨架屏</strong>：在数据加载时使用，避免布局抖动。提供 <code>line / line.lg / line.sm / block / avatar</code> 5 种规格。</p>
+          <p><strong>全屏加载</strong>：路由切换/全局保存时使用。透明度 85% + 模糊背景。</p>
+          <p><strong>JS 调用方式</strong>：
+          <div class="code" style="margin-top:8px;">
+            // 显示全屏加载
+            document.getElementById('loadingOverlay').classList.add('show');
+            // 隐藏
+            document.getElementById('loadingOverlay').classList.remove('show');
+
+            // 显示 Toast
+            showToast('保存成功', 'success');
+          </div>
+          </p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- 全屏加载 DOM 模板（页面用得到时直接复制） -->
+<div class="loading-overlay" id="loadingOverlay">
+  <div class="loading-spinner">
+    <div class="ring"></div>
+    <div class="t">加载中...</div>
+  </div>
+</div>
+
+</body>
+</html>

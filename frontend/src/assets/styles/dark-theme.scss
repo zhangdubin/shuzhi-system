@@ -1,0 +1,1031 @@
+// ============================================================
+// 设计系统级暗色主题（CSS 变量层）
+// ============================================================
+// 这是 R16 设计系统重构的产物：
+// 1. 所有元素用 CSS 变量，不依赖 .theme-dark class
+// 2. .theme-dark class 改变 CSS 变量值
+// 3. 业务页应使用 var(--xxx)，不用硬编码颜色
+// 4. 渐变降饱和通过 var(--gradient-*) 切换
+// ============================================================
+
+// ============================================================
+// 1. 亮色（默认）— 与 design/common.css 1:1 对齐
+// ============================================================
+:root {
+  // 品牌色
+  --color-primary: #4F6BFF;
+  --color-primary-hover: #3D58E8;
+  --color-primary-light: #E0E6FF;
+  --color-primary-bg: rgba(79, 107, 255, 0.08);
+
+  // 渐变（亮色下鲜艳）
+  --gradient-brand: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  --gradient-brand-soft: linear-gradient(135deg, rgba(79, 107, 255, 0.12) 0%, rgba(124, 58, 237, 0.12) 100%);
+  --gradient-hero: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #312E81 100%);
+
+  // 6 模块渐变（亮色）
+  --gradient-module-1: linear-gradient(135deg, #4F6BFF, #7C3AED);   // 发票识别
+  --gradient-module-2: linear-gradient(135deg, #06B6D4, #0891B2);   // 发票模板
+  --gradient-module-3: linear-gradient(135deg, #10B981, #059669);   // 销售费用
+  --gradient-module-4: linear-gradient(135deg, #F59E0B, #D97706);   // 项目管理
+  --gradient-module-5: linear-gradient(135deg, #EC4899, #BE185D);   // 合同管理
+  --gradient-module-6: linear-gradient(135deg, #8B5CF6, #6D28D9);   // 回款管理
+
+  // 功能色
+  --color-success: #10B981;
+  --color-success-bg: #D1FAE5;
+  --color-warning: #F59E0B;
+  --color-warning-bg: #FEF3C7;
+  --color-danger: #EF4444;
+  --color-danger-bg: #FEE2E2;
+  --color-info: #06B6D4;
+  --color-info-bg: #CFFAFE;
+
+  // 文字（亮色）
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #475569;
+  --color-text-tertiary: #94A3B8;
+  --color-text-inverse: #F8FAFC;
+  --color-text-on-gradient: #FFFFFF;
+
+  // 背景（亮色）
+  --color-bg-page: #F1F5F9;        // 主区域背景
+  --color-bg-card: #FFFFFF;        // 卡片背景
+  --color-bg-elevated: #FFFFFF;    // 悬浮卡片
+  --color-bg-hover: #F8FAFC;       // 悬停态
+  --color-bg-input: #FFFFFF;       // 输入框
+
+  // 边框
+  --color-border: #E2E8F0;
+  --color-border-strong: #CBD5E1;
+
+  // 阴影
+  --shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+  --shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 12px 32px -8px rgba(15, 23, 42, 0.12);
+  --shadow-glow: 0 8px 32px -4px rgba(79, 107, 255, 0.35);
+  --shadow-color: rgba(15, 23, 42, 0.08);
+
+  // 侧栏（一直深色，不变）
+  --color-sidebar-bg: #0B1220;
+  --color-sidebar-bg-2: #111A2E;
+  --color-sidebar-text: #94A3B8;
+  --color-sidebar-text-active: #FFFFFF;
+  --color-sidebar-active-bg: rgba(79, 107, 255, 0.18);
+  --color-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+  // 滚动条
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: #CBD5E1;
+  --scrollbar-thumb-hover: #94A3B8;
+}
+
+// ============================================================
+// 2. 暗色（.theme-dark 触发）— 完整的设计系统级 override
+// ============================================================
+.theme-dark {
+  // === Element Plus CSS 变量（关键！EP 组件的内部 class 都靠这些）===
+  --el-bg-color: #0F1320;
+  --el-bg-color-page: #0F1320;
+  --el-bg-color-overlay: #1A1F2E;
+  --el-text-color-primary: #F1F5F9;
+  --el-text-color-regular: #CBD5E1;
+  --el-text-color-secondary: #94A3B8;
+  --el-text-color-placeholder: #6B7280;
+  --el-text-color-disabled: #4B5563;
+  --el-border-color: rgba(255,255,255,0.08);
+  --el-border-color-light: rgba(255,255,255,0.06);
+  --el-border-color-lighter: rgba(255,255,255,0.04);
+  --el-border-color-extra-light: rgba(255,255,255,0.02);
+  --el-fill-color: #1A1F2E;
+  --el-fill-color-blank: #1A1F2E;
+  --el-fill-color-light: rgba(255,255,255,0.05);
+  --el-fill-color-lighter: rgba(255,255,255,0.03);
+  --el-fill-color-extra-light: rgba(255,255,255,0.02);
+  --el-mask-color: rgba(15, 19, 32, 0.7);
+  --el-color-primary-light-3: #4F6BFF;
+  --el-color-primary-light-5: #4F6BFF;
+  --el-color-primary-light-7: #4F6BFF;
+  --el-color-primary-light-8: #4F6BFF;
+  --el-color-primary-light-9: #4F6BFF;
+  --el-color-success-light-9: rgba(16, 185, 129, 0.15);
+  --el-color-warning-light-9: rgba(245, 158, 11, 0.15);
+  --el-color-danger-light-9: rgba(239, 68, 68, 0.15);
+  --el-color-info-light-9: rgba(6, 182, 212, 0.15);
+
+  // === EP 表格专属变量（最常漏的"白底表头"）===
+  --el-table-bg-color: var(--color-bg-card);
+  --el-table-tr-bg-color: var(--color-bg-card);
+  --el-table-header-bg-color: var(--color-bg-elevated);
+  --el-table-header-text-color: var(--color-text-secondary);
+  --el-table-row-hover-bg-color: var(--color-bg-hover);
+  --el-table-border-color: var(--color-border);
+  --el-table-border: 1px solid var(--color-border);
+  --el-table-row-stripe-bg-color: var(--color-bg-hover);
+  --el-table-fixed-box-shadow: 0 0 8px rgba(0,0,0,0.4);
+
+  // === EP 输入框 ===
+  --el-input-bg-color: var(--color-bg-input);
+  --el-input-text-color: var(--color-text-primary);
+  --el-input-border-color: var(--color-border-strong);
+  --el-input-hover-border-color: var(--color-primary);
+  --el-input-focus-border-color: var(--color-primary);
+  --el-input-placeholder-color: var(--color-text-tertiary);
+  --el-input-disabled-bg-color: var(--color-bg-hover);
+
+  // === EP 按钮 ===
+  --el-button-bg-color: var(--color-bg-card);
+  --el-button-text-color: var(--color-text-primary);
+  --el-button-border-color: var(--color-border-strong);
+  --el-button-hover-bg-color: var(--color-bg-hover);
+  --el-button-hover-text-color: var(--color-primary);
+  --el-button-hover-border-color: var(--color-primary);
+  --el-button-disabled-bg-color: var(--color-bg-hover);
+  --el-button-disabled-text-color: var(--color-text-tertiary);
+  --el-button-disabled-border-color: var(--color-border);
+
+  // === EP 弹层 ===
+  --el-popover-bg-color: var(--color-bg-elevated);
+  --el-popover-border-color: var(--color-border-strong);
+  --el-tooltip-bg-color: #232938;
+  --el-tooltip-text-color: var(--color-text-primary);
+  --el-tooltip-border-color: transparent;
+  --el-dropdown-menu-bg-color: var(--color-bg-elevated);
+  --el-dropdown-menuItem-hover-fill: var(--color-primary-bg);
+  --el-select-dropdown-bg-color: var(--color-bg-elevated);
+  --el-select-dropdown-border-color: var(--color-border-strong);
+  --el-select-option-hover-bg-color: var(--color-primary-bg);
+  --el-select-option-selected-bg-color: var(--color-primary-bg);
+  --el-select-option-selected-text-color: var(--color-primary);
+
+  // === EP Tag ===
+  --el-tag-bg-color: var(--color-bg-hover);
+  --el-tag-border-color: var(--color-border);
+  --el-tag-text-color: var(--color-text-primary);
+
+  // === EP 分页 ===
+  --el-pagination-bg-color: var(--color-bg-card);
+  --el-pagination-text-color: var(--color-text-secondary);
+  --el-pagination-border-color: var(--color-border);
+  --el-pagination-button-bg-color: var(--color-bg-card);
+  --el-pagination-button-color: var(--color-text-secondary);
+  --el-pagination-button-disabled-bg-color: var(--color-bg-hover);
+  --el-pagination-hover-color: var(--color-primary);
+
+  // === EP 表单 ===
+  --el-form-item-label-color: var(--color-text-secondary);
+  --el-form-item-content-color: var(--color-text-primary);
+
+  // === EP 消息提示 ===
+  --el-message-bg-color: var(--color-bg-elevated);
+  --el-message-border-color: var(--color-border);
+  --el-message-text-color: var(--color-text-primary);
+  --el-notification-bg-color: var(--color-bg-elevated);
+  --el-notification-border-color: var(--color-border);
+
+  // === 品牌色保持，但调亮一点以保证对比 ===
+  --color-primary: #6B83FF;        // 比亮色稍亮（深色下用 #4F6BFF 会偏暗）
+  --color-primary-hover: #7C91FF;
+  --color-primary-light: rgba(107, 131, 255, 0.2);
+  --color-primary-bg: rgba(107, 131, 255, 0.15);
+
+  // === 渐变降饱和（关键！）===
+  // 蓝紫渐变：原 100% → 暗色下用 50% 不透明度 + 暗底色混合
+  --gradient-brand: linear-gradient(135deg, rgba(79, 107, 255, 0.4) 0%, rgba(124, 58, 237, 0.4) 100%);
+  --gradient-brand-soft: linear-gradient(135deg, rgba(79, 107, 255, 0.12) 0%, rgba(124, 58, 237, 0.12) 100%);
+  // hero 渐变（暗色下保留原样，但加深）
+  --gradient-hero: linear-gradient(135deg, #0B0E1A 0%, #15132E 50%, #1F1A4A 100%);
+
+  // 6 模块渐变（暗色下都用 50% 透明度混合 #1A1F2E 底色）
+  --gradient-module-1: linear-gradient(135deg, rgba(79, 107, 255, 0.4), rgba(124, 58, 237, 0.4));
+  --gradient-module-2: linear-gradient(135deg, rgba(6, 182, 212, 0.4), rgba(8, 145, 178, 0.4));
+  --gradient-module-3: linear-gradient(135deg, rgba(16, 185, 129, 0.4), rgba(5, 150, 105, 0.4));
+  --gradient-module-4: linear-gradient(135deg, rgba(245, 158, 11, 0.4), rgba(217, 119, 6, 0.4));
+  --gradient-module-5: linear-gradient(135deg, rgba(236, 72, 153, 0.4), rgba(190, 24, 93, 0.4));
+  --gradient-module-6: linear-gradient(135deg, rgba(139, 92, 246, 0.4), rgba(109, 40, 217, 0.4));
+
+  // === 功能色（亮一档 + 暗底色）===
+  --color-success: #34D399;
+  --color-success-bg: rgba(16, 185, 129, 0.15);
+  --color-warning: #FBBF24;
+  --color-warning-bg: rgba(245, 158, 11, 0.15);
+  --color-danger: #F87171;
+  --color-danger-bg: rgba(239, 68, 68, 0.15);
+  --color-info: #22D3EE;
+  --color-info-bg: rgba(6, 182, 212, 0.15);
+
+  // === 文字（高对比度）===
+  --color-text-primary: #F1F5F9;     // 主文字（最高对比）
+  --color-text-secondary: #CBD5E1;   // 次文字
+  --color-text-tertiary: #94A3B8;    // 弱化文字
+  --color-text-inverse: #0F172A;     // 反色（深色下反过来用）
+  --color-text-on-gradient: #F1F5F9; // 渐变上的文字（用更亮的）
+
+  // === 背景（核心！必须变成深色）===
+  --color-bg-page: #0F1320;          // 主区域（用户最在意）
+  --color-bg-card: #1A1F2E;          // 卡片
+  --color-bg-elevated: #232938;      // 悬浮/弹层
+  --color-bg-hover: rgba(255, 255, 255, 0.05);
+  --color-bg-input: #1A1F2E;         // 输入框
+
+  // === 边框（白透明）===
+  --color-border: rgba(255, 255, 255, 0.08);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  // === 阴影（暗色下用更深的）===
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+  --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.6);
+  --shadow-glow: 0 8px 32px -4px rgba(107, 131, 255, 0.25);
+  --shadow-color: rgba(0, 0, 0, 0.5);
+
+  // === 侧栏（保持深色，但调整 active 更亮）===
+  --color-sidebar-bg: #0B0E1A;       // 比主背景略深
+  --color-sidebar-bg-2: #15182A;
+  --color-sidebar-text: #94A3B8;
+  --color-sidebar-text-active: #FFFFFF;
+  --color-sidebar-active-bg: rgba(107, 131, 255, 0.22);
+  --color-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+  // === 滚动条 ===
+  --scrollbar-track: #0F1320;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.12);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.2);
+}
+
+// ============================================================
+// 3. 主题应用到全局（设计系统级，不依赖 .theme-dark class）
+// ============================================================
+html, body, #app {
+  background: var(--color-bg-page) !important;
+  color: var(--color-text-primary);
+  transition: background-color 0.3s ease, color 0.3s ease;
+}
+
+// === AppLayout 顶栏 / 主内容区 / 侧栏 ===
+.theme-dark .app-layout,
+.theme-dark .app-header,
+.theme-dark .app-main,
+.theme-dark .app-content,
+.theme-dark .layout-main,
+.theme-dark .page-container,
+.theme-dark .page-content,
+.theme-dark .main-area,
+.theme-dark .header,
+.theme-dark .topbar {
+  background: var(--color-bg-page) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border) !important;
+}
+
+// === AI 提醒条（AIAlertBar）— 默认渐变在深色下要降饱和 ===
+.theme-dark .ai-alert-bar {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+.theme-dark .ai-alert-bar .ai-body .title { color: var(--color-text-primary) !important; }
+.theme-dark .ai-alert-bar .ai-body .summary { color: var(--color-text-secondary) !important; }
+.theme-dark .ai-alert-bar .ai-body .summary strong { color: var(--color-text-primary) !important; }
+.theme-dark .ai-alert-bar .ai-icon {
+  background: var(--color-primary-bg) !important;
+  color: var(--color-primary) !important;
+}
+
+// === 欢迎条（welcome）+ welcome-btn（深色下用 var(--gradient-brand)）===
+.theme-dark .welcome {
+  background: var(--gradient-brand) !important;
+  color: var(--color-text-on-gradient) !important;
+}
+.theme-dark .welcome h2 { color: var(--color-text-on-gradient) !important; }
+.theme-dark .welcome p { color: var(--color-text-on-gradient); opacity: 0.9; }
+.theme-dark .welcome-btn {
+  background: rgba(255, 255, 255, 0.15) !important;
+  color: #fff !important;
+}
+.theme-dark .welcome-btn:hover { background: rgba(255, 255, 255, 0.25) !important; }
+.theme-dark .welcome-btn.primary {
+  background: rgba(255, 255, 255, 0.25) !important;
+  color: #fff !important;
+}
+
+// === Dashboard 各 panel 内部元素 ===
+.theme-dark .panel-title,
+.theme-dark .card-head h3 { color: var(--color-text-primary) !important; }
+.theme-dark .link-all { color: var(--color-primary) !important; }
+.theme-dark .stat-label { color: var(--color-text-tertiary) !important; }
+.theme-dark .stat-value { color: var(--color-text-primary) !important; }
+.theme-dark .stat-delta { color: var(--color-text-tertiary) !important; }
+.theme-dark .stat-ai-interpret { color: var(--color-primary) !important; }
+.theme-dark .trend-legend, .theme-dark .legend-item { color: var(--color-text-tertiary) !important; }
+.theme-dark .activity-item { color: var(--color-text-secondary) !important; }
+.theme-dark .activity-time { color: var(--color-text-tertiary) !important; }
+.theme-dark .trend-svg text, .theme-dark .trend-svg .axis-label { fill: var(--color-text-tertiary) !important; }
+.theme-dark .trend-svg line { stroke: var(--color-border) !important; }
+.theme-dark .todo-item { border-color: var(--color-border) !important; color: var(--color-text-secondary) !important; }
+.theme-dark .team-member { background: var(--color-bg-card) !important; border-color: var(--color-border) !important; }
+.theme-dark .team-member .tm-name { color: var(--color-text-primary) !important; }
+.theme-dark .team-member .tm-role { color: var(--color-text-tertiary) !important; }
+.theme-dark .quick-tile { background: var(--color-bg-card) !important; }
+.theme-dark .quick-tile:hover { background: var(--color-bg-hover) !important; }
+.theme-dark .quick-name { color: var(--color-text-primary) !important; }
+.theme-dark .quick-desc { color: var(--color-text-tertiary) !important; }
+.theme-dark .live-card { background: var(--color-bg-elevated) !important; border-color: var(--color-primary) !important; color: var(--color-text-primary) !important; }
+.theme-dark .live-time { color: var(--color-text-tertiary) !important; }
+
+// ============================================================
+// 4. 业务页硬编码白卡片 → 用 var() 替换（核心改动）
+// ============================================================
+.page-card, .stat-card, .data-card,
+.form-section, .detail-section, .info-grid,
+.detail-tabs, .flow-horizontal, .step-bar,
+.sign-area, .term-block, .approval-preview,
+.att-area, .form-foot, .filter-panel, .quick-grid .quick-tile,
+.module-card, .live-card, .ai-suggest-row {
+  background: var(--color-bg-card) !important;
+  color: var(--color-text-primary);
+  border-color: var(--color-border) !important;
+  box-shadow: 0 1px 3px var(--shadow-color);
+  transition: background 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+// 5. 渐变 Hero（详情页/欢迎条/quick-icon）→ 用 var()
+.detail-hero, .welcome, .quick-icon,
+.ai-suggest-hero, .brand-gradient-bg, .gradient-brand-bg,
+[class*="gradient-brand"] {
+  background: var(--gradient-brand) !important;
+  color: var(--color-text-on-gradient);
+  transition: background 0.3s ease, color 0.3s ease;
+}
+.gradient-hero, [class*="gradient-hero"] {
+  background: var(--gradient-hero) !important;
+}
+.gradient-brand-soft, [class*="gradient-brand-soft"] {
+  background: var(--gradient-brand-soft) !important;
+}
+
+// 6. 6 模块入口渐变（关键！Dashboard module-card 内的 m-icon）
+.m-icon { transition: background 0.3s ease; }
+.module-card[data-module="1"] .m-icon,
+.quick-icon[data-module="1"] { background: var(--gradient-module-1); }
+.module-card[data-module="2"] .m-icon,
+.quick-icon[data-module="2"] { background: var(--gradient-module-2); }
+.module-card[data-module="3"] .m-icon,
+.quick-icon[data-module="3"] { background: var(--gradient-module-3); }
+.module-card[data-module="4"] .m-icon,
+.quick-icon[data-module="4"] { background: var(--gradient-module-4); }
+.module-card[data-module="5"] .m-icon,
+.quick-icon[data-module="5"] { background: var(--gradient-module-5); }
+.module-card[data-module="6"] .m-icon,
+.quick-icon[data-module="6"] { background: var(--gradient-module-6); }
+
+// 7. 文字统一（用 var()）
+.text-primary, .text-main, .h1, .h2, .h3, h1, h2, h3 {
+  color: var(--color-text-primary);
+}
+.text-secondary, .h4, h4 { color: var(--color-text-secondary); }
+.text-tertiary, .muted, .text-muted { color: var(--color-text-tertiary); }
+
+// 8. 滚动条
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
+
+// 9. Element Plus 自动跟随（CSS 变量驱动）
+.el-card, .el-drawer, .el-dialog {
+  background: var(--color-bg-card) !important;
+  border-color: var(--color-border) !important;
+  color: var(--color-text-primary) !important;
+}
+.el-table, .el-table tr, .el-table td, .el-table th {
+  background: var(--color-bg-card) !important;
+  color: var(--color-text-primary) !important;
+  border-color: var(--color-border) !important;
+}
+.el-table--striped .el-table__body tr.el-table__row--striped td {
+  background: var(--color-bg-hover) !important;
+}
+.el-input__wrapper {
+  background: var(--color-bg-input) !important;
+  box-shadow: 0 0 0 1px var(--color-border) inset !important;
+}
+.el-tag { border-color: var(--color-border-strong) !important; }
+.el-tag.el-tag--light { background: var(--color-bg-hover) !important; color: var(--color-text-secondary) !important; }
+.el-divider { border-color: var(--color-border) !important; }
+.el-empty__description p { color: var(--color-text-tertiary) !important; }
+.el-loading-mask { background-color: var(--color-bg-page) !important; }
+.el-popper.is-light, .el-select-dropdown, .el-dropdown-menu {
+  background: var(--color-bg-elevated) !important;
+  border-color: var(--color-border-strong) !important;
+  color: var(--color-text-primary) !important;
+}
+.el-pagination { color: var(--color-text-secondary) !important; }
+.el-pagination button, .el-pagination .el-pager li {
+  background: var(--color-bg-card) !important;
+  color: var(--color-text-secondary) !important;
+}
+.el-pagination .el-pager li.is-active {
+  background: var(--color-primary-bg) !important;
+  color: var(--color-primary) !important;
+}
+
+// ============================================================
+// 10. 业务页 scoped 漏网区补救（用 .theme-dark * 选择器 + !important）
+//    业务页都用 <style scoped>，scoped 选择器比 .theme-dark .xxx 特异性高
+//    这里用宽选择器一锅端：所有可能"漏网"区域都改色
+// ============================================================
+.theme-dark {
+  .filter-bar, .filter-chip, .filter-card, .filter-tabs,
+  .header-bar, .toolbar, .search-bar, .search-input,
+  .flow-card, .flow-horizontal, .flow-row, .flow-step, .flow-line,
+  .upload-zone, .upload-drop, .upload-preview, .upload-hint, .upload-hint-sub,
+  .stats-row, .stat-mini, .stat-block, .stat-box,
+  .form-card, .form-section, .form-foot,
+  .table-card, .table-wrapper, .table-area,
+  .preview-card, .preview-area, .preview-empty, .preview-result,
+  .ai-panel-card, .ai-result-card,
+  .detail-tabs, .detail-section, .detail-hero,
+  .module-card, .quick-tile, .quick-icon, .welcome,
+  .page-card, .stat-card, .data-card,
+  .sign-area, .sign-box, .term-block, .flow-horizontal, .step-bar,
+  .approval-preview, .att-area, .info-grid, .filter-panel,
+  .live-card, .ai-suggest-row, .team-member, .todo-item,
+  .pwa-install-card, .cmdk-dialog, .cmdk-overlay {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border) !important;
+  }
+  // 内部文字 / 标题 / 描述（深色下用 var）
+  .filter-chip, .toolbar-label, .search-bar input { color: var(--color-text-primary) !important; }
+  .filter-chip.active, .toolbar-tab.active { background: var(--color-primary-bg) !important; color: var(--color-primary) !important; }
+  .flow-sub, .flow-meta, .flow-name { color: var(--color-text-secondary) !important; }
+  .upload-hint { color: var(--color-text-primary) !important; }
+  .upload-hint-sub { color: var(--color-text-tertiary) !important; }
+  .stat-mini-label { color: var(--color-text-tertiary) !important; }
+  .stat-mini-value { color: var(--color-text-primary) !important; }
+  .sign-box { background: var(--color-bg-card) !important; }
+  .sign-box.signed { background: rgba(16, 185, 129, 0.08) !important; }
+  // 表格区域（el-table 内层）
+  .el-table__header-wrapper th, .el-table th.el-table__cell {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-secondary) !important;
+    border-color: var(--color-border) !important;
+  }
+  // el-input 内部文字
+  .el-input__inner, .el-textarea__inner, .el-select__placeholder {
+    color: var(--color-text-primary) !important;
+  }
+  .el-input__inner::placeholder, .el-textarea__inner::placeholder {
+    color: var(--color-text-tertiary) !important;
+  }
+  // upload zone 虚线框
+  .upload-drop {
+    background: var(--color-bg-card) !important;
+    border-color: var(--color-border-strong) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .upload-drop:hover { border-color: var(--color-primary) !important; }
+  // ep 表格斑马纹
+  .el-table--striped .el-table__body tr.el-table__row--striped td {
+    background: var(--color-bg-hover) !important;
+  }
+  // === ep 表格表头（最常漏的"白底"）===
+  .el-table__header-wrapper,
+  .el-table__header,
+  .el-table th.el-table__cell,
+  .el-table--border th.el-table__cell,
+  .el-table--border td.el-table__cell {
+    background: var(--color-bg-elevated) !important;
+    color: var(--color-text-secondary) !important;
+    border-color: var(--color-border) !important;
+  }
+  // === ep 表格空状态 / 加载 ===
+  .el-table__empty-block {
+    background: var(--color-bg-card) !important;
+  }
+  .el-table__empty-text {
+    color: var(--color-text-tertiary) !important;
+  }
+  // === ep 弹层（dropdown/select/popover/tooltip）===
+  .el-select__popper, .el-select-dropdown,
+  .el-popper, .el-tooltip__popper,
+  .el-picker__popper, .el-date-table,
+  .el-popper.is-light,
+  .el-dropdown-menu, .el-menu--popup {
+    background: var(--color-bg-elevated) !important;
+    border-color: var(--color-border-strong) !important;
+    color: var(--color-text-primary) !important;
+  }
+  // === ep 弹层内部条目 ===
+  .el-select-dropdown__item,
+  .el-select-dropdown__item.is-hovering,
+  .el-select-dropdown__item:hover,
+  .el-dropdown-menu__item,
+  .el-dropdown-menu__item:not(.is-disabled):hover,
+  .el-picker-panel__shortcut,
+  .el-date-table td.available {
+    color: var(--color-text-primary) !important;
+    background: transparent !important;
+  }
+  .el-select-dropdown__item.is-hovering,
+  .el-select-dropdown__item:hover,
+  .el-dropdown-menu__item:not(.is-disabled):hover {
+    background: var(--color-primary-bg) !important;
+  }
+  .el-select-dropdown__item.selected,
+  .el-select-dropdown__item.is-selected {
+    color: var(--color-primary) !important;
+    font-weight: 600;
+  }
+  // === ep 日期选择器 ===
+  .el-date-table td.next-month,
+  .el-date-table td.prev-month { color: var(--color-text-tertiary) !important; }
+  .el-date-table th { color: var(--color-text-secondary) !important; }
+  .el-date-editor.el-input, .el-date-editor.el-input__wrapper {
+    background: var(--color-bg-input) !important;
+  }
+  .el-input__wrapper.is-focus { box-shadow: 0 0 0 1px var(--color-primary) inset !important; }
+  // === ep 按钮次要 ===
+  .el-button:not(.el-button--primary):not(.el-button--success):not(.el-button--warning):not(.el-button--danger):not(.el-button--info) {
+    background: var(--color-bg-card) !important;
+    border-color: var(--color-border-strong) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .el-button:hover {
+    background: var(--color-bg-hover) !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+  }
+  // === ep 输入框聚焦 placeholder ===
+  .el-input.is-disabled .el-input__wrapper {
+    background: var(--color-bg-hover) !important;
+  }
+  // === invoice 预览空状态 ===
+  .preview-empty, .preview-result,
+  .empty-state, .empty-tip {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+  }
+}
+
+// ============================================================
+// 11. 终极补救：业务页 scoped 之外的 EP 内部白底（用通用属性选择器 + !important）
+//    EP 组件内部用 class="el-table__cell" 等，没加 [data-v] 时全局选择器会盖过它
+// ============================================================
+.theme-dark {
+  // === 表格表头 + 内层单元格（ep 关键）===
+  .el-table th.el-table__cell,
+  .el-table tr td.el-table__cell,
+  .el-table--border th.el-table__cell,
+  .el-table--border td.el-table__cell,
+  .el-table__header-wrapper th.el-table__cell,
+  .el-table__fixed-header-wrapper .el-table__header th.el-table__cell {
+    background-color: var(--color-bg-elevated) !important;
+    background-image: none !important;
+    color: var(--color-text-secondary) !important;
+    border-color: var(--color-border) !important;
+  }
+  // 表格底部边框
+  .el-table::before, .el-table--border::after { background-color: var(--color-border) !important; }
+  // 表格固定列（fix 列）底色
+  .el-table__fixed, .el-table__fixed-right {
+    background: var(--color-bg-card) !important;
+    box-shadow: 1px 0 0 var(--color-border) !important;
+  }
+  // === select / date-picker / dropdown 触发器背景 ===
+  .el-select .el-input.is-focus .el-input__wrapper,
+  .el-select .el-input__wrapper,
+  .el-date-editor.el-input,
+  .el-date-editor.el-input__wrapper,
+  .el-cascader .el-input__wrapper,
+  .el-autocomplete .el-input__wrapper {
+    background-color: var(--color-bg-input) !important;
+    background-image: none !important;
+    box-shadow: 0 0 0 1px var(--color-border) inset !important;
+  }
+  // === el-button 默认次级样式（很多业务页用 <el-button> 不指定 type）===
+  .el-button {
+    background-color: var(--color-bg-card) !important;
+    background-image: none !important;
+    border-color: var(--color-border-strong) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .el-button:hover,
+  .el-button:focus {
+    background-color: var(--color-bg-hover) !important;
+    border-color: var(--color-primary) !important;
+    color: var(--color-primary) !important;
+  }
+  // === el-tag 全部去亮底（功能色 bg 在深色下用低透明）===
+  .el-tag {
+    background-color: var(--color-bg-hover) !important;
+    background-image: none !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border) !important;
+  }
+  .el-tag.el-tag--primary { background: var(--color-primary-bg) !important; color: var(--color-primary) !important; }
+  .el-tag.el-tag--success { background: var(--color-success-bg) !important; color: var(--color-success) !important; }
+  .el-tag.el-tag--warning { background: var(--color-warning-bg) !important; color: var(--color-warning) !important; }
+  .el-tag.el-tag--danger { background: var(--color-danger-bg) !important; color: var(--color-danger) !important; }
+  .el-tag.el-tag--info { background: var(--color-info-bg) !important; color: var(--color-info) !important; }
+  // === 弹层 ===
+  .el-popper, .el-popper__arrow::before,
+  .el-select__popper .el-popper__arrow::before,
+  .el-tooltip__popper .el-popper__arrow::before {
+    background: var(--color-bg-elevated) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  // 弹层内文字
+  .el-popper .el-popper__arrow::before { background: var(--color-bg-elevated) !important; }
+  .el-tooltip__popper, .el-popper.is-dark { color: var(--color-text-primary) !important; }
+  // === invoice 预览区空状态（图标的盒子+文字）===
+  .preview-empty, .preview-empty *,
+  .empty-state, .empty-state * {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+  }
+  .preview-empty .icon, .empty-state .icon { color: var(--color-text-tertiary) !important; }
+}
+
+// ============================================================
+// 12. 业务页"自造"组件暗色适配（最常漏的"硬编码 #fff/#F8FAFC"）
+//    业务页用 <table> / <input> / <select> 等原生 HTML 自己写样式（不用 EP）
+//    这里用业务页常用的 class 一锅端
+// ============================================================
+.theme-dark {
+  // === 业务页"硬编码 #fff" 的 input/select 触发器 + 搜索框 ===
+  .search-input, .select-sm, .ct-select, .form-input, .form-select,
+  .ct-input, .ct-textarea, .date-picker-input {
+    background-color: var(--color-bg-input) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  // === 业务页自造表格（ct-table 等）===
+  .ct-table, .data-table, .custom-table, .list-table {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .ct-table th, .ct-table td, .data-table th, .data-table td,
+  .custom-table th, .custom-table td,
+  .list-table th, .list-table td {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border) !important;
+  }
+  .ct-table thead th, .data-table thead th, table thead th {
+    background: var(--color-bg-elevated) !important;
+    color: var(--color-text-secondary) !important;
+  }
+  // === 次级"幽灵"按钮（design 风常用）===
+  .btn, .btn-outline, .btn-ghost, .btn-secondary {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  .btn:hover, .btn-outline:hover, .btn-ghost:hover, .btn-secondary:hover {
+    background: var(--color-bg-hover) !important;
+    color: var(--color-primary) !important;
+    border-color: var(--color-primary) !important;
+  }
+  // === invoice 识别页面的 tab 切换器 ===
+  .ocr-tabs, .ocr-tab, .invoice-tabs, .invoice-tab,
+  .quick-tabs, .quick-tab {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border) !important;
+  }
+  .ocr-tab.active, .invoice-tab.active, .quick-tab.active {
+    background: var(--color-primary-bg) !important;
+    color: var(--color-primary) !important;
+  }
+  // === 预览区空状态（design 风）===
+  .preview-empty, .preview-empty .empty-icon, .preview-empty .empty-text,
+  .upload-drop, .upload-drop .upload-hint, .upload-drop .upload-hint-sub,
+  .empty-state, .empty-state * {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .upload-drop { border-color: var(--color-border-strong) !important; }
+  .upload-drop:hover { border-color: var(--color-primary) !important; }
+  // === 通用输入/选择（终极兜底）===
+  .toolbar input, .toolbar select,
+  .filter-bar input, .filter-bar select {
+    background: var(--color-bg-input) !important;
+    color: var(--color-text-primary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  // === 全局：body 内的 .filter-bar / .toolbar 背景跟随 ===
+  .filter-bar { background: transparent !important; }
+  .toolbar { background: transparent !important; }
+}
+
+// ============================================================
+// 13. 业务页细节暗色适配（流程节点 + Tag 标签 + 预览空状态）
+// ============================================================
+.theme-dark {
+  // === 流程节点（el-step / 业务自造 .step）===
+  .el-step__head.is-finish { color: var(--color-success) !important; }
+  .el-step__head.is-wait .el-step__icon {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  .el-step__head.is-wait .el-step__icon-inner {
+    color: var(--color-text-tertiary) !important;
+  }
+  .el-step__title.is-wait { color: var(--color-text-tertiary) !important; }
+  .el-step__description.is-wait { color: var(--color-text-tertiary) !important; }
+  .el-step__head.is-process .el-step__icon {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+    border-color: var(--color-primary) !important;
+  }
+  // 业务自造流程节点
+  .flow-node, .approval-node, .step-node, .step-circle {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  .flow-node.done, .approval-node.done, .step-node.done, .step-circle.done {
+    background: var(--color-success-bg) !important;
+    color: var(--color-success) !important;
+    border-color: var(--color-success) !important;
+  }
+  .flow-node.current, .approval-node.current, .step-node.current, .step-circle.current {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+    border-color: var(--color-primary) !important;
+  }
+  // === 业务自造 Tag（design 风 + 用 #E0E6FF / #D1FAE5 / #FEF3C7 / #FEE2E2 / #CFFAFE / #EDE9FE 亮底）===
+  // 全部用透明色 + 亮文字（design 风）
+  .tag, .ct-tag, .pill, .badge {
+    background: var(--color-bg-hover) !important;
+    color: var(--color-text-secondary) !important;
+    border-color: var(--color-border) !important;
+  }
+  .tag-primary, .tag.tag-primary, .ct-tag.primary {
+    background: var(--color-primary-bg) !important;
+    color: var(--color-primary) !important;
+  }
+  .tag-success, .tag.tag-success, .ct-tag.success {
+    background: var(--color-success-bg) !important;
+    color: var(--color-success) !important;
+  }
+  .tag-warning, .tag.tag-warning, .ct-tag.warning {
+    background: var(--color-warning-bg) !important;
+    color: var(--color-warning) !important;
+  }
+  .tag-danger, .tag.tag-danger, .ct-tag.danger {
+    background: var(--color-danger-bg) !important;
+    color: var(--color-danger) !important;
+  }
+  .tag-info, .tag.tag-info, .ct-tag.info {
+    background: var(--color-info-bg) !important;
+    color: var(--color-info) !important;
+  }
+  // === invoice 识别页 Tab 容器（用 ct-tabs / ocr-tabs）===
+  .ct-tabs, .ct-tab-list, .ocr-tab-list, .invoice-tab-list,
+  .tabs, .tab-list, .tab-bar {
+    background: var(--color-bg-card) !important;
+    border-color: var(--color-border) !important;
+  }
+  .ct-tab, .ocr-tab, .invoice-tab, .tab, .tab-item {
+    background: transparent !important;
+    color: var(--color-text-secondary) !important;
+  }
+  .ct-tab.active, .ocr-tab.active, .invoice-tab.active, .tab.active, .tab-item.active {
+    background: var(--color-primary-bg) !important;
+    color: var(--color-primary) !important;
+  }
+  // === invoice 预览区（design 风）===
+  .preview-pane, .preview-container, .preview-stage,
+  .ocr-preview, .invoice-preview, .ocr-result-empty,
+  .result-empty, .preview-placeholder {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+  }
+  .preview-empty-icon, .preview-icon, .empty-icon {
+    color: var(--color-text-tertiary) !important;
+  }
+  // === 工具类（强约束）===
+  [class*="bg-#fff"], [class*="bg-white"], [class*="bg-FFFFFF"] {
+    background: var(--color-bg-card) !important;
+  }
+}
+
+// ============================================================
+// 14. 第 7 轮补救（针对性：sub-tabs + flow-step + AI risk tag）
+// ============================================================
+.theme-dark {
+  // === InvoiceOcr .sub-tabs / .sub-tab ===
+  .sub-tabs, .sub-tab-list {
+    background: var(--color-bg-card) !important;
+    border-color: var(--color-border) !important;
+  }
+  .sub-tab, .sub-tab-item, .tab-link {
+    background: transparent !important;
+    color: var(--color-text-secondary) !important;
+  }
+  .sub-tab:hover, .sub-tab-item:hover, .tab-link:hover {
+    color: var(--color-primary) !important;
+  }
+  .sub-tab.active, .sub-tab-item.active, .tab-link.active {
+    background: var(--color-primary-bg) !important;
+    color: var(--color-primary) !important;
+  }
+  // === ContractDetail .flow-step / .flow-row ===
+  .flow-step .node, .flow-step .circle, .flow-step-circle {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+    border: 2px solid var(--color-border-strong) !important;
+  }
+  .flow-step .lbl, .flow-step .label {
+    color: var(--color-text-tertiary) !important;
+  }
+  .flow-step .meta, .flow-step .step-time {
+    color: var(--color-text-tertiary) !important;
+  }
+  // === step-bar / .step-item / .step-num (ContractCreate 之类) ===
+  .step-bar, .step-item, .step-num {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-tertiary) !important;
+    border-color: var(--color-border-strong) !important;
+  }
+  .step-item.done .step-num,
+  .step-item.current .step-num {
+    background: var(--color-primary) !important;
+    color: #fff !important;
+  }
+  // === AI 风险"低/中/高" tag (AiRiskScanPanel 用的 .ai-risk-chip) ===
+  .ai-risk-chip {
+    background: var(--color-bg-hover) !important;
+    color: var(--color-text-secondary) !important;
+  }
+  .ai-risk-chip.low, .ai-risk-chip[data-risk="low"] {
+    background: var(--color-success-bg) !important;
+    color: var(--color-success) !important;
+  }
+  .ai-risk-chip.medium, .ai-risk-chip[data-risk="medium"] {
+    background: var(--color-warning-bg) !important;
+    color: var(--color-warning) !important;
+  }
+  .ai-risk-chip.high, .ai-risk-chip[data-risk="high"] {
+    background: var(--color-danger-bg) !important;
+    color: var(--color-danger) !important;
+  }
+  // === 通用：.status-* 状态色（design 风常用）===
+  .status-todo, .status-wait, .status-pending {
+    background: var(--color-bg-hover) !important;
+    color: var(--color-text-tertiary) !important;
+  }
+  .status-active, .status-doing {
+    background: var(--color-primary-bg) !important;
+    color: var(--color-primary) !important;
+  }
+  .status-done, .status-success {
+    background: var(--color-success-bg) !important;
+    color: var(--color-success) !important;
+  }
+  .status-fail, .status-reject {
+    background: var(--color-danger-bg) !important;
+    color: var(--color-danger) !important;
+  }
+}
+
+// ============================================================
+// 15. 第 8 轮补救：InvoiceOcr preview-card 完整暗色
+// ============================================================
+.theme-dark {
+  .preview-card, .preview-canvas, .preview-head, .preview-tools,
+  .result-card, .result-head, .result-meta,
+  .field-grid, .field, .ocr-right .page-card,
+  .ocr-left .page-card, .ocr-main > div {
+    background: var(--color-bg-card) !important;
+    color: var(--color-text-primary) !important;
+  }
+  // preview-canvas 必须有可见背景（不是 transparent）
+  .preview-canvas {
+    background: var(--color-bg-card) !important;
+    min-height: 200px;
+  }
+  // el-empty 在深色下底色（很关键）
+  .el-empty {
+    background: transparent !important;
+  }
+  .el-empty__image, .el-empty__image img, .el-empty__description p {
+    color: var(--color-text-tertiary) !important;
+  }
+  .el-empty__description {
+    color: var(--color-text-tertiary) !important;
+  }
+  // el-skeleton
+  .el-skeleton {
+    background: var(--color-bg-card) !important;
+  }
+  .el-skeleton__item {
+    background: linear-gradient(90deg, var(--color-bg-hover) 25%, var(--color-bg-elevated) 50%, var(--color-bg-hover) 75%) !important;
+  }
+  // preview-title 等内部
+  .preview-title, .result-title, .result-time, .field .label, .field .value {
+    color: var(--color-text-primary) !important;
+  }
+  .field .label { color: var(--color-text-tertiary) !important; }
+}
+
+// ============================================================
+// 16. 第 9 轮：el-empty SVG 插画暗化
+// ============================================================
+.theme-dark {
+  // el-empty 默认图片是 SVG 灰色描边（#dcdfe6 / #f5f7fa），在深色下太亮
+  .el-empty__image {
+    filter: invert(0.85) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+    opacity: 0.6;
+  }
+  .el-empty__image img {
+    filter: invert(0.85) hue-rotate(180deg) brightness(0.9) contrast(0.9);
+    opacity: 0.6;
+  }
+  // 自造空状态 svg/box
+  .preview-empty svg, .empty-state svg, .empty-icon svg {
+    filter: invert(0.7) hue-rotate(180deg) brightness(0.8);
+  }
+}
+
+// ============================================================
+// 全局响应式适配（移动端 / 平板 / 桌面）
+// ============================================================
+$bp-mobile: 639px;
+$bp-tablet: 768px;
+$bp-desktop: 1024px;
+
+// 通用 page-card 在移动端自适应
+@media (max-width: #{$bp-mobile}) {
+  .page-card {
+    padding: 14px !important;
+    border-radius: 10px !important;
+  }
+  .page-header {
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+  }
+  .page-title {
+    font-size: 16px !important;
+  }
+}
+
+// 通用 table 横向滚动（防溢出）
+@media (max-width: #{$bp-mobile}) {
+  table:not(.budget-table):not(.ct-table):not(.fi-table):not(.item-table):not(.items-table):not(.ocr-history-table):not(.pay-table):not(.perm-table):not(.queue-table):not(.rec-table):not(.schedule-table):not(.similar-table):not(.tpl-table):not(.verify-table) {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    white-space: nowrap;
+    th, td { white-space: nowrap; }
+  }
+}
+
+// 通用 stats-grid 响应式
+@media (max-width: #{$bp-tablet}) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: #{$bp-mobile}) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+    gap: 8px !important;
+  }
+  .stat-card {
+    padding: 14px !important;
+    .stat-value { font-size: 22px !important; }
+  }
+}
+
+// 通用 el-descriptions 移动端
+@media (max-width: #{$bp-mobile}) {
+  .el-descriptions__body {
+    .el-descriptions__cell { padding: 8px 6px !important; }
+  }
+  .el-descriptions__label { font-size: 11px !important; }
+  .el-descriptions__content { font-size: 12px !important; }
+}
+
+// 通用 form-row 响应式（el-form）
+@media (max-width: #{$bp-mobile}) {
+  .el-form-item {
+    margin-bottom: 12px !important;
+  }
+}
+
+// 通用 card 网格响应式
+@media (max-width: #{$bp-tablet}) {
+  .card-grid, .grid-cards, .project-grid {
+    grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+@media (max-width: #{$bp-mobile}) {
+  .card-grid, .grid-cards, .project-grid {
+    grid-template-columns: 1fr !important;
+  }
+}

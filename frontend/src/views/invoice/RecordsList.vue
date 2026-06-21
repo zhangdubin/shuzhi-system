@@ -1,0 +1,1010 @@
+<script setup lang="ts">
+/**
+ * 识别记录 tab（R8.14 严格 1:1 复刻 design/invoice-ocr-records.html）
+ * - 高级筛选（filter-panel：5 个 field：关键词/类型/销售方/合同/金额）
+ * - status-tabs 状态切换（6 个标签：全部/待核验/已识别/已入账/已关联合同/已归档/已剔除）
+ * - rec-table 表格（13 列：checkbox/发票号/类型/销售方/金额/税率/开票日期/上传时间/上传人/关联/置信度/状态/操作）
+ * - rec-foot 分页
+ * - 设计稿示例 9 行数据
+ */
+import { ref, computed, onMounted, watch } from 'vue'
+import { fmtConfidence, confToPct } from '@/utils/format'
+import { useRouter } from 'vue-router'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { invoiceOcrApi, type OcrResult } from '@/api/modules'
+
+const router = useRouter()
+
+// ============================================================
+// 状态 tabs（design: .status-tabs，数据从 API 拉）
+// ============================================================
+// tab 的 key 与后端 statusCounts 对应：'all' 是总数，其余是 verifyStatus 原始值
+const statusTabs = ref([
+  { key: 'all',         label: '全部',         count: 0 },
+  { key: 'pending',     label: '待核验',       count: 0 },
+  { key: 'verified',    label: '已核验',       count: 0 },
+  { key: 'rejected',    label: '已驳回',       count: 0 },
+  { key: 'failed',      label: '识别失败',     count: 0 },
+  { key: 'submitted',   label: '已入账',       count: 0 },
+])
+const activeStatus = ref('all')
+
+// 批量入账：弹 ElMessageBox.prompt 收集事由
+async function doBatchBook() {
+  const ids = records.value.filter(r => r.selected).map(r => r.id)
+  if (ids.length === 0) { ElMessage.warning('请先勾选发票'); return }
+  let reason = ''
+  try {
+    const r: any = await ElMessageBox.prompt(
+      '请填写本次批量入账事由（将写入销售费用描述，便于审计）：',
+      '📥 批量入账 ' + ids.length + ' 张',
+      {
+        inputType: 'textarea',
+        inputPlaceholder: '例如：2026 年 6 月 SaaS 服务采购 / 办公用品报销 / 客户拜访差旅',
+        inputValidator: (v: string) => (v && v.trim() ? true : '事由不能为空'),
+        confirmButtonText: '确认入账',
+        cancelButtonText: '取消',
+        customClass: 'book-reason-box',
+      },
+    )
+    reason = (r?.value || '').trim()
+  } catch (e: any) {
+    // 用户点取消 / 关闭 → 静默
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error('入账弹框异常：' + (e?.message || '未知'))
+    return
+  }
+  try {
+    const resp: any = await invoiceOcrApi.batchSubmit(ids, reason)
+    ElMessage.success(`已入账 ${resp?.data?.updated ?? ids.length} 张，并已生成销售费用占位`)
+    await _loadRecords()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map((d: any) => `${d.loc?.slice(-1)[0] || ''}: ${d.msg || ''}`).join('；')
+      : (detail || e?.message || '未知错误')
+    ElMessage.error('批量入账失败：' + msg)
+  }
+}
+
+// 从 list 接口的 statusCounts 同步更新
+// 优先用 status:* 维度（新后端返回的 status 维度的数量），
+// fallback 到 verify:* 或平铺 key
+function _syncStatusCounts(r: any) {
+  if (!r || !r.statusCounts) return
+  const m = r.statusCounts as Record<string, number>
+  for (const t of statusTabs.value) {
+    t.count = m[`status:${t.key}`] ?? m[`verify:${t.key}`] ?? m[t.key] ?? 0
+  }
+}
+
+// ============================================================
+// 高级筛选（design: .filter-panel）
+// ============================================================
+const filters = ref({
+  keyword: '',
+  type: '',
+  seller: '',
+  contract: '',
+  amountMin: '',
+  amountMax: '',
+  dateRange: ['', ''],
+})
+
+// ============================================================
+// 表格数据（设计稿示例 9 行）
+// ============================================================
+interface RecordRow {
+  id: number
+  invoiceNo: string
+  type: '电子普通' | '数电发票' | '专用发票' | '通用发票'
+  typeColor: string
+  seller: string
+  amount: number
+  taxRate: string
+  issueDate: string
+  uploadTime: string
+  uploader: string
+  link: { ht?: string; pj?: string; rv?: string }
+  confidence: number
+  status: 'pending_verify' | 'success' | 'verified' | 'warning' | 'danger'
+  statusLabel: string
+  invStatus: string  // 后端原始 status (uploaded/recognized/pending_verify/verified/submitted/...)
+  verifyStatus: 'pending' | 'verified' | 'rejected'
+  selected: boolean
+}
+
+const records = ref<RecordRow[]>([])
+const totalRecords = ref(0)
+
+// 可配置列（localStorage 持久化用户偏好）
+const ALL_COLUMNS = [
+  { key: 'invoiceNo', label: '发票号',       required: true },
+  { key: 'type',      label: '类型',         required: true },
+  { key: 'seller',    label: '销售方',       required: true },
+  { key: 'amount',    label: '金额',         required: true },
+  { key: 'taxRate',   label: '税率',         required: false },
+  { key: 'issueDate', label: '开票日期',     required: false },
+  { key: 'uploadTime',label: '上传时间',     required: false },
+  { key: 'uploader',  label: '上传人',       required: false },
+  { key: 'link',      label: '关联',         required: false },
+  { key: 'confidence',label: '置信度',       required: false },
+  { key: 'status',    label: '状态',         required: true },
+  { key: 'action',    label: '操作',         required: true },
+]
+
+function _loadColumnConfig() {
+  try {
+    const saved = localStorage.getItem('records-columns')
+    if (saved) {
+      const keys = JSON.parse(saved) as string[]
+      visibleColumns.value = ALL_COLUMNS.filter(c => keys.includes(c.key))
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function _saveColumnConfig() {
+  try {
+    const keys = visibleColumns.value.map(c => c.key)
+    localStorage.setItem('records-columns', JSON.stringify(keys))
+  } catch (e) { /* ignore */ }
+}
+
+const visibleColumns = ref(ALL_COLUMNS.filter(c => c.required))  // 默认只显示必选列
+const columnDialogVisible = ref(false)
+
+function isColumnVisible(key: string) {
+  return visibleColumns.value.some(c => c.key === key)
+}
+
+function toggleColumn(key: string) {
+  const col = ALL_COLUMNS.find(c => c.key === key)
+  if (!col || col.required) return  // 必选列不能取消
+  const idx = visibleColumns.value.findIndex(c => c.key === key)
+  if (idx >= 0) visibleColumns.value.splice(idx, 1)
+  else visibleColumns.value.push(col)
+  _saveColumnConfig()
+}
+
+function resetColumns() {
+  visibleColumns.value = ALL_COLUMNS.filter(c => c.required)
+  _saveColumnConfig()
+  ElMessage.success('已恢复默认列')
+}
+const loading = ref(false)
+const currentPage = ref(1)
+const pageSize = ref(10)
+
+const typeColorMap: Record<string, string> = {
+  '电子普通发票': 'primary', '电子普通': 'primary',
+  '数电发票': 'purple',
+  '增值税专用发票': 'success', '专用发票': 'success',
+  '通用机打发票': 'info', '通用发票': 'info',
+  '电子专用发票': 'success',
+}
+
+function _mapRecord(inv: any): RecordRow {
+  // 业务状态机：
+  //   status (后台) = pending_verify / verified / submitted / failed / rejected
+  //   verifyStatus (人工核验) = pending / verified / rejected
+  // 显示规则：
+  //   verifyStatus=pending -> 待核验
+  //   status=submitted -> 已入账
+  //   status=verified + verifyStatus=verified -> 已核验
+  //   status=pending_verify -> 识别中
+  //   status=failed -> 需复核
+  let status: RecordRow['status'] = 'success'
+  let statusLabel = '已识别'
+  const vs = inv.verifyStatus || inv.verify_status || 'pending'
+  if (inv.status === 'submitted') { status = 'verified'; statusLabel = '已入账' }
+  else if (vs === 'rejected') { status = 'danger'; statusLabel = '已驳回' }
+  else if (vs === 'verified') { status = 'success'; statusLabel = '已核验' }
+  else if (inv.status === 'pending_verify') { status = 'pending_verify'; statusLabel = '识别中' }
+  else if (inv.status === 'failed') { status = 'danger'; statusLabel = '需复核' }
+  else if (vs === 'pending') { status = 'pending_verify'; statusLabel = '待核验' }
+
+  const taxRatePct = inv.taxRate != null ? Math.round(Number(inv.taxRate) * 100) + '%' : '—'
+  const no = inv.invoiceNo || ''
+  const formattedNo = !no ? '—' : (no.length <= 14 ? no : no.slice(0, 8) + '...' + no.slice(-8))
+  const uploadTime = inv.uploadedAt ? String(inv.uploadedAt).replace('T', ' ').slice(0, 16) : '—'
+
+  return {
+    id: inv.invoiceId,
+    invoiceNo: formattedNo,
+    type: inv.invoiceType || '—',
+    typeColor: typeColorMap[inv.invoiceType] || 'primary',
+    seller: inv.sellerName || '—',
+    amount: Number(inv.totalAmount || 0),
+    taxRate: taxRatePct,
+    issueDate: inv.issueDate || '—',
+    uploadTime,
+    uploader: inv.uploaderName || '—',
+    verifyStatus: inv.verifyStatus || inv.verify_status || 'pending',
+    link: {
+      ht: (inv.relations || []).find((r: any) => r.type === 'contract')?.id
+          ? 'HT-' + (inv.relations || []).find((r: any) => r.type === 'contract').id
+          : undefined,
+      pj: (inv.relations || []).find((r: any) => r.type === 'project')?.id
+          ? 'PRJ-' + (inv.relations || []).find((r: any) => r.type === 'project').id
+          : undefined,
+      rv: (inv.relations || []).find((r: any) => r.type === 'receivable')?.id
+          ? 'HK-' + (inv.relations || []).find((r: any) => r.type === 'receivable').id
+          : undefined,
+    },
+    confidence: Number(inv.confidence || 0),
+    status,
+    statusLabel,
+    // 后端原始 status（与 UI 的 pill status 不同），用于判断"已入账"等业务状态
+    invStatus: inv.status || '',
+    selected: false,
+  }
+}
+
+async function _loadRecords() {
+  loading.value = true
+  try {
+    const apiFilters: any = {}
+    if (filters.value.type) apiFilters.type = filters.value.type
+    if (activeStatus.value !== 'all') apiFilters.status = activeStatus.value
+
+    const r: any = await invoiceOcrApi.records({
+      page: currentPage.value,
+      pageSize: pageSize.value,
+      keyword: filters.value.keyword || '',
+      filters: apiFilters,
+    })
+    if (r && Array.isArray(r.list)) {
+      records.value = r.list.map(_mapRecord)
+      totalRecords.value = r.total || 0
+      _syncStatusCounts(r)
+    } else {
+      records.value = []
+      totalRecords.value = 0
+    }
+  } catch (e) {
+    console.warn('[loadRecords] failed', e)
+    records.value = []
+    totalRecords.value = 0
+  } finally {
+    loading.value = false
+  }
+}
+
+// 过滤/分页全部走 API，无需本地 computed
+
+// 全选
+const allSelected = computed({
+  get: () => records.value.every(r => r.selected),
+  set: (v) => { records.value.forEach(r => r.selected = v) },
+})
+
+// 工具
+function confClass(c: number) {
+  if (c >= 0.9) return 'high'
+  if (c >= 0.7) return 'mid'
+  return 'low'
+}
+function statusPillClass(s: string) {
+  if (s === 'pending_verify') return 'warning'
+  if (s === 'success') return 'success'
+  if (s === 'verified') return 'info'
+  if (s === 'warning') return 'warning'
+  if (s === 'danger') return 'danger'
+  return 'gray'
+}
+function applyFilters() { ElMessage.success('已应用筛选') }
+function resetFilters() {
+  filters.value = { keyword: '', type: '', seller: '', contract: '', amountMin: '', amountMax: '', dateRange: ['', ''] }
+  ElMessage.info('已重置筛选')
+}
+function goDetail(row: RecordRow) {
+  router.push({ name: 'InvoiceOcrDetail', params: { id: String(row.id) } })
+}
+async function reviewRow(row: RecordRow) {
+  try {
+    await invoiceOcrApi.update(row.id, { verifyStatus: 'verified', verifySource: 'manual' })
+    ElMessage.success(`已核验 ${row.invoiceNo}`)
+    await _loadRecords()  // 重新拉，verifyStatus 已落库
+  } catch (e: any) {
+    ElMessage.error('核验失败：' + (e?.message || '未知错误'))
+  }
+}
+
+async function unverifyRow(row: RecordRow) {
+  try {
+    await invoiceOcrApi.update(row.id, { verifyStatus: 'pending' })
+    ElMessage.success(`已取消核验 ${row.invoiceNo}`)
+    await _loadRecords()
+  } catch (e: any) {
+    ElMessage.error('取消核验失败：' + (e?.message || '未知错误'))
+  }
+}
+
+/**
+ * 单张入账：弹框输入事由 → /invoice/ocr/submit → 重新拉列表
+ * 业务规则：仅 verifyStatus=verified 可入账；提交后 status=submitted
+ */
+async function bookRow(row: RecordRow) {
+  let reason = ''
+  try {
+    const r: any = await ElMessageBox.prompt(
+      '请填写本次入账事由（将写入销售费用描述，便于审计）：',
+      '📥 入账 ' + (row.invoiceNo || ''),
+      {
+        inputType: 'textarea',
+        inputPlaceholder: '例如：2026 年 6 月 SaaS 服务采购 / 办公用品报销 / 客户拜访差旅',
+        inputValidator: (v: string) => (v && v.trim() ? true : '事由不能为空'),
+        confirmButtonText: '确认入账',
+        cancelButtonText: '取消',
+        customClass: 'book-reason-box',
+      },
+    )
+    reason = (r?.value || '').trim()
+  } catch (e: any) {
+    // 用户点取消 / 关闭 → 静默
+    if (e === 'cancel' || e === 'close') return
+    ElMessage.error('入账弹框异常：' + (e?.message || '未知'))
+    return
+  }
+  try {
+    const resp: any = await invoiceOcrApi.submit(row.id, reason)
+    ElMessage.success(`已入账 ${row.invoiceNo || row.code || ''}，并已生成销售费用占位`)
+    await _loadRecords()
+  } catch (e: any) {
+    const detail = e?.response?.data?.detail
+    const msg = Array.isArray(detail)
+      ? detail.map((d: any) => `${d.loc?.slice(-1)[0] || ''}: ${d.msg || ''}`).join('；')
+      : (detail || e?.message || '未知错误')
+    ElMessage.error('入账失败：' + msg)
+  }
+}
+async function batchAction(action: string) {
+  const ids = records.value.filter(r => r.selected).map(r => r.id)
+  const count = ids.length
+  if (count === 0) {
+    ElMessage.warning('请先勾选发票')
+    return
+  }
+  if (action === '批量删除') {
+    doBatchDelete()
+    return
+  }
+  if (action === '批量核验') {
+    try {
+      await Promise.all(ids.map(id => invoiceOcrApi.update(id, { verifyStatus: 'verified', verifySource: 'manual' })))
+      ElMessage.success(`已核验 ${count} 张`)
+      await _loadRecords()
+    } catch (e: any) {
+      ElMessage.error('批量核验失败：' + (e?.message || '未知错误'))
+    }
+    return
+  }
+  if (action === '批量取消核验') {
+    try {
+      await Promise.all(ids.map(id => invoiceOcrApi.update(id, { verifyStatus: 'pending' })))
+      ElMessage.success(`已取消核验 ${count} 张`)
+      await _loadRecords()
+    } catch (e: any) {
+      ElMessage.error('批量取消核验失败：' + (e?.message || '未知错误'))
+    }
+    return
+  }
+  if (action === '批量入账') {
+    doBatchBook()
+    return
+  }
+  if (action === '导出 Excel') {
+    exportExcel(ids)
+    return
+  }
+}
+
+function exportExcel(ids: number[]) {
+  // 简单 CSV 导出
+  const rows = records.value.filter(r => ids.includes(r.id))
+  const headers = ['发票号', '类型', '销售方', '金额', '税率', '开票日期', '上传时间', '上传人', '状态']
+  const lines = [headers.join(',')]
+  for (const r of rows) {
+    lines.push([
+      r.invoiceNo, r.type, r.seller, r.amount, r.taxRate, r.issueDate, r.uploadTime, r.uploader, r.statusLabel
+    ].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+
+  }
+  const csv = '\ufeff' + lines.join('\n')  // BOM 兼容 Excel
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `invoices_${new Date().toISOString().slice(0,10)}.csv`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出 ${rows.length} 张`)
+}
+
+const deleteDialogVisible = ref(false)
+const deleting = ref(false)
+
+function doBatchDelete() {
+  const ids = records.value.filter(r => r.selected).map(r => r.id)
+  if (ids.length === 0) {
+    ElMessage.warning('请先勾选要删除的发票')
+    return
+  }
+  deleteDialogVisible.value = true
+}
+
+async function confirmBatchDelete() {
+  const ids = records.value.filter(r => r.selected).map(r => r.id)
+  if (ids.length === 0) {
+    ElMessage.warning('请先勾选要删除的发票')
+    return
+  }
+  deleting.value = true
+  try {
+    const r: any = await invoiceOcrApi.batchDelete(ids)
+    ElMessage.success(r.message || `已删除 ${r.deleted} 张`)
+    deleteDialogVisible.value = false
+    await _loadRecords()
+  } catch (e: any) {
+    ElMessage.error('删除失败：' + (e?.message || '未知错误'))
+  } finally {
+    deleting.value = false
+  }
+}
+onMounted(() => {
+  _loadColumnConfig()
+  _loadRecords()
+})
+watch(() => [activeStatus.value, currentPage.value, pageSize.value, filters.value.keyword, filters.value.type], () => {
+  currentPage.value = 1
+  _loadRecords()
+})
+</script>
+
+<template>
+  <div class="records-page">
+    <!-- 高级筛选（design: .filter-panel） -->
+    <div class="page-card filter-panel fade-up">
+      <div class="filter-head">
+        <h3>🔍 高级筛选</h3>
+        <a class="filter-toggle">收起 ∧</a>
+      </div>
+      <div class="filter-body">
+        <div class="filter-grid">
+          <div class="field">
+            <label>关键词</label>
+            <input v-model="filters.keyword" type="text" placeholder="发票号 / 文件名 / 客户..." />
+          </div>
+          <div class="field">
+            <label>发票类型</label>
+            <select v-model="filters.type">
+              <option value="">全部类型</option>
+              <option value="电子普通">电子普通发票</option>
+              <option value="数电发票">数电发票</option>
+              <option value="专用发票">专用发票</option>
+              <option value="通用发票">通用发票</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>销售方</label>
+            <select v-model="filters.seller">
+              <option value="">全部销售方</option>
+              <option>上海数智信息技术有限公司</option>
+              <option>万象科技有限公司</option>
+              <option>北辰实业集团</option>
+              <option>用友网络科技股份有限公司</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>关联合同</label>
+            <select v-model="filters.contract">
+              <option value="">全部合同</option>
+              <option value="linked">已关联</option>
+              <option value="unlinked">未关联</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>金额范围</label>
+            <div class="range-input">
+              <input v-model="filters.amountMin" type="text" placeholder="¥ 最小" />
+              <span class="sep">—</span>
+              <input v-model="filters.amountMax" type="text" placeholder="¥ 最大" />
+            </div>
+          </div>
+          <div class="field">
+            <label>开票日期</label>
+            <div class="range-input">
+              <input type="text" placeholder="开始" />
+              <span class="sep">—</span>
+              <input type="text" placeholder="结束" />
+            </div>
+          </div>
+        </div>
+        <div class="filter-actions">
+          <button class="btn btn-primary btn-sm" @click="applyFilters">应用筛选</button>
+          <button class="btn btn-ghost btn-sm" @click="resetFilters">重置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 状态 tabs（design: .status-tabs） -->
+    <div class="status-tabs fade-up">
+      <a
+        v-for="t in statusTabs"
+        :key="t.key"
+        href="javascript:void(0)"
+        :class="['status-tab', { active: activeStatus === t.key }]"
+        @click.prevent="activeStatus = t.key"
+      >
+        {{ t.label }} <span class="num">{{ t.count }}</span>
+      </a>
+    </div>
+
+    <!-- 识别记录表（design: .queue-card > .rec-table） -->
+    <div class="page-card rec-card fade-up">
+      <div class="toolbar-row">
+        <span class="rec-title">识别记录</span>
+        <div class="actions">
+          <button class="btn btn-outline btn-sm" @click="columnDialogVisible = true">⚙ 列设置</button>
+          <button class="btn btn-outline btn-sm" @click="batchAction('批量核验')">✓ 批量核验</button>
+          <button class="btn btn-outline btn-sm" @click="batchAction('批量取消核验')">↩ 批量取消核验</button>
+          <button class="btn btn-outline btn-sm" @click="batchAction('批量入账')">📥 批量入账</button>
+          <button class="btn btn-outline btn-sm" @click="batchAction('导出 Excel')">⬇ 导出 Excel</button>
+          <button class="btn btn-danger btn-sm" @click="doBatchDelete">🗑 批量删除</button>
+        </div>
+      </div>
+
+      <table class="rec-table">
+        <thead>
+          <tr>
+            <th style="width: 36px"><input type="checkbox" v-model="allSelected" /></th>
+            <th v-if="isColumnVisible('invoiceNo')">发票号</th>
+            <th v-if="isColumnVisible('type')">类型</th>
+            <th v-if="isColumnVisible('seller')">销售方</th>
+            <th v-if="isColumnVisible('amount')" style="text-align: right">金额</th>
+            <th v-if="isColumnVisible('taxRate')">税率</th>
+            <th v-if="isColumnVisible('issueDate')">开票日期</th>
+            <th v-if="isColumnVisible('uploadTime')">上传时间</th>
+            <th v-if="isColumnVisible('uploader')">上传人</th>
+            <th v-if="isColumnVisible('link')">关联</th>
+            <th v-if="isColumnVisible('confidence')">置信度</th>
+            <th v-if="isColumnVisible('status')" style="min-width: 90px; white-space: nowrap">状态</th>
+            <th v-if="isColumnVisible('action')" style="min-width: 150px; white-space: nowrap">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="r in records" :key="r.id" :class="{ selected: r.selected }">
+            <td><input type="checkbox" v-model="r.selected" /></td>
+            <td v-if="isColumnVisible('invoiceNo')"><span class="cell-mono">{{ r.invoiceNo }}</span></td>
+            <td v-if="isColumnVisible('type')"><span :class="['tag', `tag-${r.typeColor}`]">{{ r.type }}</span></td>
+            <td v-if="isColumnVisible('seller')">{{ r.seller }}</td>
+            <td v-if="isColumnVisible('amount')" class="cell-amount">¥ {{ Number(r.amount || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) }}</td>
+            <td v-if="isColumnVisible('taxRate')">{{ r.taxRate }}</td>
+            <td v-if="isColumnVisible('issueDate')">{{ r.issueDate }}</td>
+            <td v-if="isColumnVisible('uploadTime')">{{ r.uploadTime }}</td>
+            <td v-if="isColumnVisible('uploader')">{{ r.uploader }}</td>
+            <td v-if="isColumnVisible('link')">
+              <div class="link-icons">
+                <span v-if="r.link.ht"  class="li ht"     :title="`合同 ${r.link.ht}`">▦</span>
+                <span v-else              class="li ht dim" title="无关联合同">▦</span>
+                <span v-if="r.link.pj"  class="li pj"     :title="`项目 ${r.link.pj}`">▥</span>
+                <span v-else              class="li pj dim" title="无关联项目">▥</span>
+                <span v-if="r.link.rv"  class="li rv"     :title="`回款 ${r.link.rv}`">▩</span>
+                <span v-else              class="li rv dim" title="无关联回款">▩</span>
+              </div>
+            </td>
+            <td v-if="isColumnVisible('confidence')">
+              <div :class="['conf', confClass(r.confidence)]">
+                <div class="conf-bar"><div class="fill" :style="{ width: confToPct(r.confidence) + '%' }"></div></div>
+                <span class="v">{{ fmtConfidence(r.confidence) }}</span>
+              </div>
+            </td>
+            <td v-if="isColumnVisible('status')" style="white-space: nowrap"><span :class="['s-pill', statusPillClass(r.status)]">{{ r.statusLabel }}</span></td>
+            <td v-if="isColumnVisible('action')" style="white-space: nowrap; text-align: right">
+              <div class="row-actions">
+                <!-- 操作按钮：按 业务生命周期 状态分支 -->
+                <!-- 已入账 (status=submitted)：只读，不允许再核验/取消核验 -->
+                <template v-if="r.invStatus === 'submitted'">
+                  <a @click="goDetail(r)">详情</a>
+                </template>
+                <!-- 已核验 (verifyStatus=verified)：可入账 / 取消核验 -->
+                <template v-else-if="r.verifyStatus === 'verified'">
+                  <a class="op-primary" @click="bookRow(r)">入账</a>
+                  <a @click="unverifyRow(r)">取消</a>
+                  <a @click="goDetail(r)">详情</a>
+                </template>
+                <!-- 待核验 / 已驳回：核验 -->
+                <template v-else>
+                  <a class="op-primary" @click="reviewRow(r)">核验</a>
+                  <a @click="goDetail(r)">详情</a>
+                </template>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+
+      <!-- 分页（design: .rec-foot） -->
+      <div class="rec-foot">
+        <span class="rec-count">共 {{ totalRecords }} 条记录</span>
+        <el-pagination
+          v-model:current-page="currentPage"
+          v-model:page-size="pageSize"
+          :page-sizes="[10, 20, 50]"
+          :total="totalRecords"
+          layout="prev, pager, next, sizes, jumper"
+          background
+          size="small"
+        />
+      </div>
+    </div>
+
+    <!-- 列设置弹窗 -->
+    <el-dialog v-model="columnDialogVisible" title="⚙ 表格列设置" width="480px">
+      <p class="column-hint">勾选要显示的列（必选项不可取消），配置自动保存到本地。</p>
+      <div class="column-checkboxes">
+        <el-checkbox
+          v-for="col in ALL_COLUMNS"
+          :key="col.key"
+          :model-value="isColumnVisible(col.key)"
+          :disabled="col.required"
+          @change="toggleColumn(col.key)"
+        >
+          {{ col.label }}
+          <span v-if="col.required" class="req-tag">必选</span>
+        </el-checkbox>
+      </div>
+      <template #footer>
+        <el-button @click="resetColumns">恢复默认</el-button>
+        <el-button type="primary" @click="columnDialogVisible = false">完成</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 批量删除确认弹窗 -->
+    <el-dialog v-model="deleteDialogVisible" title="🗑 批量删除确认" width="440px">
+      <p>已选 <b class="del-count">{{ records.filter(r => r.selected).length }}</b> 张发票，删除后无法恢复，是否继续？</p>
+      <ul v-if="records.filter(r => r.selected).length > 0" class="del-preview">
+        <li v-for="r in records.filter(r => r.selected).slice(0, 5)" :key="r.id">
+          <span class="mono">{{ r.invoiceNo }}</span>
+          <span class="muted"> · {{ r.seller }}</span>
+        </li>
+        <li v-if="records.filter(r => r.selected).length > 5" class="muted">… 等共 {{ records.filter(r => r.selected).length }} 张</li>
+      </ul>
+      <template #footer>
+        <el-button @click="deleteDialogVisible = false">取消</el-button>
+        <el-button type="danger" :loading="deleting" @click="confirmBatchDelete">确认删除</el-button>
+      </template>
+    </el-dialog>
+  </div>
+</template>
+
+<style lang="scss" scoped>
+@import "@/assets/styles/variables.scss";
+
+.records-page { padding: 0; }
+
+.page-card {
+  background: #fff;
+  border-radius: $radius-md;
+  box-shadow: $shadow-sm;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+/* 高级筛选（design: .filter-panel） */
+.filter-panel {
+  .filter-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid $color-border;
+    h3 { font-size: 14px; font-weight: 600; margin: 0; color: $color-text-primary; }
+    .filter-toggle { font-size: 12px; color: $color-primary; cursor: pointer; }
+  }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 16px;
+    margin-bottom: 16px;
+    @media (max-width: 768px) { grid-template-columns: 1fr; }
+  }
+  .field {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    label {
+      font-size: 11px;
+      color: $color-text-tertiary;
+    }
+    input, select {
+      padding: 6px 10px;
+      border: 1px solid $color-border-strong;
+      border-radius: $radius-sm;
+      font-size: 12px;
+      background: #fff;
+      color: $color-text-primary;
+      &:focus { outline: none; border-color: $color-primary; }
+    }
+  }
+  .range-input {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    input { flex: 1; }
+    .sep { color: $color-text-tertiary; font-size: 11px; }
+  }
+  .filter-actions {
+    display: flex;
+    gap: 8px;
+    padding-top: 12px;
+    border-top: 1px solid $color-border;
+  }
+}
+
+/* 状态 tabs（design: .status-tabs） */
+.status-tabs {
+  display: flex;
+  gap: 4px;
+  background: #fff;
+  padding: 4px;
+  border-radius: $radius-md;
+  box-shadow: $shadow-sm;
+  margin-bottom: 16px;
+  width: fit-content;
+  flex-wrap: wrap;
+}
+.status-tab {
+  padding: 8px 14px;
+  border-radius: $radius-sm;
+  font-size: 13px;
+  color: $color-text-secondary;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  &:hover { background: $color-bg; color: $color-primary; }
+  &.active {
+    background: $color-primary;
+    color: #fff;
+    font-weight: 600;
+    .num { background: rgba(255, 255, 255, 0.2); color: #fff; }
+  }
+  .num {
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: $color-bg;
+    color: $color-text-tertiary;
+    font-size: 11px;
+    font-weight: 500;
+  }
+}
+
+/* 工具栏（design: .toolbar） */
+.toolbar-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  .rec-title { font-size: 14px; font-weight: 600; color: $color-text-primary; }
+  .actions { display: flex; gap: 8px; }
+}
+
+/* 表格（design: .rec-table） */
+.rec-card { padding: 16px; }
+.rec-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+  margin-bottom: 12px;
+  table-layout: auto;
+  th {
+    text-align: left;
+    padding: 10px 8px;
+    background: $color-bg;
+    color: $color-text-tertiary;
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    white-space: nowrap;
+  }
+  td {
+    padding: 10px 8px;
+    border-bottom: 1px solid $color-border;
+    vertical-align: middle;
+  }
+  tr:hover { background: $color-bg; }
+  tr.selected { background: $color-primary-bg; }
+  .cell-mono {
+    font-family: $font-family-mono;
+    color: $color-text-secondary;
+    font-size: 11px;
+  }
+  .cell-amount {
+    font-family: $font-family-mono;
+    font-weight: 600;
+    color: #EF4444;
+    text-align: right;
+  }
+}
+
+/* 类型 tag（design: .tag） */
+.tag {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+  &.tag-primary { background: $color-primary-bg; color: $color-primary; }
+  &.tag-purple  { background: #FAE8FF; color: #86198F; }
+  &.tag-success { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+  &.tag-info    { background: rgba(79, 107, 255, 0.1); color: $color-primary; }
+}
+
+/* 关联图标（design: .link-icons > .li） */
+.link-icons {
+  display: flex;
+  gap: 4px;
+}
+.li {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  cursor: pointer;
+  &.ht { background: rgba(79, 107, 255, 0.1); color: $color-primary; }
+  &.pj { background: rgba(124, 58, 237, 0.1); color: #7C3AED; }
+  &.rv { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+  &.dim { opacity: 0.25; }
+}
+
+/* 置信度柱（design: .conf > .conf-bar > .fill） */
+.conf {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 100px;
+  .conf-bar {
+    flex: 1;
+    height: 6px;
+    background: $color-bg;
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+  .v {
+    font-family: $font-family-mono;
+    font-weight: 600;
+    font-size: 11px;
+    min-width: 36px;
+  }
+  &.high .fill { background: #10B981; }
+  &.high .v    { color: #10B981; }
+  &.mid  .fill { background: #F59E0B; }
+  &.mid  .v    { color: #F59E0B; }
+  &.low  .fill { background: #EF4444; }
+  &.low  .v    { color: #EF4444; }
+}
+
+/* 状态 pill（design: .s-pill） */
+.s-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+  &.success { background: rgba(16, 185, 129, 0.1); color: #10B981; }
+  &.info    { background: rgba(79, 107, 255, 0.1); color: $color-primary; }
+  &.warning { background: rgba(245, 158, 11, 0.1); color: #F59E0B; }
+  &.danger  { background: rgba(239, 68, 68, 0.1); color: #EF4444; }
+  &.gray    { background: $color-bg; color: $color-text-tertiary; }
+}
+
+/* 行操作（design: .row-actions） */
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+  a {
+    font-size: 12px;
+    color: $color-primary;
+    cursor: pointer;
+    font-weight: 500;
+    white-space: nowrap;
+    padding: 2px 4px;
+    border-radius: 4px;
+    transition: all 0.15s;
+    &:hover { text-decoration: underline; background: $color-primary-bg; }
+    &.op-primary { font-weight: 600; color: $color-primary; }
+    &.op-danger  { color: $color-danger; }
+  }
+}
+
+/* 分页（design: .rec-foot） */
+.rec-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: 12px;
+  border-top: 1px solid $color-border;
+  flex-wrap: wrap;
+  gap: 8px;
+  .rec-count { font-size: 12px; color: $color-text-tertiary; }
+  .pagination {
+    display: flex;
+    gap: 4px;
+    align-items: center;
+    .ellipsis { color: $color-text-tertiary; padding: 0 4px; }
+  }
+  .page-size {
+    height: 28px;
+    padding: 0 8px;
+    border: 1px solid $color-border-strong;
+    border-radius: $radius-sm;
+    font-size: 12px;
+    background: #fff;
+    margin-left: 12px;
+  }
+}
+
+/* 按钮（design: .btn variants） */
+.btn {
+  padding: 6px 12px;
+  border-radius: $radius-sm;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s;
+  background: transparent;
+  &.btn-primary {
+    background: $color-primary;
+    color: #fff;
+    &:hover { background: darken($color-primary, 8%); }
+  }
+  &.btn-outline {
+    background: #fff;
+    border-color: $color-border-strong;
+    color: $color-text-primary;
+    &:hover { border-color: $color-primary; color: $color-primary; }
+  }
+  &.btn-ghost {
+    color: $color-text-secondary;
+    &:hover { color: $color-primary; background: $color-primary-bg; }
+  }
+  &.btn-sm { padding: 4px 10px; font-size: 11px; }
+  &.btn-danger {
+    background: #fff;
+    border-color: #fca5a5;
+    color: #ef4444;
+    &:hover { background: #fef2f2; border-color: #ef4444; }
+  }
+}
+
+/* 列设置弹窗 */
+.column-hint { font-size: 12px; color: $color-text-tertiary; margin: 0 0 12px; }
+.column-checkboxes { display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px 16px; }
+.req-tag { font-size: 10px; color: $color-primary; background: rgba(99,102,241,.08); padding: 1px 6px; border-radius: 8px; margin-left: 4px; }
+
+/* 删除确认弹窗 */
+.del-count { color: #ef4444; font-size: 16px; margin: 0 4px; }
+.del-preview { list-style: none; padding: 8px 12px; background: #f8f9fb; border-radius: 6px; max-height: 160px; overflow: auto; margin: 8px 0 0; }
+.del-preview li { font-size: 12px; padding: 2px 0; }
+.del-preview .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; color: $color-text-primary; }
+.del-preview .muted { color: $color-text-tertiary; }
+</style>

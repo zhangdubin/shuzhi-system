@@ -1,0 +1,1378 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>发票识别 · 数智化管理系统</title>
+<link rel="stylesheet" href="./assets/common.css" />
+<style>
+  /* ============================================================
+     invoice-ocr-parent 父页面
+     统一 4 sub-tab 的设计语言：相同 padding / 圆角 / 字号 / 颜色
+     ============================================================ */
+
+  /* sub-tabs 容器 */
+  .sub-tabs {
+    display: flex;
+    gap: 4px;
+    margin: 0 0 16px 0;
+    border-bottom: 1px solid var(--color-border);
+    padding: 0 0 0 4px;
+  }
+  .sub-tabs a {
+    padding: 10px 18px;
+    font-size: 13.5px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    border-bottom: 2px solid transparent;
+    margin-bottom: -1px;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .sub-tabs a:hover { color: var(--color-primary); }
+  .sub-tabs a.active {
+    color: var(--color-primary);
+    border-bottom-color: var(--color-primary);
+    font-weight: 600;
+  }
+  .sub-tabs a .count {
+    margin-left: 4px;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+  }
+  .sub-tabs a.active .count { color: var(--color-primary); }
+
+  /* 工具栏：每页右上角操作 */
+  .ocr-toolbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .ocr-toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .ocr-toolbar-right {
+    display: flex;
+    gap: 8px;
+  }
+
+  /* 通用 page-card（4 tab 共享） */
+  .page-card {
+    background: var(--color-bg-card);
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--color-border);
+    box-shadow: var(--shadow-sm);
+    padding: 20px 22px;
+    margin-bottom: 16px;
+  }
+
+  /* ============================================================
+     SUB-TAB 1: 智能识别
+     ============================================================ */
+  .single-grid {
+    display: grid;
+    grid-template-columns: 1.4fr 1fr;
+    gap: 16px;
+    align-items: start;
+  }
+  @media (max-width: 1100px) { .single-grid { grid-template-columns: 1fr; } }
+
+  .upload-drop {
+    border: 2px dashed var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    padding: 32px 20px;
+    text-align: center;
+    background: var(--color-bg-card);
+    transition: all 0.2s;
+    cursor: pointer;
+  }
+  .upload-drop:hover { border-color: var(--color-primary); background: var(--color-primary-bg); }
+  .upload-drop .ico { font-size: 36px; margin-bottom: 8px; color: var(--color-primary); }
+  .upload-drop h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+  .upload-drop p { font-size: 12.5px; color: var(--color-text-tertiary); margin: 0 0 12px; }
+  .upload-drop .actions {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+  @media (max-width: 768px) { .stats-row { grid-template-columns: repeat(2, 1fr); } }
+  .stat-mini {
+    background: var(--color-bg-card);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--color-border);
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .stat-mini .l { font-size: 11.5px; color: var(--color-text-tertiary); }
+  .stat-mini .v { font-size: 20px; font-weight: 700; color: var(--color-text-primary); font-family: var(--font-mono); }
+  .stat-mini .v .u { font-size: 12px; color: var(--color-text-tertiary); font-weight: 500; margin-left: 2px; }
+
+  .preview-card .preview-img {
+    aspect-ratio: 3/4;
+    background: linear-gradient(135deg, #1E293B 0%, #0F172A 100%);
+    border-radius: var(--radius-md);
+    display: grid;
+    place-items: center;
+    color: rgba(255,255,255,0.4);
+    font-size: 12px;
+    margin-bottom: 12px;
+  }
+  .preview-card .file-name { font-size: 12.5px; color: var(--color-text-secondary); margin-bottom: 12px; }
+  .preview-card .file-name strong { color: var(--color-text-primary); font-family: var(--font-mono); }
+
+  .result-card h3 {
+    font-size: 14px;
+    font-weight: 600;
+    margin: 0 0 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px 16px;
+  }
+  @media (max-width: 640px) { .field-grid { grid-template-columns: 1fr; } }
+  .field-grid .fr { display: flex; flex-direction: column; gap: 4px; }
+  .field-grid .fr.full { grid-column: 1 / -1; }
+  .field-grid .fr .l { font-size: 11.5px; color: var(--color-text-tertiary); }
+  .field-grid .fr .v { font-size: 13.5px; font-weight: 500; color: var(--color-text-primary); }
+  .field-grid .fr .v.mono { font-family: var(--font-mono); color: var(--color-primary); }
+
+  .amount-display {
+    background: linear-gradient(135deg, var(--color-primary-bg) 0%, rgba(124,58,237,0.05) 100%);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 12px;
+  }
+  .amount-display .l { font-size: 12.5px; color: var(--color-text-secondary); }
+  .amount-display .v { font-size: 22px; font-weight: 700; color: var(--color-primary); font-family: var(--font-mono); }
+  .amount-display .v .tax { font-size: 11px; color: var(--color-text-tertiary); margin-left: 6px; font-weight: 400; }
+
+  /* ============================================================
+     SUB-TAB 2: 批量上传
+     ============================================================ */
+  .tpl-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .tpl-chip {
+    padding: 6px 14px;
+    border: 1.5px solid var(--color-border);
+    border-radius: 9999px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    background: #fff;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tpl-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .tpl-chip.active {
+    background: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+  }
+
+  .drop-zone {
+    border: 2px dashed var(--color-border-strong);
+    border-radius: var(--radius-lg);
+    padding: 32px 20px;
+    text-align: center;
+    background: var(--color-bg-card);
+    margin-bottom: 16px;
+  }
+  .drop-zone .ico { font-size: 36px; color: var(--color-primary); margin-bottom: 8px; }
+  .drop-zone h3 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+  .drop-zone p { font-size: 12.5px; color: var(--color-text-tertiary); margin: 0 0 12px; }
+  .drop-zone .buttons {
+    display: flex;
+    justify-content: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+  }
+  .drop-zone .hints {
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    font-size: 11px;
+    color: var(--color-text-tertiary);
+    flex-wrap: wrap;
+  }
+  .drop-zone .hints span::before { content: '✓ '; color: var(--color-success); }
+
+  /* 进度总览 */
+  .batch-summary {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 768px) { .batch-summary { grid-template-columns: repeat(2, 1fr); } }
+
+  /* 队列表格 */
+  .queue-card .queue-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .queue-card .queue-head h3 { font-size: 14px; font-weight: 600; margin: 0; }
+  .queue-card .queue-head .total { font-size: 12px; color: var(--color-text-tertiary); }
+
+  .queue-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  .queue-table th {
+    background: var(--color-bg);
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .queue-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+    color: var(--color-text-primary);
+  }
+  .queue-table tr:hover { background: var(--color-bg); }
+
+  .file-thumb {
+    width: 40px; height: 48px;
+    background: linear-gradient(135deg, #475569 0%, #1E293B 100%);
+    color: #fff;
+    border-radius: 4px;
+    display: grid;
+    place-items: center;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .file-thumb.pdf { background: linear-gradient(135deg, #DC2626 0%, #991B1B 100%); }
+  .file-thumb.img { background: linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%); }
+
+  .progress {
+    width: 80px; height: 6px;
+    background: var(--color-bg);
+    border-radius: 3px;
+    overflow: hidden;
+    display: inline-block;
+    margin-right: 6px;
+    vertical-align: middle;
+  }
+  .progress .bar {
+    height: 100%;
+    background: var(--gradient-brand);
+    border-radius: 3px;
+    transition: width 0.3s;
+  }
+
+  /* ============================================================
+     SUB-TAB 3: 识别记录
+     ============================================================ */
+  .filter-panel { /* 复用 common.css */ }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px 16px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 900px) { .filter-grid { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 640px) { .filter-grid { grid-template-columns: 1fr; } }
+  .filter-grid .field {
+    display: flex; flex-direction: column; gap: 4px;
+  }
+  .filter-grid .field label { font-size: 11px; color: var(--color-text-tertiary); }
+  .filter-grid .field input, .filter-grid .field select {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    background: #fff;
+  }
+  .filter-grid .range {
+    display: flex; align-items: center; gap: 4px;
+  }
+  .filter-grid .range .sep { color: var(--color-text-tertiary); font-size: 11px; }
+  .filter-grid .range input { flex: 1; min-width: 0; }
+
+  /* status-tabs（design: 蓝紫胶囊） */
+  .status-tabs {
+    display: flex;
+    gap: 4px;
+    background: #fff;
+    padding: 4px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+    margin-bottom: 16px;
+    width: fit-content;
+    flex-wrap: wrap;
+  }
+  .status-tabs a {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  .status-tabs a:hover { background: var(--color-bg); color: var(--color-primary); }
+  .status-tabs a.active {
+    background: var(--color-primary);
+    color: #fff;
+    font-weight: 600;
+  }
+  .status-tabs a .num {
+    margin-left: 4px;
+    padding: 1px 6px;
+    border-radius: 8px;
+    background: var(--color-bg);
+    color: var(--color-text-tertiary);
+    font-size: 11px;
+  }
+  .status-tabs a.active .num {
+    background: rgba(255,255,255,0.2);
+    color: #fff;
+  }
+
+  .rec-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .rec-table th {
+    background: var(--color-bg);
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .rec-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rec-table tr:hover { background: var(--color-bg); }
+  .rec-table tr.selected { background: var(--color-primary-bg); }
+  .cell-mono { font-family: var(--font-mono); color: var(--color-text-secondary); }
+  .cell-amount { font-family: var(--font-mono); font-weight: 600; color: #EF4444; }
+
+  .link-icons { display: flex; gap: 4px; }
+  .link-icons .li {
+    width: 18px; height: 18px;
+    border-radius: 4px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+  }
+  .link-icons .li.ht { background: rgba(79,107,255,0.1); color: var(--color-primary); }
+  .link-icons .li.pj { background: rgba(124,58,237,0.1); color: #7C3AED; }
+  .link-icons .li.rv { background: rgba(16,185,129,0.1); color: #10B981; }
+  .link-icons .li.dim { opacity: 0.25; }
+
+  .conf {
+    display: flex; align-items: center; gap: 6px;
+    min-width: 100px;
+  }
+  .conf .conf-bar { flex: 1; height: 6px; background: var(--color-bg); border-radius: 3px; overflow: hidden; }
+  .conf .fill { height: 100%; border-radius: 3px; }
+  .conf .v { font-family: var(--font-mono); font-weight: 600; font-size: 11px; min-width: 36px; }
+  .conf.high .fill { background: #10B981; }
+  .conf.high .v { color: #10B981; }
+  .conf.mid  .fill { background: #F59E0B; }
+  .conf.mid  .v { color: #F59E0B; }
+  .conf.low  .fill { background: #EF4444; }
+  .conf.low  .v { color: #EF4444; }
+
+  .s-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+    white-space: nowrap;
+  }
+  .s-pill.success { background: rgba(16,185,129,0.1); color: #10B981; }
+  .s-pill.info    { background: rgba(79,107,255,0.1); color: var(--color-primary); }
+  .s-pill.warning { background: rgba(245,158,11,0.1); color: #F59E0B; }
+  .s-pill.danger  { background: rgba(239,68,68,0.1); color: #EF4444; }
+  .s-pill.gray    { background: var(--color-bg); color: var(--color-text-tertiary); }
+
+  .row-actions { display: flex; gap: 12px; }
+  .row-actions a {
+    font-size: 12px;
+    color: var(--color-primary);
+    cursor: pointer;
+    font-weight: 500;
+  }
+
+  .rec-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border);
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .rec-foot .count { font-size: 12px; color: var(--color-text-tertiary); }
+  .pagination { display: flex; gap: 4px; align-items: center; }
+
+  /* ============================================================
+     SUB-TAB 4: 查验真伪
+     ============================================================ */
+  .verify-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 1100px) { .verify-stats { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px)  { .verify-stats { grid-template-columns: 1fr; } }
+
+  .risk-card {
+    background: rgba(239,68,68,0.04);
+    border: 1px solid rgba(239,68,68,0.2);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+    margin-bottom: 16px;
+  }
+  .risk-card .head {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 8px;
+  }
+  .risk-card .head .ico {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: rgba(239,68,68,0.15);
+    color: #EF4444;
+    display: grid; place-items: center;
+    font-weight: 700;
+  }
+  .risk-card .head .t { font-size: 14px; font-weight: 600; color: #B91C1C; }
+  .risk-card .body .row {
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    padding: 4px 0;
+  }
+  .risk-card .body .row strong {
+    font-family: var(--font-mono);
+    color: #B91C1C;
+    margin: 0 4px;
+  }
+
+  .verify-form-card .form-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+    gap: 12px;
+  }
+  .verify-form-card .form-head h3 {
+    font-size: 15px; font-weight: 600; margin: 0 0 4px;
+  }
+  .verify-form-card .form-head .sub {
+    font-size: 12px; color: var(--color-text-tertiary);
+  }
+  .verify-form-card .form-head .head-right {
+    display: flex; gap: 12px; align-items: center; flex-wrap: wrap;
+  }
+
+  .verify-tabs {
+    display: flex; gap: 4px;
+    background: var(--color-bg);
+    border-radius: var(--radius-sm);
+    padding: 3px;
+  }
+  .verify-tabs a {
+    padding: 5px 12px;
+    border-radius: 4px;
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .verify-tabs a.active {
+    background: #fff;
+    color: var(--color-primary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  }
+  .badge-connected {
+    background: rgba(16,185,129,0.1);
+    color: #10B981;
+    padding: 4px 10px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+
+  .verify-form-row {
+    display: grid;
+    grid-template-columns: repeat(6, 1fr);
+    gap: 12px;
+  }
+  @media (max-width: 1100px) { .verify-form-row { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px)  { .verify-form-row { grid-template-columns: 1fr; } }
+  .verify-form-row .field { display: flex; flex-direction: column; gap: 4px; }
+  .verify-form-row .field label {
+    font-size: 11px; color: var(--color-text-tertiary);
+  }
+  .verify-form-row .field label .req { color: #EF4444; }
+  .verify-form-row .field label .opt { color: var(--color-text-tertiary); }
+  .verify-form-row .field input, .verify-form-row .field select {
+    height: 36px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    background: #fff;
+  }
+  .verify-form-row .btn-field { display: flex; flex-direction: column; justify-content: flex-end; }
+
+  .verify-form-card .form-hint {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px solid var(--color-border);
+    font-size: 11.5px;
+    color: var(--color-text-tertiary);
+  }
+
+  .verify-result {
+    background: #fff;
+    border: 1px solid rgba(16,185,129,0.3);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .verify-result .vr-top {
+    display: flex; align-items: center; gap: 12px;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .verify-result .vr-top .vr-icon {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: rgba(16,185,129,0.12);
+    color: #10B981;
+    display: grid; place-items: center;
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .verify-result .vr-top .vr-title {
+    font-size: 15px; font-weight: 600; color: #10B981;
+  }
+  .verify-result .vr-top .vr-sub {
+    font-size: 11.5px; color: var(--color-text-tertiary); margin-top: 2px;
+  }
+  .verify-result .vr-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px 16px;
+    margin-top: 14px;
+  }
+  @media (max-width: 900px) { .verify-result .vr-grid { grid-template-columns: repeat(2, 1fr); } }
+  .verify-result .vr-item .l { font-size: 11px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+  .verify-result .vr-item .v { font-size: 13.5px; font-weight: 600; color: var(--color-text-primary); }
+  .verify-result .vr-item .v.mono { font-family: var(--font-mono); }
+
+  .verify-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .verify-table th {
+    background: var(--color-bg);
+    text-align: left;
+    padding: 10px 12px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  .verify-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .verify-table tr:hover { background: var(--color-bg); }
+
+  .v-pill {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .v-pill.success { background: rgba(16,185,129,0.1); color: #10B981; }
+  .v-pill.danger  { background: rgba(239,68,68,0.1); color: #EF4444; }
+  .v-pill.warning { background: rgba(245,158,11,0.1); color: #F59E0B; }
+
+  /* 工具栏搜索 */
+  .search-row {
+    display: flex; gap: 8px; align-items: center;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .search-input {
+    height: 32px;
+    padding: 0 12px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    background: #fff;
+  }
+  .search-input.md { width: 240px; }
+  .select-sm {
+    height: 32px;
+    padding: 0 10px;
+    border: 1px solid var(--color-border-strong);
+    border-radius: var(--radius-sm);
+    font-size: 12px;
+    background: #fff;
+  }
+
+  /* 隐藏非 active tab（demo 用） */
+  .ocr-sub { display: none; }
+  .ocr-sub.active { display: block; animation: fadeUp 0.3s ease-out; }
+  @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+</style>
+</head>
+<body>
+
+<div class="layout">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智化管理系统</span>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-group-title">总览</div>
+      <a href="dashboard.html"><span class="nav-icon">▦</span><span>工作台</span></a>
+
+      <div class="nav-group-title">财务</div>
+      <a href="invoice-ocr-parent.html" class="active"><span class="nav-icon">▤</span><span>发票识别</span></a>
+      <a href="invoice-template.html"><span class="nav-icon">▥</span><span>发票模板</span></a>
+      <a href="sales-expense.html"><span class="nav-icon">▧</span><span>销售费用</span></a>
+
+      <div class="nav-group-title">业务</div>
+      <a href="project.html"><span class="nav-icon">▩</span><span>项目管理</span></a>
+      <a href="contract.html"><span class="nav-icon">▨</span><span>合同管理</span></a>
+      <a href="receivable.html"><span class="nav-icon">▰</span><span>回款管理</span></a>
+
+      <div class="nav-group-title">智能</div>
+      <a href="ai-center.html"><span class="nav-icon">✦</span><span>AI 中心</span><span class="nav-badge">AI</span></a>
+    </nav>
+    <div class="sidebar-pro">
+      <h4>升级到企业版</h4>
+      <p>解锁 AI 智能识别、批量 OCR、SSO 集成等高级能力</p>
+      <button>立即升级</button>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <main class="main">
+    <!-- 顶栏 -->
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <h1 class="page-title">发票识别</h1>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon" title="搜索">⌕</div>
+        <div class="topbar-icon" title="通知"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info">
+            <div>管理员</div>
+            <small>财务部</small>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 内容 -->
+    <div class="content">
+      <!-- 面包屑 -->
+      <nav class="breadcrumb" style="margin-bottom: 6px;">
+        <a href="dashboard.html">首页</a>
+        <span class="sep">/</span>
+        <a href="#">财务</a>
+        <span class="sep">/</span>
+        <span class="current">发票识别</span>
+      </nav>
+
+      <!-- sub-tabs 4 个（统一父页面核心） -->
+      <nav class="sub-tabs">
+        <a href="?tab=single"  class="active" data-tab="single">智能识别</a>
+        <a href="?tab=batch"   data-tab="batch">批量上传</a>
+        <a href="?tab=records" data-tab="records">识别记录</a>
+        <a href="?tab=verify"  data-tab="verify">查验真伪</a>
+      </nav>
+
+      <!-- ==================== SUB-TAB 1: 智能识别 ==================== -->
+      <section class="ocr-sub active" data-sub="single">
+        <div class="ocr-toolbar">
+          <div class="ocr-toolbar-left">
+            <span style="color: var(--color-text-secondary); font-size: 13px;">单张发票智能识别</span>
+          </div>
+          <div class="ocr-toolbar-right">
+            <button class="btn btn-outline btn-sm">📂 切换文件</button>
+            <button class="btn btn-primary btn-sm">✦ AI 智能识别</button>
+          </div>
+        </div>
+
+        <div class="single-grid">
+          <!-- 左：上传 + 预览 -->
+          <div>
+            <div class="page-card">
+              <div class="upload-drop">
+                <div class="ico">⬆</div>
+                <h3>拖拽发票文件到此处</h3>
+                <p>支持 PDF / JPG / PNG · 单文件不超过 20MB</p>
+                <div class="actions">
+                  <button class="btn btn-primary btn-sm">📁 选择文件</button>
+                  <button class="btn btn-outline btn-sm">📂 选择文件夹</button>
+                  <button class="btn btn-outline btn-sm">📷 拍照识别</button>
+                </div>
+              </div>
+            </div>
+            <div class="page-card preview-card">
+              <h3>📄 发票预览</h3>
+              <div class="preview-img">茶馆餐饮 ¥248 · 6% · 2026-06-08</div>
+              <div class="file-name">
+                <strong>餐饮服务发票_20260608_185632.pdf</strong>
+                <div style="margin-top: 4px; color: var(--color-text-tertiary); font-size: 11.5px;">2.3 MB · 已上传 · 1.2s 前</div>
+              </div>
+              <div class="stats-row">
+                <div class="stat-mini">
+                  <span class="l">总识别字段</span>
+                  <span class="v">8<span class="u">/8</span></span>
+                </div>
+                <div class="stat-mini">
+                  <span class="l">置信度</span>
+                  <span class="v">96.8<span class="u">%</span></span>
+                </div>
+                <div class="stat-mini">
+                  <span class="l">识别耗时</span>
+                  <span class="v">1.8<span class="u">s</span></span>
+                </div>
+                <div class="stat-mini">
+                  <span class="l">价税合计</span>
+                  <span class="v" style="color: var(--color-primary);">¥248</span>
+                </div>
+              </div>
+            </div>
+          </div>
+          <!-- 右：识别结果 -->
+          <div class="page-card result-card">
+            <h3>✦ 识别结果 <span style="font-size: 11px; color: var(--color-text-tertiary); font-weight: 400;">（自动填充）</span></h3>
+            <div class="field-grid">
+              <div class="fr">
+                <span class="l">发票代码</span>
+                <span class="v mono">011002600611</span>
+              </div>
+              <div class="fr">
+                <span class="l">发票号码</span>
+                <span class="v mono">25113300000012345678</span>
+              </div>
+              <div class="fr">
+                <span class="l">开票日期</span>
+                <span class="v">2026-06-08</span>
+              </div>
+              <div class="fr">
+                <span class="l">发票类型</span>
+                <span class="v"><span class="s-pill info">电子普通发票</span></span>
+              </div>
+              <div class="fr full">
+                <span class="l">销售方</span>
+                <span class="v">上海茶馆餐饮有限公司</span>
+              </div>
+              <div class="fr">
+                <span class="l">税率</span>
+                <span class="v">6%</span>
+              </div>
+              <div class="fr">
+                <span class="l">税额</span>
+                <span class="v">¥ 14.04</span>
+              </div>
+            </div>
+            <div class="amount-display">
+              <span class="l">价税合计（小写）</span>
+              <span class="v">¥ 248.00<span class="tax">人民币贰佰肆拾捌元整</span></span>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 16px;">
+              <button class="btn btn-ghost btn-sm">📥 保存草稿</button>
+              <button class="btn btn-outline btn-sm">🔍 查验真伪</button>
+              <button class="btn btn-primary btn-sm" style="margin-left: auto;">✓ 入账</button>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SUB-TAB 2: 批量上传 ==================== -->
+      <section class="ocr-sub" data-sub="batch">
+        <div class="ocr-toolbar">
+          <div class="ocr-toolbar-left">
+            <div class="tpl-chips">
+              <div class="tpl-chip active">⚡ 自动识别</div>
+              <div class="tpl-chip">✈ 差旅发票</div>
+              <div class="tpl-chip">📎 办公用品</div>
+              <div class="tpl-chip">💻 软件订阅</div>
+              <div class="tpl-chip">⋯ 更多</div>
+            </div>
+          </div>
+          <div class="ocr-toolbar-right">
+            <button class="btn btn-outline btn-sm">📂 选择文件夹</button>
+            <button class="btn btn-primary btn-sm">⚡ 开始批量识别</button>
+          </div>
+        </div>
+
+        <div class="page-card drop-zone">
+          <div class="ico">📁</div>
+          <h3>拖拽发票文件 / 文件夹到此处</h3>
+          <p>支持 PDF / JPG / PNG / ZIP · 单次最多 100 张</p>
+          <div class="buttons">
+            <button class="btn btn-primary btn-sm">📁 选择文件</button>
+            <button class="btn btn-outline btn-sm">📂 选择文件夹</button>
+            <button class="btn btn-outline btn-sm">📷 拍照识别</button>
+          </div>
+          <div class="hints">
+            <span>支持 PDF / 图片 / ZIP</span>
+            <span>OCR 自动识别</span>
+            <span>识别后自动归类</span>
+            <span>支持断点续传</span>
+          </div>
+        </div>
+
+        <div class="batch-summary">
+          <div class="stat-mini"><span class="l">已上传</span><span class="v">18<span class="u">张</span></span></div>
+          <div class="stat-mini"><span class="l">识别中</span><span class="v">3<span class="u">张</span></span></div>
+          <div class="stat-mini"><span class="l">已识别</span><span class="v" style="color: #10B981;">12<span class="u">张</span></span></div>
+          <div class="stat-mini"><span class="l">需复核</span><span class="v" style="color: #F59E0B;">3<span class="u">张</span></span></div>
+        </div>
+
+        <div class="page-card queue-card">
+          <div class="queue-head">
+            <h3>识别队列（18）</h3>
+            <span class="total">预计还需 6s</span>
+          </div>
+          <table class="queue-table">
+            <thead>
+              <tr>
+                <th style="width: 32px;"><input type="checkbox" /></th>
+                <th>文件</th>
+                <th>发票号</th>
+                <th>金额</th>
+                <th>销方</th>
+                <th>进度</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><div style="display:flex; gap:8px; align-items:center;"><div class="file-thumb pdf">PDF</div><div><div style="font-size: 12px;">餐饮_185632.pdf</div><div style="font-size: 10.5px; color: var(--color-text-tertiary);">2.3 MB</div></div></div></td>
+                <td><span class="cell-mono">25113...45678</span></td>
+                <td><span class="cell-amount">¥ 248.00</span></td>
+                <td style="font-size: 12px;">上海茶馆餐饮</td>
+                <td><div class="progress"><div class="bar" style="width: 100%;"></div></div><span style="font-size: 11px; color: #10B981;">100%</span></td>
+                <td><span class="s-pill success">已识别</span></td>
+                <td><div class="row-actions"><a>核验</a><a>详情</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><div style="display:flex; gap:8px; align-items:center;"><div class="file-thumb pdf">PDF</div><div><div style="font-size: 12px;">机票_202606.pdf</div><div style="font-size: 10.5px; color: var(--color-text-tertiary);">412 KB</div></div></div></td>
+                <td><span class="cell-mono">25113...45679</span></td>
+                <td><span class="cell-amount">¥ 1,280.00</span></td>
+                <td style="font-size: 12px;">东方航空</td>
+                <td><div class="progress"><div class="bar" style="width: 100%;"></div></div><span style="font-size: 11px; color: #10B981;">100%</span></td>
+                <td><span class="s-pill success">已识别</span></td>
+                <td><div class="row-actions"><a>核验</a><a>详情</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" checked /></td>
+                <td><div style="display:flex; gap:8px; align-items:center;"><div class="file-thumb img">JPG</div><div><div style="font-size: 12px;">酒店住宿_0806.jpg</div><div style="font-size: 10.5px; color: var(--color-text-tertiary);">1.8 MB</div></div></div></td>
+                <td><span class="cell-mono">25113...45680</span></td>
+                <td><span class="cell-amount">¥ 580.00</span></td>
+                <td style="font-size: 12px;">锦江之星</td>
+                <td><div class="progress"><div class="bar" style="width: 68%;"></div></div><span style="font-size: 11px; color: var(--color-primary);">68%</span></td>
+                <td><span class="s-pill info">识别中</span></td>
+                <td><div class="row-actions"><a>取消</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><div style="display:flex; gap:8px; align-items:center;"><div class="file-thumb pdf">PDF</div><div><div style="font-size: 12px;">办公用品_批量.pdf</div><div style="font-size: 10.5px; color: var(--color-text-tertiary);">3.4 MB</div></div></div></td>
+                <td><span class="cell-mono">25113...45681</span></td>
+                <td><span class="cell-amount">¥ 1,560.00</span></td>
+                <td style="font-size: 12px;">京东商城</td>
+                <td><div class="progress"><div class="bar" style="width: 100%;"></div></div><span style="font-size: 11px; color: #F59E0B;">65%</span></td>
+                <td><span class="s-pill warning">需复核</span></td>
+                <td><div class="row-actions"><a>复核</a><a>详情</a></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <!-- ==================== SUB-TAB 3: 识别记录 ==================== -->
+      <section class="ocr-sub" data-sub="records">
+        <div class="ocr-toolbar">
+          <div class="ocr-toolbar-left">
+            <span style="color: var(--color-text-secondary); font-size: 13px;">本月识别 328 张 · 累计 ¥1,286,500</span>
+          </div>
+          <div class="ocr-toolbar-right">
+            <button class="btn btn-outline btn-sm">📊 报表分析</button>
+            <button class="btn btn-outline btn-sm">⬇ 导出 Excel</button>
+            <button class="btn btn-primary btn-sm">+ 继续上传</button>
+          </div>
+        </div>
+
+        <!-- 高级筛选 -->
+        <div class="page-card filter-panel">
+          <div class="filter-head" style="border: none; padding: 0; margin-bottom: 12px;">
+            <h3>🔍 高级筛选</h3>
+            <a class="filter-toggle" style="color: var(--color-primary); cursor: pointer; font-size: 12px;">收起 ∧</a>
+          </div>
+          <div class="filter-grid">
+            <div class="field">
+              <label>关键词</label>
+              <input type="text" placeholder="发票号 / 文件名 / 客户..." />
+            </div>
+            <div class="field">
+              <label>发票类型</label>
+              <select><option>全部类型</option><option>电子普通发票</option><option>数电发票</option><option>专用发票</option><option>通用发票</option></select>
+            </div>
+            <div class="field">
+              <label>销售方</label>
+              <select><option>全部销售方</option><option>上海数智信息技术有限公司</option><option>万象科技有限公司</option><option>北辰实业集团</option></select>
+            </div>
+            <div class="field">
+              <label>关联合同</label>
+              <select><option>全部合同</option><option>已关联</option><option>未关联</option></select>
+            </div>
+            <div class="field">
+              <label>金额范围</label>
+              <div class="range">
+                <input type="text" placeholder="¥ 最小" />
+                <span class="sep">—</span>
+                <input type="text" placeholder="¥ 最大" />
+              </div>
+            </div>
+            <div class="field">
+              <label>开票日期</label>
+              <div class="range">
+                <input type="text" placeholder="开始" />
+                <span class="sep">—</span>
+                <input type="text" placeholder="结束" />
+              </div>
+            </div>
+          </div>
+          <div class="filter-actions" style="border: none; padding: 0;">
+            <button class="btn btn-primary btn-sm">应用筛选</button>
+            <button class="btn btn-ghost btn-sm">重置</button>
+          </div>
+        </div>
+
+        <!-- 状态 tabs（蓝紫胶囊） -->
+        <nav class="status-tabs">
+          <a href="javascript:void(0)" class="active">全部 <span class="num">328</span></a>
+          <a href="javascript:void(0)">待核验 <span class="num">12</span></a>
+          <a href="javascript:void(0)">已识别 <span class="num">186</span></a>
+          <a href="javascript:void(0)">已入账 <span class="num">98</span></a>
+          <a href="javascript:void(0)">已关联合同 <span class="num">24</span></a>
+          <a href="javascript:void(0)">已归档 <span class="num">5</span></a>
+          <a href="javascript:void(0)">已剔除 <span class="num">2</span></a>
+          <a href="javascript:void(0)">识别失败 <span class="num">1</span></a>
+        </nav>
+
+        <div class="page-card">
+          <table class="rec-table">
+            <thead>
+              <tr>
+                <th style="width: 32px;"><input type="checkbox" /></th>
+                <th>发票号</th>
+                <th>类型</th>
+                <th>销售方</th>
+                <th style="text-align: right;">金额</th>
+                <th>税率</th>
+                <th>开票日期</th>
+                <th>上传时间</th>
+                <th>上传人</th>
+                <th>关联</th>
+                <th>置信度</th>
+                <th>状态</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><span class="cell-mono">25113...45678</span></td>
+                <td><span class="s-pill primary">电子普通</span></td>
+                <td>上海数智信息技术有限公司</td>
+                <td class="cell-amount">¥ 28,000.00</td>
+                <td>6%</td>
+                <td>2026-06-08</td>
+                <td>2026-06-12 09:23</td>
+                <td>王芳</td>
+                <td>
+                  <div class="link-icons">
+                    <span class="li ht" title="HT-2026-028">▦</span>
+                    <span class="li pj" title="PRJ-2026-018">▥</span>
+                    <span class="li rv dim">▩</span>
+                  </div>
+                </td>
+                <td><div class="conf high"><div class="conf-bar"><div class="fill" style="width: 96.8%;"></div></div><span class="v">96.8%</span></div></td>
+                <td><span class="s-pill warning">待核验</span></td>
+                <td><div class="row-actions"><a>核验</a><a>详情</a></div></td>
+              </tr>
+              <tr class="selected">
+                <td><input type="checkbox" checked /></td>
+                <td><span class="cell-mono">25113...65432</span></td>
+                <td><span class="s-pill purple">数电发票</span></td>
+                <td>朗驰智能设备有限公司</td>
+                <td class="cell-amount">¥ 86,500.00</td>
+                <td>13%</td>
+                <td>2026-06-07</td>
+                <td>2026-06-11 14:30</td>
+                <td>陈思琪</td>
+                <td>
+                  <div class="link-icons">
+                    <span class="li ht" title="HT-2026-029">▦</span>
+                    <span class="li pj" title="PRJ-2026-024">▥</span>
+                    <span class="li rv" title="HK-2026-019">▩</span>
+                  </div>
+                </td>
+                <td><div class="conf high"><div class="conf-bar"><div class="fill" style="width: 98.2%;"></div></div><span class="v">98.2%</span></div></td>
+                <td><span class="s-pill success">已识别</span></td>
+                <td><div class="row-actions"><a>详情</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><span class="cell-mono">25113...78912</span></td>
+                <td><span class="s-pill primary">电子普通</span></td>
+                <td>万象科技有限公司</td>
+                <td class="cell-amount">¥ 1,280.00</td>
+                <td>6%</td>
+                <td>2026-06-06</td>
+                <td>2026-06-10 16:42</td>
+                <td>李建国</td>
+                <td>
+                  <div class="link-icons">
+                    <span class="li ht dim">▦</span>
+                    <span class="li pj" title="PRJ-2026-015">▥</span>
+                    <span class="li rv dim">▩</span>
+                  </div>
+                </td>
+                <td><div class="conf high"><div class="conf-bar"><div class="fill" style="width: 94.5%;"></div></div><span class="v">94.5%</span></div></td>
+                <td><span class="s-pill success">已识别</span></td>
+                <td><div class="row-actions"><a>核验</a><a>详情</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><span class="cell-mono">25113...12345</span></td>
+                <td><span class="s-pill info">数电发票</span></td>
+                <td>北辰实业集团</td>
+                <td class="cell-amount">¥ 2,340.00</td>
+                <td>13%</td>
+                <td>2026-06-05</td>
+                <td>2026-06-10 11:15</td>
+                <td>张明</td>
+                <td>
+                  <div class="link-icons">
+                    <span class="li ht dim">▦</span>
+                    <span class="li pj dim">▥</span>
+                    <span class="li rv dim">▩</span>
+                  </div>
+                </td>
+                <td><div class="conf mid"><div class="conf-bar"><div class="fill" style="width: 87.2%;"></div></div><span class="v">87.2%</span></div></td>
+                <td><span class="s-pill info">已入账</span></td>
+                <td><div class="row-actions"><a>详情</a></div></td>
+              </tr>
+              <tr>
+                <td><input type="checkbox" /></td>
+                <td><span class="cell-mono">25113...56789</span></td>
+                <td><span class="s-pill success">专用发票</span></td>
+                <td>用友网络科技股份有限公司</td>
+                <td class="cell-amount">¥ 5,800.00</td>
+                <td>6%</td>
+                <td>2026-06-04</td>
+                <td>2026-06-09 09:33</td>
+                <td>王芳</td>
+                <td>
+                  <div class="link-icons">
+                    <span class="li ht" title="HT-2026-024">▦</span>
+                    <span class="li pj dim">▥</span>
+                    <span class="li rv dim">▩</span>
+                  </div>
+                </td>
+                <td><div class="conf high"><div class="conf-bar"><div class="fill" style="width: 91.3%;"></div></div><span class="v">91.3%</span></div></td>
+                <td><span class="s-pill info">已入账</span></td>
+                <td><div class="row-actions"><a>详情</a></div></td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="rec-foot">
+            <span class="count">共 328 条记录（已筛选）</span>
+            <div class="pagination">
+              <button class="btn btn-ghost btn-sm">‹ 上一页</button>
+              <button class="btn btn-primary btn-sm">1</button>
+              <button class="btn btn-outline btn-sm">2</button>
+              <button class="btn btn-outline btn-sm">3</button>
+              <button class="btn btn-outline btn-sm">4</button>
+              <button class="btn btn-outline btn-sm">5</button>
+              <span style="color: var(--color-text-tertiary); padding: 0 4px;">...</span>
+              <button class="btn btn-outline btn-sm">22</button>
+              <button class="btn btn-ghost btn-sm">下一页 ›</button>
+              <select class="select-sm" style="margin-left: 12px;">
+                <option>10 条/页</option><option>20 条/页</option><option>50 条/页</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ==================== SUB-TAB 4: 查验真伪 ==================== -->
+      <section class="ocr-sub" data-sub="verify">
+        <div class="ocr-toolbar">
+          <div class="ocr-toolbar-left">
+            <span style="color: var(--color-text-secondary); font-size: 13px;">本月查验 186 张 · 通过率 97.8%</span>
+          </div>
+          <div class="ocr-toolbar-right">
+            <button class="btn btn-outline btn-sm">📊 查验分析</button>
+            <button class="btn btn-outline btn-sm">⬇ 导出报告</button>
+          </div>
+        </div>
+
+        <!-- 4 stat-card -->
+        <div class="verify-stats">
+          <div class="stat-card">
+            <div class="stat-label"><span>本月查验</span><span class="stat-icon" style="background: rgba(79,107,255,0.12); color: #4F6BFF;">✓</span></div>
+            <div class="stat-value">186 <span class="unit">张</span></div>
+            <div class="stat-delta">较上月 <span class="delta up">↑ 24%</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>查验通过</span><span class="stat-icon" style="background: rgba(16,185,129,0.12); color: #10B981;">✓</span></div>
+            <div class="stat-value">182 <span class="unit">张</span></div>
+            <div class="stat-delta">通过率 <span class="delta up">97.8%</span></div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>风险发票</span><span class="stat-icon" style="background: rgba(239,68,68,0.12); color: #EF4444;">!</span></div>
+            <div class="stat-value">3 <span class="unit">张</span></div>
+            <div class="stat-delta">需人工复核</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-label"><span>本月查验金额</span><span class="stat-icon" style="background: rgba(124,58,237,0.12); color: #7C3AED;">¥</span></div>
+            <div class="stat-value"><span class="prefix">¥</span>1,286 <span class="unit">万</span></div>
+            <div class="stat-delta">全部通过</div>
+          </div>
+        </div>
+
+        <!-- 风险告警 -->
+        <div class="risk-card">
+          <div class="head">
+            <div class="ico">⚠</div>
+            <div class="t">3 张发票存在查验风险，需立即处理</div>
+          </div>
+          <div class="body">
+            <div class="row">· <strong>25113300...99887766</strong> 已被报销 2 次（疑似重复报销）· 涉及 ¥ 56,000</div>
+            <div class="row">· <strong>25113300...77665544</strong> 销售方纳税人识别号国税接口无法查到（疑似假票）· 涉及 ¥ 86,500</div>
+            <div class="row">· <strong>25113300...55443300</strong> 发票已超过 2 年有效期 · 涉及 ¥ 12,800</div>
+          </div>
+        </div>
+
+        <!-- 发起查验 -->
+        <div class="page-card verify-form-card">
+          <div class="form-head">
+            <div>
+              <h3>🔍 发起查验</h3>
+              <div class="sub">向国家税务总局发票查验平台发起真伪核验</div>
+            </div>
+            <div class="head-right">
+              <div class="verify-tabs">
+                <a href="javascript:void(0)" class="active">单张查验</a>
+                <a href="javascript:void(0)">批量查验</a>
+                <a href="javascript:void(0)">从识别记录选择</a>
+              </div>
+              <span class="badge-connected">国税接口已连接</span>
+            </div>
+          </div>
+          <div class="verify-form-row">
+            <div class="field">
+              <label>发票代码 <span class="req">*</span></label>
+              <input type="text" placeholder="如：011002600611" value="011002600611" />
+            </div>
+            <div class="field">
+              <label>发票号码 <span class="req">*</span></label>
+              <input type="text" placeholder="如：25113300000012345678" value="25113300000012345678" />
+            </div>
+            <div class="field">
+              <label>开票日期 <span class="req">*</span></label>
+              <input type="date" value="2026-06-08" />
+            </div>
+            <div class="field">
+              <label>价税合计（元） <span class="req">*</span></label>
+              <input type="text" placeholder="如：28000.00" value="28000.00" />
+            </div>
+            <div class="field">
+              <label>校验码（验证码） <span class="opt">（可选）</span></label>
+              <input type="text" placeholder="发票密码区后 6 位" />
+            </div>
+            <div class="field btn-field">
+              <button class="btn btn-primary" style="height: 36px;">🔍 立即查验</button>
+            </div>
+          </div>
+          <div class="form-hint">
+            ⓘ 每日单平台查询次数上限 5,000 次 / 组织，单张发票最多查验 5 次/日。查验数据仅留存 30 天。
+          </div>
+        </div>
+
+        <!-- 查验结果 -->
+        <div class="verify-result">
+          <div class="vr-top">
+            <div class="vr-icon">✓</div>
+            <div>
+              <div class="vr-title">查验通过 · 发票真实有效</div>
+              <div class="vr-sub">来源：国家税务总局全国增值税发票查验平台 · 查验时间 2026-06-12 10:24:18 · 耗时 1.8s</div>
+            </div>
+          </div>
+          <div class="vr-grid">
+            <div class="vr-item"><div class="l">发票代码</div><div class="v mono">011002600611</div></div>
+            <div class="vr-item"><div class="l">发票号码</div><div class="v mono">25113300000012345678</div></div>
+            <div class="vr-item"><div class="l">开票日期</div><div class="v">2026-06-08</div></div>
+            <div class="vr-item"><div class="l">价税合计</div><div class="v">¥ 28,000.00</div></div>
+            <div class="vr-item"><div class="l">销售方</div><div class="v" style="font-size: 13.5px;">上海数智信息技术有限公司</div></div>
+            <div class="vr-item"><div class="l">纳税人识别号</div><div class="v mono" style="font-size: 13px;">91310000MA1FL3X9G</div></div>
+            <div class="vr-item"><div class="l">购买方</div><div class="v" style="font-size: 13.5px;">万象科技有限公司</div></div>
+            <div class="vr-item"><div class="l">查验次数</div><div class="v">第 1 次</div></div>
+          </div>
+        </div>
+
+        <!-- 查验记录 -->
+        <div class="page-card">
+          <div class="search-row">
+            <h3 style="font-size: 14px; font-weight: 600; margin: 0; flex: 1;">查验记录（186 条）</h3>
+            <input class="search-input md" placeholder="搜索发票号 / 销售方..." />
+            <select class="select-sm"><option>所有结果</option><option>通过</option><option>风险</option><option>不通过</option></select>
+            <button class="btn btn-outline btn-sm">📥 导出</button>
+          </div>
+          <table class="verify-table">
+            <thead>
+              <tr>
+                <th>发票号</th>
+                <th>销售方</th>
+                <th>金额</th>
+                <th>开票日期</th>
+                <th>查验来源</th>
+                <th>查验时间</th>
+                <th>结果</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="cell-mono" style="color: var(--color-primary);">25113...45678</span></td>
+                <td>上海数智信息技术有限公司</td>
+                <td style="font-weight: 600;">¥ 28,000.00</td>
+                <td>2026-06-08</td>
+                <td>国税总局</td>
+                <td>2026-06-12 10:24</td>
+                <td><span class="v-pill success">通过</span></td>
+                <td><div class="row-actions"><a>凭证</a><a>重查</a></div></td>
+              </tr>
+              <tr>
+                <td><span class="cell-mono" style="color: var(--color-primary);">25113...65432</span></td>
+                <td>朗驰智能设备有限公司</td>
+                <td style="font-weight: 600;">¥ 86,500.00</td>
+                <td>2026-06-07</td>
+                <td>国税总局</td>
+                <td>2026-06-12 09:15</td>
+                <td><span class="v-pill success">通过</span></td>
+                <td><div class="row-actions"><a>凭证</a></div></td>
+              </tr>
+              <tr>
+                <td><span class="cell-mono" style="color: #B91C1C;">25113...98766</span></td>
+                <td>数智科技服务（个体）</td>
+                <td style="font-weight: 600;">¥ 56,000.00</td>
+                <td>2026-05-30</td>
+                <td>国税总局</td>
+                <td>2026-06-11 16:42</td>
+                <td><span class="v-pill danger">重复报销</span></td>
+                <td><div class="row-actions"><a>详情</a><a style="color: #EF4444;">标记</a></div></td>
+              </tr>
+              <tr>
+                <td><span class="cell-mono" style="color: #B91C1C;">25113...76544</span></td>
+                <td>嘉诚信息技术有限公司</td>
+                <td style="font-weight: 600;">¥ 86,500.00</td>
+                <td>2026-05-28</td>
+                <td>国税总局</td>
+                <td>2026-06-11 14:30</td>
+                <td><span class="v-pill danger">销售方无效</span></td>
+                <td><div class="row-actions"><a>详情</a><a style="color: #EF4444;">标记</a></div></td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<script>
+  // sub-tab 切换（演示）
+  function applyTab() {
+    const params = new URLSearchParams(location.search)
+    const t = params.get('tab') || 'single'
+    document.querySelectorAll('.sub-tabs a').forEach(a => {
+      a.classList.toggle('active', a.dataset.tab === t)
+    })
+    document.querySelectorAll('.ocr-sub').forEach(s => {
+      s.classList.toggle('active', s.dataset.sub === t)
+    })
+  }
+  applyTab()
+  document.querySelectorAll('.sub-tabs a').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault()
+      const url = new URL(location.href)
+      url.searchParams.set('tab', a.dataset.tab)
+      history.pushState({}, '', url)
+      applyTab()
+    })
+  })
+</script>
+
+</body>
+</html>

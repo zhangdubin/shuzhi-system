@@ -1,0 +1,221 @@
+{
+    "metrics": {
+        "http_req_duration": {
+            "p(95)": 23.34425,
+            "avg": 15.357808765391038,
+            "min": 3.689542,
+            "med": 15.398083,
+            "max": 262.900319,
+            "p(90)": 22.33875
+        },
+        "data_received": {
+            "count": 1174231,
+            "rate": 19489.163906968202
+        },
+        "http_req_blocked": {
+            "med": 0.01375,
+            "max": 0.7135,
+            "p(90)": 0.017042,
+            "p(95)": 0.020666,
+            "avg": 0.0297249850249584,
+            "min": 0.004167
+        },
+        "checks": {
+            "passes": 600,
+            "fails": 0,
+            "value": 1
+        },
+        "iteration_duration": {
+            "min": 3.964041,
+            "med": 15.9948335,
+            "max": 80.72225,
+            "p(90)": 22.8370958,
+            "p(95)": 23.835461849999998,
+            "avg": 15.479709433333332
+        },
+        "http_req_duration{expected_response:true}": {
+            "avg": 20.083937979942704,
+            "min": 6.336959,
+            "med": 19.972916,
+            "max": 262.900319,
+            "p(90)": 23.136634,
+            "p(95)": 23.7687584
+        },
+        "data_sent": {
+            "count": 209973,
+            "rate": 3485.002706484358
+        },
+        "http_reqs": {
+            "rate": 9.97502834458287,
+            "count": 601
+        },
+        "iterations": {
+            "count": 600,
+            "rate": 9.958430959650121
+        },
+        "http_req_failed": {
+            "passes": 252,
+            "fails": 349,
+            "value": 0.4193011647254576
+        },
+        "http_req_connecting": {
+            "max": 0.553041,
+            "p(90)": 0,
+            "p(95)": 0,
+            "avg": 0.01249742928452579,
+            "min": 0,
+            "med": 0
+        },
+        "http_req_sending": {
+            "p(90)": 0.085708,
+            "p(95)": 0.101625,
+            "avg": 0.06713670049916806,
+            "min": 0.022792,
+            "med": 0.068833,
+            "max": 0.18225
+        },
+        "http_req_waiting": {
+            "avg": 15.170516292845234,
+            "min": 3.553542,
+            "med": 15.237583,
+            "max": 262.759319,
+            "p(90)": 22.187542,
+            "p(95)": 23.177083
+        },
+        "ai_duration": {
+            "p(90)": 22.3321503,
+            "p(95)": 23.32513125,
+            "avg": 14.945237915000012,
+            "min": 3.689542,
+            "med": 15.396729,
+            "max": 80.406
+        },
+        "http_req_tls_handshaking": {
+            "avg": 0,
+            "min": 0,
+            "med": 0,
+            "max": 0,
+            "p(90)": 0,
+            "p(95)": 0
+        },
+        "vus": {
+            "value": 0,
+            "min": 0,
+            "max": 1
+        },
+        "errors": {
+            "passes": 0,
+            "fails": 0,
+            "thresholds": {
+                "rate<0.05": false
+            },
+            "value": 0
+        },
+        "vus_max": {
+            "value": 20,
+            "min": 20,
+            "max": 20
+        },
+        "http_req_receiving": {
+            "med": 0.119541,
+            "max": 0.527167,
+            "p(90)": 0.159167,
+            "p(95)": 0.171291,
+            "avg": 0.12015577204658907,
+            "min": 0.05125
+        },
+        "http_req_duration{scenario:ai_mixed}": {
+            "avg": 14.945237915000012,
+            "min": 3.689542,
+            "med": 15.396729,
+            "max": 80.406,
+            "p(90)": 22.3321503,
+            "p(95)": 23.32513125,
+            "thresholds": {
+                "p(95)<1000": false,
+                "p(99)<2000": false
+            }
+        }
+    },
+    "setup_data": {
+        "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIiwidXNlcm5hbWUiOiJhZG1pbiIsImV4cCI6MTc4MTQ5MzU5OSwidHlwZSI6ImFjY2VzcyJ9.naHHeh11HC5OabiZnOzKH0hjKXC7J4glGQyfc20EXRA"
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {
+                "/api/v1/expenses/list < 500": {
+                    "name": "/api/v1/expenses/list < 500",
+                    "path": "::/api/v1/expenses/list < 500",
+                    "id": "128b4883229973abedccefbba94000bb",
+                    "passes": 62,
+                    "fails": 0
+                },
+                "/api/v1/ai/model/list < 500": {
+                    "name": "/api/v1/ai/model/list < 500",
+                    "path": "::/api/v1/ai/model/list < 500",
+                    "id": "cbee68083db98eb729e86b55b97aa3d7",
+                    "passes": 54,
+                    "fails": 0
+                },
+                "/api/v1/auth/me < 500": {
+                    "fails": 0,
+                    "name": "/api/v1/auth/me < 500",
+                    "path": "::/api/v1/auth/me < 500",
+                    "id": "fc90fa8e70aecd58d89d89d2c0424eb8",
+                    "passes": 52
+                },
+                "/api/v1/contracts/list < 500": {
+                    "passes": 58,
+                    "fails": 0,
+                    "name": "/api/v1/contracts/list < 500",
+                    "path": "::/api/v1/contracts/list < 500",
+                    "id": "a407f4232548db0a5eef02eff5cd6b88"
+                },
+                "/api/v1/ai/alerts/list < 500": {
+                    "name": "/api/v1/ai/alerts/list < 500",
+                    "path": "::/api/v1/ai/alerts/list < 500",
+                    "id": "c436c5432851b2d7d08705ca1033f6f8",
+                    "passes": 66,
+                    "fails": 0
+                },
+                "/api/v1/projects/list < 500": {
+                    "name": "/api/v1/projects/list < 500",
+                    "path": "::/api/v1/projects/list < 500",
+                    "id": "0a91ee429b71af917412b180897c798e",
+                    "passes": 57,
+                    "fails": 0
+                },
+                "/api/v1/receivables/list < 500": {
+                    "name": "/api/v1/receivables/list < 500",
+                    "path": "::/api/v1/receivables/list < 500",
+                    "id": "c1c01229c03112cfe5a8294f527290ce",
+                    "passes": 50,
+                    "fails": 0
+                },
+                "/api/v1/ai/tasks/list < 500": {
+                    "name": "/api/v1/ai/tasks/list < 500",
+                    "path": "::/api/v1/ai/tasks/list < 500",
+                    "id": "734de17124d48e6b2da8e98f673c87d4",
+                    "passes": 75,
+                    "fails": 0
+                },
+                "/api/v1/ai/risk/list < 500": {
+                    "path": "::/api/v1/ai/risk/list < 500",
+                    "id": "28caafcaf7fab9047a18779bdf90e3bf",
+                    "passes": 59,
+                    "fails": 0,
+                    "name": "/api/v1/ai/risk/list < 500"
+                },
+                "/api/v1/dashboard/summary < 500": {
+                    "name": "/api/v1/dashboard/summary < 500",
+                    "path": "::/api/v1/dashboard/summary < 500",
+                    "id": "98375c1bb542f3a2274d6d495e763f7c",
+                    "passes": 67,
+                    "fails": 0
+                }
+            }
+    }
+}

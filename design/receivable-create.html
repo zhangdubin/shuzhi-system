@@ -1,0 +1,457 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>新建回款计划 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .form-section { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); margin-bottom: 20px; overflow: hidden; }
+  .fs-head {
+    padding: 14px 22px; border-bottom: 1px solid var(--color-border);
+    background: #FAFBFF;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .fs-head h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .fs-body { padding: 22px 24px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-row-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .form-row-3 .field, .form-row-2 .field, .form-row-1 .field { display: flex; flex-direction: column; gap: 6px; }
+  .form-row-3 .field label, .form-row-2 .field label, .form-row-1 .field label {
+    font-size: 12.5px; font-weight: 500; color: var(--color-text-secondary);
+  }
+  .form-row-3 .field input, .form-row-3 .field select,
+  .form-row-2 .field input, .form-row-2 .field select,
+  .form-row-1 .field input, .form-row-1 .field select {
+    padding: 10px 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 13.5px;
+    color: var(--color-text-primary);
+    background: #fff;
+    outline: none;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .form-row-3 .field input:focus, .form-row-2 .field input:focus, .form-row-1 .field input:focus,
+  .form-row-3 .field select:focus, .form-row-2 .field select:focus, .form-row-1 .field select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-bg);
+  }
+  .req-mark { color: var(--color-danger); }
+
+  /* 合同摘要卡 */
+  .contract-card {
+    background: linear-gradient(135deg, rgba(79,107,255,0.04), rgba(124,58,237,0.04));
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 20px;
+  }
+  .contract-card .item .l { font-size: 11.5px; color: var(--color-text-tertiary); margin-bottom: 4px; }
+  .contract-card .item .v { font-size: 14px; font-weight: 600; color: var(--color-text-primary); }
+  .contract-card .item .v.mono { font-family: var(--font-mono); color: var(--color-primary); }
+  .contract-card .item .v.amount {
+    font-size: 18px;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  /* 分期表 */
+  .schedule-table { width: 100%; border-collapse: collapse; }
+  .schedule-table th {
+    background: #F8FAFC; text-align: left;
+    padding: 10px 12px;
+    font-size: 11.5px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .schedule-table td {
+    padding: 10px 12px; font-size: 13px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .schedule-table tr:last-child td { border-bottom: none; }
+  .schedule-table input, .schedule-table select {
+    width: 100%;
+    padding: 7px 10px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-sm);
+    font-size: 12.5px;
+    background: #fff;
+  }
+  .schedule-table input:focus, .schedule-table select:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px var(--color-primary-bg);
+  }
+  .schedule-table .seq {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    background: var(--gradient-brand);
+    color: #fff;
+    display: inline-grid; place-items: center;
+    font-size: 12px; font-weight: 600;
+  }
+  .schedule-table .del-btn {
+    color: var(--color-text-tertiary);
+    padding: 4px 8px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+  }
+  .schedule-table .del-btn:hover { background: var(--color-danger-bg); color: var(--color-danger); }
+
+  /* 分期工具栏 */
+  .schedule-tools {
+    display: flex; gap: 8px;
+    margin-bottom: 12px;
+    padding: 10px 12px;
+    background: #FAFBFF;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+  }
+  .schedule-tools .l { font-size: 12.5px; color: var(--color-text-secondary); margin-right: auto; align-self: center; }
+
+  /* 总计 */
+  .schedule-total {
+    margin-top: 12px;
+    padding: 14px 18px;
+    background: linear-gradient(135deg, rgba(79,107,255,0.05), rgba(124,58,237,0.05));
+    border: 1px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .schedule-total .l { font-size: 12.5px; color: var(--color-text-secondary); }
+  .schedule-total .v { font-size: 18px; font-weight: 700; color: var(--color-primary); }
+  .schedule-total.warn { background: rgba(239,68,68,0.06); border-color: var(--color-danger); }
+  .schedule-total.warn .v { color: var(--color-danger); }
+
+  /* 时间线预览 */
+  .timeline-preview {
+    background: #FAFBFF;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 16px 20px;
+  }
+  .tl-bar {
+    position: relative;
+    height: 36px;
+    background: #F1F5F9;
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: 8px;
+  }
+  .tl-bar .seg {
+    position: absolute; top: 0; bottom: 0;
+    background: var(--gradient-brand);
+    display: flex; align-items: center;
+    padding: 0 8px;
+    font-size: 11px; color: #fff; font-weight: 600;
+    border-right: 2px solid rgba(255,255,255,0.3);
+  }
+  .tl-bar .seg:last-child { border-right: none; }
+  .tl-labels {
+    display: flex; justify-content: space-between;
+    font-size: 10.5px; color: var(--color-text-tertiary);
+    margin-top: 4px;
+  }
+
+  .form-foot {
+    position: sticky; bottom: 0;
+    background: #fff; border-top: 1px solid var(--color-border);
+    padding: 14px 24px;
+    margin: 0 -28px -40px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 10;
+  }
+  .tip-box {
+    display: flex; gap: 10px;
+    padding: 12px 14px;
+    background: rgba(79,107,255,0.05);
+    border: 1px solid rgba(79,107,255,0.2);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li><a href="invoice-ocr.html"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span></a></li>
+      <li><a href="invoice-ocr-batch.html"><span class="nav-icon">⇪</span>批量上传</a></li>
+      <li><a href="invoice-ocr-records.html"><span class="nav-icon">▤</span>识别记录</a></li>
+      <li><a href="invoice-ocr-verify.html"><span class="nav-icon">✓</span>查验真伪</a></li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html" class="active"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>业务</span><span class="sep">/</span>
+            <span><a href="receivable.html" style="color:var(--color-text-tertiary);">回款管理</a></span>
+            <span class="sep">/</span>
+            <span>新建回款计划</span>
+          </div>
+          <h1 class="page-title">新建回款计划</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">⊗ 取消</button>
+        <button class="btn btn-primary btn-sm">✓ 创建计划</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="tip-box">
+        <div style="color:var(--color-primary);font-size:16px;">ⓘ</div>
+        <div>
+          <strong>回款计划：</strong> 按合同约定拆分回款节点。计划创建后，到期前 7 天自动提醒，到期日未收到款项标记为<strong>逾期</strong>，触发催收流程。
+        </div>
+      </div>
+
+      <!-- 1. 关联合同 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>📄 关联合同 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">* 选择一个执行中的合同</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="form-row-2" style="margin-bottom:16px;">
+            <div class="field">
+              <label>选择合同 <span class="req-mark">*</span></label>
+              <select>
+                <option selected>HT-2026-030 · 北辰集团 BI 系统升级服务合同</option>
+                <option>HT-2026-029 · 朗驰智能设备改造工程合同</option>
+                <option>HT-2026-028 · 数智化二期 SaaS 平台年度服务</option>
+                <option>HT-2026-024 · 财务系统年度服务合同</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>回款类型 <span class="req-mark">*</span></label>
+              <select>
+                <option>按合同节点</option>
+                <option selected>按里程碑</option>
+                <option>按月平均</option>
+                <option>一次性</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 选中合同的摘要 -->
+          <div class="contract-card">
+            <div class="item">
+              <div class="l">合同编号</div>
+              <div class="v mono">HT-2026-030</div>
+            </div>
+            <div class="item">
+              <div class="l">合同金额</div>
+              <div class="v amount">¥ 286,000.00</div>
+            </div>
+            <div class="item">
+              <div class="l">已开票 / 已回款</div>
+              <div class="v">¥ 86,500 / ¥ 86,500</div>
+            </div>
+            <div class="item">
+              <div class="l">剩余应收</div>
+              <div class="v amount">¥ 199,500.00</div>
+            </div>
+            <div class="item">
+              <div class="l">客户</div>
+              <div class="v">北辰实业集团</div>
+            </div>
+            <div class="item">
+              <div class="l">合同期限</div>
+              <div class="v">2026-06-10 ~ 2026-12-31</div>
+            </div>
+            <div class="item">
+              <div class="l">负责人</div>
+              <div class="v">刘洋</div>
+            </div>
+            <div class="item">
+              <div class="l">付款账期</div>
+              <div class="v">30 天</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2. 分期设置 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>💰 分期设置 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">根据合同总金额自动计算</span></h3>
+        </div>
+        <div class="fs-body">
+
+          <div class="schedule-tools">
+            <span class="l">💡 系统建议 3 期，按里程碑节点付款</span>
+            <button class="btn btn-ghost btn-sm">等额分期</button>
+            <button class="btn btn-ghost btn-sm">按月平均</button>
+            <button class="btn btn-ghost btn-sm">季度分期</button>
+            <button class="btn btn-primary btn-sm">+ 添加分期</button>
+          </div>
+
+          <table class="schedule-table">
+            <thead>
+              <tr>
+                <th style="width:50px;">序号</th>
+                <th>分期名称</th>
+                <th style="width:160px;">计划回款日</th>
+                <th style="width:160px;">回款金额（元）</th>
+                <th style="width:120px;">负责人</th>
+                <th style="width:80px;">操作</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><span class="seq">1</span></td>
+                <td><input type="text" value="首期款（30%）" /></td>
+                <td><input type="date" value="2026-07-10" /></td>
+                <td><input type="text" value="59,850.00" style="text-align:right;font-weight:600;" /></td>
+                <td>
+                  <select>
+                    <option selected>刘洋</option>
+                    <option>陈思琪</option>
+                    <option>张明</option>
+                  </select>
+                </td>
+                <td><button class="del-btn">×</button></td>
+              </tr>
+              <tr>
+                <td><span class="seq">2</span></td>
+                <td><input type="text" value="中期款（40%）" /></td>
+                <td><input type="date" value="2026-09-30" /></td>
+                <td><input type="text" value="79,800.00" style="text-align:right;font-weight:600;" /></td>
+                <td>
+                  <select>
+                    <option selected>刘洋</option>
+                    <option>陈思琪</option>
+                    <option>张明</option>
+                  </select>
+                </td>
+                <td><button class="del-btn">×</button></td>
+              </tr>
+              <tr>
+                <td><span class="seq">3</span></td>
+                <td><input type="text" value="尾款（30%）" /></td>
+                <td><input type="date" value="2026-12-15" /></td>
+                <td><input type="text" value="59,850.00" style="text-align:right;font-weight:600;" /></td>
+                <td>
+                  <select>
+                    <option selected>刘洋</option>
+                    <option>陈思琪</option>
+                    <option>张明</option>
+                  </select>
+                </td>
+                <td><button class="del-btn">×</button></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <div class="schedule-total">
+            <div class="l">分期合计</div>
+            <div class="v">¥ 199,500.00</div>
+          </div>
+          <div style="margin-top:8px;font-size:11.5px;color:var(--color-text-tertiary);text-align:right;">
+            ✓ 与剩余应收金额一致
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 时间线预览 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>📅 时间线预览 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">2026 下半年</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="timeline-preview">
+            <div class="tl-bar">
+              <div class="seg" style="left:0%;width:33.3%;">① 7-10 · ¥ 59,850</div>
+              <div class="seg" style="left:33.3%;width:33.3%;">② 9-30 · ¥ 79,800</div>
+              <div class="seg" style="left:66.6%;width:33.4%;">③ 12-15 · ¥ 59,850</div>
+            </div>
+            <div class="tl-labels">
+              <span>2026-07</span>
+              <span>2026-08</span>
+              <span>2026-09</span>
+              <span>2026-10</span>
+              <span>2026-11</span>
+              <span>2026-12</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 收款账户 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>🏦 收款账户 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">客户打款到此账户</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="form-row-2" style="margin-bottom:12px;">
+            <div class="field">
+              <label>开户银行</label>
+              <select>
+                <option selected>招商银行上海分行</option>
+                <option>工商银行上海分行</option>
+                <option>+ 添加新账户</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>银行账号</label>
+              <input type="text" value="6225 **** **** 1234" style="font-family:var(--font-mono);" />
+            </div>
+          </div>
+          <div style="padding:10px 14px;background:#FAFBFF;border-radius:var(--radius-md);font-size:12px;color:var(--color-text-secondary);">
+            💡 系统将自动监控该账户到账流水，到账后自动核销对应回款计划（需财务复核）
+          </div>
+        </div>
+      </div>
+
+      <div class="form-foot">
+        <div style="font-size:12px;color:var(--color-text-tertiary);">
+          💾 计划创建后将通知相关负责人，<a style="color:var(--color-primary);">前往回款列表</a>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm">⊗ 取消</button>
+          <button class="btn btn-primary btn-sm">✓ 创建计划</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

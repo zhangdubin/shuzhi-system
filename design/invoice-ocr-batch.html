@@ -1,0 +1,745 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>批量上传 · 发票识别 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 大拖拽区 */
+  .drop-zone {
+    background: linear-gradient(180deg, #FAFBFF 0%, #fff 100%);
+    border: 2.5px dashed var(--color-primary);
+    border-radius: var(--radius-lg);
+    padding: 48px 32px;
+    text-align: center;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+  .drop-zone::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(79,107,255,0.04) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(124,58,237,0.04) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .drop-zone:hover {
+    background: var(--color-primary-bg);
+    border-color: var(--color-primary);
+  }
+  .drop-zone .ico {
+    width: 72px; height: 72px;
+    margin: 0 auto 16px;
+    background: var(--gradient-brand);
+    border-radius: 18px;
+    display: grid; place-items: center;
+    color: #fff;
+    font-size: 32px;
+    box-shadow: 0 8px 24px rgba(79,107,255,0.35);
+  }
+  .drop-zone h3 { font-size: 18px; font-weight: 600; margin-bottom: 6px; }
+  .drop-zone p { font-size: 13px; color: var(--color-text-secondary); margin-bottom: 16px; }
+  .drop-zone .actions { display: flex; justify-content: center; gap: 12px; }
+  .drop-zone .hint {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    display: flex; justify-content: center; gap: 14px;
+  }
+
+  /* 模板选择 */
+  .tpl-selector {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 20px;
+    display: flex; align-items: center; gap: 16px;
+    flex-wrap: wrap;
+  }
+  .tpl-selector .l { font-size: 13px; font-weight: 500; }
+  .tpl-chip {
+    padding: 5px 12px;
+    border-radius: var(--radius-full);
+    border: 1.5px solid var(--color-border);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: all 0.15s;
+    background: #fff;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .tpl-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .tpl-chip.active {
+    background: var(--gradient-brand);
+    color: #fff;
+    border-color: transparent;
+  }
+  .tpl-chip .ico { font-size: 14px; }
+
+  /* 进度总览 */
+  .batch-summary {
+    background: linear-gradient(135deg, #0F172A 0%, #1E1B4B 100%);
+    border-radius: var(--radius-lg);
+    padding: 20px 24px;
+    margin-bottom: 20px;
+    color: #fff;
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+  .batch-summary::before {
+    content: '';
+    position: absolute;
+    right: -50px; top: -50px;
+    width: 200px; height: 200px;
+    background: radial-gradient(circle, rgba(79,107,255,0.3) 0%, transparent 70%);
+    border-radius: 50%;
+  }
+  .bs-item { position: relative; z-index: 1; }
+  .bs-item .l { font-size: 11.5px; color: rgba(255,255,255,0.6); margin-bottom: 6px; }
+  .bs-item .v { font-size: 22px; font-weight: 700; }
+  .bs-item .v.success { color: #10B981; }
+  .bs-item .v.warning { color: #F59E0B; }
+  .bs-item .v.danger { color: #EF4444; }
+  .bs-item .v.info { color: #06B6D4; }
+
+  /* 队列列表 */
+  .queue-card { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+  .queue-head {
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--color-border);
+    display: flex; justify-content: space-between; align-items: center;
+    background: #FAFBFF;
+  }
+  .queue-head h3 { font-size: 14px; font-weight: 600; }
+
+  .queue-table { width: 100%; border-collapse: collapse; }
+  .queue-table th {
+    background: #F8FAFC;
+    text-align: left; padding: 10px 16px;
+    font-size: 11.5px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .queue-table td {
+    padding: 12px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .queue-table tr:last-child td { border-bottom: none; }
+  .queue-table tr:hover { background: #FAFBFF; }
+
+  .file-info { display: flex; align-items: center; gap: 10px; }
+  .file-thumb {
+    width: 36px; height: 36px;
+    border-radius: 6px;
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    display: grid; place-items: center;
+    font-size: 12px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+  .file-info .n { font-size: 13px; font-weight: 500; }
+  .file-info .m { font-size: 11px; color: var(--color-text-tertiary); }
+
+  /* 状态徽章 */
+  .status-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .status-pill::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+  .status-pill.uploading { background: rgba(6,182,212,0.12); color: #0E7490; }
+  .status-pill.uploading::before { background: #06B6D4; animation: pulse 1.2s infinite; }
+  .status-pill.recognizing { background: rgba(79,107,255,0.12); color: var(--color-primary); }
+  .status-pill.recognizing::before { background: var(--color-primary); animation: pulse 1.2s infinite; }
+  .status-pill.success { background: var(--color-success-bg); color: #047857; }
+  .status-pill.success::before { background: var(--color-success); }
+  .status-pill.warning { background: var(--color-warning-bg); color: #B45309; }
+  .status-pill.warning::before { background: var(--color-warning); }
+  .status-pill.danger { background: var(--color-danger-bg); color: #B91C1C; }
+  .status-pill.danger::before { background: var(--color-danger); }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* 进度条 */
+  .progress-mini {
+    width: 80px;
+    height: 4px;
+    background: #F1F5F9;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .progress-mini .fill {
+    height: 100%;
+    background: var(--gradient-brand);
+    border-radius: var(--radius-full);
+    transition: width 0.3s;
+  }
+
+  /* 置信度 */
+  .conf {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .conf .v { font-weight: 600; }
+  .conf.high .v { color: var(--color-success); }
+  .conf.mid .v { color: var(--color-warning); }
+  .conf.low .v { color: var(--color-danger); }
+
+  /* 汇总条 */
+  .batch-foot {
+    padding: 14px 20px;
+    background: #FAFBFF;
+    border-top: 1px solid var(--color-border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent open">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html" class="active"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-ocr-batch.html"><span class="nav-icon">⇪</span>批量上传</a></li>
+      <li><a href="invoice-ocr-records.html"><span class="nav-icon">▤</span>识别记录</a></li>
+      <li><a href="invoice-ocr-verify.html"><span class="nav-icon">✓</span>查验真伪</a></li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>财务</span><span class="sep">/</span>
+            <span><a href="invoice-ocr.html" style="color:var(--color-text-tertiary);">发票识别</a></span>
+            <span class="sep">/</span>
+            <span>批量上传</span>
+          </div>
+          <h1 class="page-title">批量上传 · 智能识别</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">📋 上传历史</button>
+        <button class="btn btn-outline btn-sm">+ 手动新增</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 模板选择 -->
+      <div class="tpl-selector">
+        <span class="l">识别模板：</span>
+        <span class="tpl-chip active"><span class="ico">⚡</span>自动识别</span>
+        <span class="tpl-chip"><span class="ico">✈</span>差旅报销模板</span>
+        <span class="tpl-chip"><span class="ico">▣</span>办公采购模板</span>
+        <span class="tpl-chip"><span class="ico">软</span>软件服务费模板</span>
+        <span class="tpl-chip"><span class="ico">+</span>更多模板</span>
+        <span style="margin-left:auto;font-size:12px;color:var(--color-text-tertiary);">
+          ⓘ 选定模板后，系统将按模板字段自动归类与匹配关联合同
+        </span>
+      </div>
+
+      <!-- 拖拽上传区 -->
+      <div class="drop-zone" style="margin-bottom:24px;">
+        <div class="ico">⇪</div>
+        <h3>拖拽发票文件到此处 / 点击选择文件</h3>
+        <p>支持单张/批量上传，可拖拽整个文件夹。OCR 自动识别并归类。</p>
+        <div class="actions">
+          <button class="btn btn-primary">📁 选择文件</button>
+          <button class="btn btn-outline">📂 选择文件夹</button>
+          <button class="btn btn-ghost">📸 拍照识别</button>
+        </div>
+        <div class="hint">
+          <span>JPG / PNG / PDF / OFD</span>
+          <span>单文件 ≤ 20MB</span>
+          <span>· 单批最多 200 张</span>
+          <span>· 平均识别 2.3s/张</span>
+        </div>
+      </div>
+
+      <!-- 进度总览 -->
+      <div class="batch-summary fade-up">
+        <div class="bs-item">
+          <div class="l">本次上传</div>
+          <div class="v info">18 <span style="font-size:13px;font-weight:500;">张</span></div>
+        </div>
+        <div class="bs-item">
+          <div class="l">识别中</div>
+          <div class="v warning">3 <span style="font-size:13px;font-weight:500;">张</span></div>
+        </div>
+        <div class="bs-item">
+          <div class="l">已识别</div>
+          <div class="v success">12 <span style="font-size:13px;font-weight:500;">张</span></div>
+        </div>
+        <div class="bs-item">
+          <div class="l">需人工核验</div>
+          <div class="v warning">2 <span style="font-size:13px;font-weight:500;">张</span></div>
+        </div>
+        <div class="bs-item">
+          <div class="l">失败</div>
+          <div class="v danger">1 <span style="font-size:13px;font-weight:500;">张</span></div>
+        </div>
+      </div>
+
+      <!-- 队列列表 -->
+      <div class="queue-card">
+        <div class="queue-head">
+          <h3>识别队列（18 张）</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="搜索文件名 / 发票号..." style="width:220px;" />
+            <select class="btn btn-outline btn-sm" style="height:32px;">
+              <option>所有状态</option>
+              <option>识别中</option>
+              <option>已识别</option>
+              <option>需核验</option>
+              <option>失败</option>
+            </select>
+            <button class="btn btn-ghost btn-sm">↻ 重新识别失败项</button>
+            <button class="btn btn-primary btn-sm">✓ 批量提交入账</button>
+          </div>
+        </div>
+
+        <table class="queue-table">
+          <thead>
+            <tr>
+              <th style="width:36px;"><input type="checkbox" /></th>
+              <th>文件</th>
+              <th>发票号</th>
+              <th>金额</th>
+              <th>销售方</th>
+              <th>置信度</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_001.pdf</div>
+                    <div class="m">238 KB · 上传 10:23</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...12345678</span></td>
+              <td style="font-weight:600;">¥ 28,000.00</td>
+              <td>上海数智信息技术有限公司</td>
+              <td><span class="conf high"><span class="v">96.8%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_002.pdf</div>
+                    <div class="m">186 KB · 上传 10:23</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...98765432</span></td>
+              <td style="font-weight:600;">¥ 86,500.00</td>
+              <td>朗驰智能设备有限公司</td>
+              <td><span class="conf high"><span class="v">98.2%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_003.pdf</div>
+                    <div class="m">142 KB · 上传 10:23</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="font-weight:600;">¥ 56,000.00</td>
+              <td>北辰实业集团</td>
+              <td><span class="conf mid"><span class="v">85.4%</span></span></td>
+              <td><span class="status-pill warning">需核验</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">核验</a> · <a style="color:var(--color-text-tertiary);font-size:12.5px;cursor:pointer;">剔除</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_004.pdf</div>
+                    <div class="m">98 KB · 上传 10:23</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-mono,monospace);color:var(--color-primary);">25113300...55443322</span></td>
+              <td style="font-weight:600;">¥ 142,300.00</td>
+              <td>北辰实业集团</td>
+              <td><span class="conf high"><span class="v">97.1%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PNG</div>
+                  <div>
+                    <div class="n">差旅_机票_001.png</div>
+                    <div class="m">328 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="font-weight:600;color:var(--color-text-tertiary);">—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div class="progress-mini"><div class="fill" style="width:65%;"></div></div>
+                  <span style="font-size:11.5px;color:var(--color-text-tertiary);">65%</span>
+                </div>
+              </td>
+              <td><span class="status-pill recognizing">识别中</span></td>
+              <td><span style="color:var(--color-text-tertiary);font-size:12px;">—</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PNG</div>
+                  <div>
+                    <div class="n">差旅_酒店_001.png</div>
+                    <div class="m">256 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="font-weight:600;color:var(--color-text-tertiary);">—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div class="progress-mini"><div class="fill" style="width:32%;"></div></div>
+                  <span style="font-size:11.5px;color:var(--color-text-tertiary);">32%</span>
+                </div>
+              </td>
+              <td><span class="status-pill uploading">上传中</span></td>
+              <td><span style="color:var(--color-text-tertiary);font-size:12px;">—</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PNG</div>
+                  <div>
+                    <div class="n">办公采购_001.png</div>
+                    <div class="m">185 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="font-weight:600;color:var(--color-text-tertiary);">—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px;">
+                  <div class="progress-mini"><div class="fill" style="width:88%;"></div></div>
+                  <span style="font-size:11.5px;color:var(--color-text-tertiary);">88%</span>
+                </div>
+              </td>
+              <td><span class="status-pill recognizing">识别中</span></td>
+              <td><span style="color:var(--color-text-tertiary);font-size:12px;">—</span></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb" style="background:rgba(245,158,11,0.12);color:#B45309;">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_007.pdf</div>
+                    <div class="m">420 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="font-weight:600;">¥ 12,800.00</td>
+              <td>京东企业购</td>
+              <td><span class="conf low"><span class="v">68.2%</span></span></td>
+              <td><span class="status-pill warning">需核验</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">核验</a> · <a style="color:var(--color-text-tertiary);font-size:12.5px;cursor:pointer;">剔除</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb" style="background:rgba(239,68,68,0.12);color:#B91C1C;">PDF</div>
+                  <div>
+                    <div class="n">broken_invoice.pdf</div>
+                    <div class="m">68 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-text-tertiary);">—</span></td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td><span style="color:var(--color-danger);font-size:12px;">—</span></td>
+              <td><span class="status-pill danger">识别失败</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">重新识别</a> · <a style="color:var(--color-text-tertiary);font-size:12.5px;cursor:pointer;">删除</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_009.pdf</div>
+                    <div class="m">216 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-mono,monospace);color:var(--color-primary);">25113300...11223344</span></td>
+              <td style="font-weight:600;">¥ 3,892.00</td>
+              <td>京东商城</td>
+              <td><span class="conf high"><span class="v">95.6%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_010.pdf</div>
+                    <div class="m">198 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-mono,monospace);color:var(--color-primary);">25113300...22334455</span></td>
+              <td style="font-weight:600;">¥ 18,500.00</td>
+              <td>携程商旅</td>
+              <td><span class="conf high"><span class="v">96.2%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_011.pdf</div>
+                    <div class="m">156 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-mono,monospace);color:var(--color-primary);">25113300...33445566</span></td>
+              <td style="font-weight:600;">¥ 24,800.00</td>
+              <td>用友网络</td>
+              <td><span class="conf high"><span class="v">97.8%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked /></td>
+              <td>
+                <div class="file-info">
+                  <div class="file-thumb">PDF</div>
+                  <div>
+                    <div class="n">invoice_0612_012.pdf</div>
+                    <div class="m">98 KB · 上传 10:24</div>
+                  </div>
+                </div>
+              </td>
+              <td><span style="font-family:var(--color-mono,monospace);color:var(--color-primary);">25113300...44556677</span></td>
+              <td style="font-weight:600;">¥ 6,580.00</td>
+              <td>美团企业版</td>
+              <td><span class="conf high"><span class="v">94.8%</span></span></td>
+              <td><span class="status-pill success">已识别</span></td>
+              <td><a href="invoice-detail.html" style="color:var(--color-primary);font-size:12.5px;font-weight:500;">查看</a> · <a style="color:var(--color-primary);font-size:12.5px;font-weight:500;cursor:pointer;">入账</a></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="batch-foot">
+          <div style="display:flex;align-items:center;gap:12px;font-size:12.5px;color:var(--color-text-secondary);">
+            <input type="checkbox" />
+            <span>全选</span>
+            <span style="color:var(--color-border-strong);">|</span>
+            <span>已选 <strong>4</strong> 张 · 合计 <strong style="color:var(--color-text-primary);">¥ 192,180.00</strong></span>
+          </div>
+          <div style="display:flex;gap:8px;">
+            <button class="btn btn-ghost btn-sm">⊗ 批量删除</button>
+            <button class="btn btn-outline btn-sm">⇩ 导出明细</button>
+            <button class="btn btn-primary btn-sm">✓ 批量提交入账 (4)</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<!-- SSE 实时进度 Demo（前端开发可直接复用） -->
+<script>
+/**
+ * 批量识别 SSE 连接
+ * 真实环境中：上传文件后调用 /invoice/ocr/batch/upload 拿到 batchId，
+ * 然后用 batchId 打开 SSE 连接。
+ */
+class BatchOCRSSE {
+  constructor(batchId, onProgress, onItemDone, onSummary, onCompleted, onError) {
+    this.batchId = batchId;
+    this.url = `/sse/invoice/batch/${batchId}`;
+    this.handlers = { onProgress, onItemDone, onSummary, onCompleted, onError };
+    this.source = null;
+    this.retryCount = 0;
+    this.maxRetry = 5;
+  }
+
+  connect() {
+    // EventSource 不支持自定义 header，token 通过 query string 传
+    const token = localStorage.getItem('token') || '';
+    this.source = new EventSource(`${this.url}?token=${token}`);
+
+    this.source.addEventListener('connected', (e) => {
+      console.log('[SSE] Connected:', JSON.parse(e.data));
+      this.retryCount = 0;
+    });
+
+    this.source.addEventListener('progress', (e) => {
+      const data = JSON.parse(e.data);
+      this.handlers.onProgress?.(data);
+    });
+
+    this.source.addEventListener('item_done', (e) => {
+      const data = JSON.parse(e.data);
+      this.handlers.onItemDone?.(data);
+    });
+
+    this.source.addEventListener('summary', (e) => {
+      const data = JSON.parse(e.data);
+      this.handlers.onSummary?.(data);
+    });
+
+    this.source.addEventListener('completed', (e) => {
+      const data = JSON.parse(e.data);
+      this.handlers.onCompleted?.(data);
+      this.close();
+    });
+
+    this.source.addEventListener('error', (e) => {
+      const data = e.data ? JSON.parse(e.data) : {};
+      if (data.code === 1001) {
+        // Token 过期
+        this.handlers.onError?.({ type: 'auth', ...data });
+        this.close();
+        window.location.href = '/login.html';
+        return;
+      }
+      // EventSource 内置重连机制
+      this.retryCount++;
+      if (this.retryCount > this.maxRetry) {
+        this.handlers.onError?.({ type: 'disconnected', message: '连接已断开' });
+        this.close();
+      }
+    });
+  }
+
+  close() {
+    this.source?.close();
+  }
+}
+
+// ====== Demo 用法（页面加载时模拟连接）======
+document.addEventListener('DOMContentLoaded', () => {
+  // 实际场景中，上传文件后调用接口拿到 batchId：
+  // const res = await fetch('/invoice/ocr/batch/upload', { method: 'POST', body: formData });
+  // const { batchId } = await res.json();
+  // const sse = new BatchOCRSSE(batchId, ...);
+  // sse.connect();
+
+  // 本页 Demo：模拟一个本地 SSE，让页面有"动起来"的感觉
+  let progress = 0;
+  const demoTimer = setInterval(() => {
+    progress += 5;
+    if (progress > 100) progress = 100;
+
+    // 模拟进度条更新
+    document.querySelectorAll('.progress-mini .fill').forEach((el, idx) => {
+      const current = parseFloat(el.style.width) || 0;
+      if (current < 100) {
+        el.style.width = Math.min(current + 8, 100) + '%';
+        const sibling = el.parentElement.nextElementSibling;
+        if (sibling) sibling.textContent = Math.min(current + 8, 100) + '%';
+      }
+    });
+
+    if (progress >= 100) {
+      clearInterval(demoTimer);
+      // Demo 完成提示
+      const toast = document.createElement('div');
+      toast.style.cssText = 'position:fixed;top:80px;right:24px;background:#fff;border-left:3px solid #10B981;padding:12px 16px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,0.1);font-size:13px;z-index:200;';
+      toast.innerHTML = '<span style="color:#10B981;margin-right:6px;">✓</span> 批量识别完成（Demo 演示）';
+      document.body.appendChild(toast);
+      setTimeout(() => toast.remove(), 3000);
+    }
+  }, 800);
+});
+</script>
+</body>
+</html>

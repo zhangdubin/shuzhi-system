@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>销售费用 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .filter-chip {
+    padding: 6px 14px; border-radius: var(--radius-full);
+    font-size: 12.5px; color: var(--color-text-secondary);
+    background: #fff; border: 1px solid var(--color-border);
+    cursor: pointer; transition: all 0.15s; font-weight: 500;
+  }
+  .filter-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .filter-chip.active { background: var(--gradient-brand); color: #fff; border-color: transparent; }
+
+  .expense-grid { display: grid; grid-template-columns: 1.6fr 1fr; gap: 20px; margin-bottom: 24px; }
+  .chart-card { background:#fff; border:1px solid var(--color-border); border-radius: var(--radius-lg); padding: 20px 22px; }
+  .chart-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 12px; }
+  .chart-head h3 { font-size: 15px; font-weight: 600; }
+  .chart-area { height: 240px; }
+  .chart-legend { display:flex; gap:16px; margin-top: 10px; font-size: 12px; color: var(--color-text-secondary); }
+  .chart-legend .item { display:flex; align-items:center; gap:6px; }
+  .chart-legend .dot { width:8px; height:8px; border-radius:50%; }
+
+  .donut { position: relative; width: 180px; height: 180px; margin: 0 auto 16px; }
+  .donut-center {
+    position: absolute; inset: 0;
+    display: grid; place-items: center;
+    text-align: center;
+  }
+  .donut-center .v { font-size: 20px; font-weight: 700; }
+  .donut-center .l { font-size: 11px; color: var(--color-text-tertiary); }
+  .donut-legend { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+  .donut-legend .row { display:flex; justify-content:space-between; align-items:center; font-size: 12.5px; }
+  .donut-legend .row .l { display:flex; align-items:center; gap:6px; color: var(--color-text-secondary); }
+  .donut-legend .row .dot { width:8px; height:8px; border-radius:50%; }
+  .donut-legend .row .v { font-weight: 600; }
+  .donut-legend .row .p { color: var(--color-text-tertiary); margin-left: 6px; }
+
+  .table-card { background:#fff; border:1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; }
+  .table-head {
+    padding: 16px 22px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--color-border);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #F8FAFC; text-align: left; padding: 12px 22px; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--color-border); }
+  tbody td { padding: 14px 22px; font-size: 13.5px; border-bottom: 1px solid var(--color-border); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #F8FAFC; }
+  .cell-mono { font-family: var(--font-mono); color: var(--color-primary); font-weight: 500; }
+  .cell-amount { font-weight: 600; text-align: right; }
+  .cell-actions { display:flex; gap: 4px; }
+  .cell-actions a { color: var(--color-primary); font-size: 12.5px; font-weight: 500; padding: 4px 8px; border-radius: var(--radius-sm); }
+  .cell-actions a:hover { background: var(--color-primary-bg); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html" class="active"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <div>
+          <div class="breadcrumb"><span>财务</span><span class="sep">/</span><span>销售费用</span></div>
+          <h1 class="page-title">销售费用管理</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">⌕</div>
+        <div class="topbar-icon"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;" class="fade-up">
+        <div class="stat-card">
+          <div class="stat-label">本期费用总额 <span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF;">¥</span></div>
+          <div class="stat-value">¥ 86.5 <span class="unit">万</span></div>
+          <div class="stat-delta">较上月 <span class="up">↑ 8.2%</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">待审批 <span class="stat-icon" style="background:rgba(245,158,11,0.12);color:#F59E0B;">⏱</span></div>
+          <div class="stat-value">12 <span class="unit">笔</span></div>
+          <div class="stat-delta">金额 ¥ 18.6 万</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">已通过 <span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981;">✓</span></div>
+          <div class="stat-value">68 <span class="unit">笔</span></div>
+          <div class="stat-delta">本月累计</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">已驳回 <span class="stat-icon" style="background:rgba(239,68,68,0.12);color:#EF4444;">×</span></div>
+          <div class="stat-value">3 <span class="unit">笔</span></div>
+          <div class="stat-delta">需重新提交</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div style="padding:16px 22px 0;">
+          <div class="filter-bar">
+            <a href="#" class="filter-chip active">全部 (83)</a>
+            <a href="#" class="filter-chip">差旅 (32)</a>
+            <a href="#" class="filter-chip">招待 (15)</a>
+            <a href="#" class="filter-chip">办公 (18)</a>
+            <a href="#" class="filter-chip">推广 (12)</a>
+            <a href="#" class="filter-chip">其他 (6)</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="expense-grid">
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>本月费用趋势</h3>
+            <div style="display:flex;gap:4px;background:#F1F5F9;border-radius:var(--radius-sm);padding:3px;">
+              <a href="#" style="padding:4px 10px;font-size:12px;color:var(--color-text-secondary);">7天</a>
+              <a href="#" style="padding:4px 10px;font-size:12px;background:#fff;color:var(--color-primary);border-radius:4px;box-shadow:var(--shadow-sm);">30天</a>
+              <a href="#" style="padding:4px 10px;font-size:12px;color:var(--color-text-secondary);">季</a>
+            </div>
+          </div>
+          <div class="chart-area">
+            <svg viewBox="0 0 600 240" style="width:100%;height:100%;" preserveAspectRatio="none">
+              <defs>
+                <linearGradient id="expG" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stop-color="#4F6BFF" stop-opacity="0.3"/>
+                  <stop offset="100%" stop-color="#4F6BFF" stop-opacity="0"/>
+                </linearGradient>
+              </defs>
+              <g stroke="#E2E8F0" stroke-width="1" stroke-dasharray="3 3">
+                <line x1="0" y1="50" x2="600" y2="50"/>
+                <line x1="0" y1="110" x2="600" y2="110"/>
+                <line x1="0" y1="170" x2="600" y2="170"/>
+                <line x1="0" y1="220" x2="600" y2="220"/>
+              </g>
+              <!-- 预算线 -->
+              <line x1="0" y1="80" x2="600" y2="80" stroke="#F59E0B" stroke-width="1.5" stroke-dasharray="6 3" opacity="0.6"/>
+              <text x="580" y="74" fill="#F59E0B" font-size="10" text-anchor="end">预算 ¥ 100 万</text>
+              <!-- 实际面积 -->
+              <path d="M 0,180 L 60,150 L 120,165 L 180,130 L 240,140 L 300,90 L 360,110 L 420,70 L 480,95 L 540,60 L 600,80 L 600,240 L 0,240 Z" fill="url(#expG)"/>
+              <path d="M 0,180 L 60,150 L 120,165 L 180,130 L 240,140 L 300,90 L 360,110 L 420,70 L 480,95 L 540,60 L 600,80" fill="none" stroke="#4F6BFF" stroke-width="2.5"/>
+              <g fill="#fff" stroke="#4F6BFF" stroke-width="2">
+                <circle cx="120" cy="165" r="3.5"/>
+                <circle cx="300" cy="90" r="3.5"/>
+                <circle cx="480" cy="95" r="3.5"/>
+                <circle cx="600" cy="80" r="3.5"/>
+              </g>
+              <g fill="#94A3B8" font-size="9">
+                <text x="20" y="232">6/1</text>
+                <text x="160" y="232">6/8</text>
+                <text x="300" y="232">6/15</text>
+                <text x="440" y="232">6/22</text>
+                <text x="580" y="232">今天</text>
+              </g>
+            </svg>
+          </div>
+          <div class="chart-legend">
+            <div class="item"><span class="dot" style="background:#4F6BFF;"></span>实际 ¥ 86.5 万</div>
+            <div class="item"><span class="dot" style="background:#F59E0B;"></span>预算 ¥ 100 万</div>
+            <div class="item" style="margin-left:auto;color:var(--color-text-tertiary);">预算执行率 86.5%</div>
+          </div>
+        </div>
+
+        <div class="chart-card">
+          <div class="chart-head">
+            <h3>分类占比</h3>
+          </div>
+          <div class="donut">
+            <svg viewBox="0 0 100 100" style="transform:rotate(-90deg);width:100%;height:100%;">
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#F1F5F9" stroke-width="14"/>
+              <!-- 差旅 38% -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#4F6BFF" stroke-width="14"
+                stroke-dasharray="95.5 251.3" stroke-dashoffset="0"/>
+              <!-- 招待 22% -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#7C3AED" stroke-width="14"
+                stroke-dasharray="55.3 251.3" stroke-dashoffset="-95.5"/>
+              <!-- 办公 18% -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#10B981" stroke-width="14"
+                stroke-dasharray="45.2 251.3" stroke-dashoffset="-150.8"/>
+              <!-- 推广 14% -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#F59E0B" stroke-width="14"
+                stroke-dasharray="35.2 251.3" stroke-dashoffset="-196"/>
+              <!-- 其他 8% -->
+              <circle cx="50" cy="50" r="40" fill="none" stroke="#EC4899" stroke-width="14"
+                stroke-dasharray="20.1 251.3" stroke-dashoffset="-231.2"/>
+            </svg>
+            <div class="donut-center">
+              <div>
+                <div class="v">¥ 86.5万</div>
+                <div class="l">本月合计</div>
+              </div>
+            </div>
+          </div>
+          <div class="donut-legend">
+            <div class="row"><span class="l"><span class="dot" style="background:#4F6BFF;"></span>差旅</span><span><span class="v">¥ 32.9万</span><span class="p">38%</span></span></div>
+            <div class="row"><span class="l"><span class="dot" style="background:#7C3AED;"></span>招待</span><span><span class="v">¥ 19.0万</span><span class="p">22%</span></span></div>
+            <div class="row"><span class="l"><span class="dot" style="background:#10B981;"></span>办公</span><span><span class="v">¥ 15.6万</span><span class="p">18%</span></span></div>
+            <div class="row"><span class="l"><span class="dot" style="background:#F59E0B;"></span>推广</span><span><span class="v">¥ 12.1万</span><span class="p">14%</span></span></div>
+            <div class="row"><span class="l"><span class="dot" style="background:#EC4899;"></span>其他</span><span><span class="v">¥ 6.9万</span><span class="p">8%</span></span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <h3 style="font-size:15px;font-weight:600;">费用明细</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="搜索单号 / 事由..." />
+            <select style="height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;">
+              <option>所有部门</option>
+              <option>销售部</option>
+              <option>市场部</option>
+            </select>
+            <button class="btn btn-outline btn-sm">⇩ 导出</button>
+            <button class="btn btn-primary btn-sm">+ 录入费用</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>申请单号</th>
+              <th>类型</th>
+              <th>事由</th>
+              <th>申请人</th>
+              <th>部门</th>
+              <th>提交时间</th>
+              <th style="text-align:right;">金额</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0612-001</span></td>
+              <td><span class="tag tag-primary">差旅</span></td>
+              <td>上海-北京客户拜访（北辰集团）</td>
+              <td>陈思琪</td>
+              <td>销售部</td>
+              <td>2026-06-12 09:23</td>
+              <td class="cell-amount">¥ 4,820.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0611-008</span></td>
+              <td><span class="tag tag-primary">差旅</span></td>
+              <td>Q2 客户回访（朗驰智能）</td>
+              <td>刘洋</td>
+              <td>销售部</td>
+              <td>2026-06-11 16:45</td>
+              <td class="cell-amount">¥ 3,260.00</td>
+              <td><span class="tag tag-warning">审批中</span></td>
+              <td class="cell-actions"><a href="#">查看</a><a href="#">催办</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0611-006</span></td>
+              <td><span class="tag" style="background:#EDE9FE;color:#7C3AED;">招待</span></td>
+              <td>万象科技季度合作晚宴</td>
+              <td>张明</td>
+              <td>财务部</td>
+              <td>2026-06-11 14:20</td>
+              <td class="cell-amount">¥ 8,650.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0610-012</span></td>
+              <td><span class="tag" style="background:#D1FAE5;color:#047857;">办公</span></td>
+              <td>采购办公耗材（打印纸/墨盒）</td>
+              <td>王芳</td>
+              <td>财务部</td>
+              <td>2026-06-10 11:08</td>
+              <td class="cell-amount">¥ 1,280.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0610-009</span></td>
+              <td><span class="tag" style="background:#FEF3C7;color:#B45309;">推广</span></td>
+              <td>线上直播推广（6月产品发布会）</td>
+              <td>陈思琪</td>
+              <td>市场部</td>
+              <td>2026-06-10 10:32</td>
+              <td class="cell-amount">¥ 28,500.00</td>
+              <td><span class="tag tag-warning">审批中</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0609-015</span></td>
+              <td><span class="tag tag-primary">差旅</span></td>
+              <td>深圳客户拜访（朗驰智能+3 家）</td>
+              <td>刘洋</td>
+              <td>销售部</td>
+              <td>2026-06-09 18:50</td>
+              <td class="cell-amount">¥ 6,840.00</td>
+              <td><span class="tag tag-danger">已驳回</span></td>
+              <td class="cell-actions"><a href="#">查看</a><a href="#">重提</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0608-003</span></td>
+              <td><span class="tag" style="background:#FEF3C7;color:#B45309;">推广</span></td>
+              <td>行业展会物料（数智化峰会 2026）</td>
+              <td>陈思琪</td>
+              <td>市场部</td>
+              <td>2026-06-08 15:20</td>
+              <td class="cell-amount">¥ 12,800.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0608-001</span></td>
+              <td><span class="tag" style="background:#D1FAE5;color:#047857;">办公</span></td>
+              <td>团队培训资料采购（专业书籍）</td>
+              <td>王芳</td>
+              <td>财务部</td>
+              <td>2026-06-08 09:15</td>
+              <td class="cell-amount">¥ 2,360.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">EX-2026-0607-022</span></td>
+              <td><span class="tag" style="background:#EDE9FE;color:#7C3AED;">招待</span></td>
+              <td>新客户接待（北辰集团项目组）</td>
+              <td>张明</td>
+              <td>财务部</td>
+              <td>2026-06-07 19:30</td>
+              <td class="cell-amount">¥ 5,420.00</td>
+              <td><span class="tag tag-success">已通过</span></td>
+              <td class="cell-actions"><a href="#">查看</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 22px;border-top:1px solid var(--color-border);">
+          <span style="font-size:12.5px;color:var(--color-text-tertiary);">共 83 笔 · 显示 1-9</span>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm">‹</button>
+            <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+            <button class="btn btn-ghost btn-sm">2</button>
+            <button class="btn btn-ghost btn-sm">3</button>
+            <button class="btn btn-ghost btn-sm">…</button>
+            <button class="btn btn-ghost btn-sm">10</button>
+            <button class="btn btn-ghost btn-sm">›</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

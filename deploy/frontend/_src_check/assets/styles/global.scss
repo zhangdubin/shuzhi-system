@@ -1,0 +1,160 @@
+// ============================================================
+// 全局样式
+// ============================================================
+
+* {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: $font-family-base;
+  font-size: 14px;
+  line-height: 1.6;
+  color: $color-text-primary;
+  background: $color-bg;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: $color-primary;
+  text-decoration: none;
+  &:hover {
+    color: $color-primary-hover;
+  }
+}
+
+// 滚动条
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: $color-border-strong;
+  border-radius: 4px;
+  &:hover {
+    background: $color-text-tertiary;
+  }
+}
+
+// 通用类
+.flex { display: flex; }
+.flex-1 { flex: 1; }
+.flex-center { display: flex; align-items: center; justify-content: center; }
+.flex-between { display: flex; align-items: center; justify-content: space-between; }
+.text-secondary { color: $color-text-secondary; }
+.text-tertiary { color: $color-text-tertiary; }
+
+// 卡片
+.page-card {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  border: 1px solid $color-border;
+  box-shadow: $shadow-sm;
+  padding: $space-md;
+}
+
+// 页面容器
+.page-container {
+  padding: $space-md;
+  min-height: calc(100vh - #{$layout-header-height});
+}
+
+.page-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: $space-md;
+  h2 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 600;
+    color: $color-text-primary;
+  }
+  .page-desc {
+    color: $color-text-secondary;
+    font-size: 13px;
+    margin-top: 4px;
+  }
+}
+
+// 数据卡片（用于 Dashboard）
+.stat-card {
+  background: $color-bg-card;
+  border-radius: $radius-lg;
+  border: 1px solid $color-border;
+  padding: $space-md;
+  display: flex;
+  flex-direction: column;
+  gap: $space-sm;
+  transition: all 0.2s;
+  &:hover {
+    box-shadow: $shadow-md;
+    transform: translateY(-2px);
+  }
+  .stat-label {
+    color: $color-text-secondary;
+    font-size: 13px;
+  }
+  .stat-value {
+    font-size: 28px;
+    font-weight: 700;
+    color: $color-text-primary;
+    background: $gradient-brand;
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+  .stat-trend {
+    font-size: 12px;
+    &.up { color: $color-success; }
+    &.down { color: $color-danger; }
+  }
+}
+
+// 渐变按钮（备用）
+.btn-brand {
+  background: $gradient-brand !important;
+  border: none !important;
+  color: #fff !important;
+  &:hover {
+    opacity: 0.92;
+  }
+}
+
+// 详情 / 编辑器样式（与 design/ 设计稿 1:1）
+@import './detail.scss';
+
+// 通用面板标题
+.panel-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: $color-text-primary;
+  margin: 0 0 $space-md 0;
+  display: flex;
+  align-items: center;
+  gap: $space-sm;
+  &::before {
+    content: '';
+    display: inline-block;
+    width: 3px;
+    height: 14px;
+    background: $gradient-brand;
+    border-radius: 2px;
+  }
+}
+
+// ============================================================
+// AI 数智化组件（Phase 1，2026-05-21 引入）
+// 不破坏 EP 主题，仅追加新类
+// ============================================================
+@import './ai.scss';

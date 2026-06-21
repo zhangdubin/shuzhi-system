@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>合同管理 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .filter-chip {
+    padding: 6px 14px; border-radius: var(--radius-full);
+    font-size: 12.5px; color: var(--color-text-secondary);
+    background: #fff; border: 1px solid var(--color-border);
+    cursor: pointer; transition: all 0.15s; font-weight: 500;
+  }
+  .filter-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .filter-chip.active { background: var(--gradient-brand); color: #fff; border-color: transparent; }
+
+  .table-card { background:#fff; border:1px solid var(--color-border); border-radius: var(--radius-lg); overflow: hidden; margin-bottom: 24px; }
+  .table-head {
+    padding: 16px 22px; display: flex; justify-content: space-between; align-items: center;
+    border-bottom: 1px solid var(--color-border);
+  }
+  table { width: 100%; border-collapse: collapse; }
+  thead th { background: #F8FAFC; text-align: left; padding: 12px 22px; font-size: 12px; font-weight: 600; color: var(--color-text-secondary); text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 1px solid var(--color-border); }
+  tbody td { padding: 14px 22px; font-size: 13.5px; border-bottom: 1px solid var(--color-border); }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody tr:hover { background: #F8FAFC; }
+  .cell-mono { font-family: var(--font-mono); color: var(--color-primary); font-weight: 500; }
+  .cell-amount { font-weight: 600; text-align: right; }
+  .cell-actions { display:flex; gap: 4px; }
+  .cell-actions a { color: var(--color-primary); font-size: 12.5px; font-weight: 500; padding: 4px 8px; border-radius: var(--radius-sm); cursor: pointer; }
+  .cell-actions a:hover { background: var(--color-primary-bg); }
+  .sign-status {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11.5px; font-weight: 500;
+  }
+  .sign-status .ico { width: 14px; height: 14px; border-radius: 50%; display: grid; place-items: center; font-size: 9px; color: #fff; }
+  .sign-status.done .ico { background: var(--color-success); }
+  .sign-status.partial .ico { background: var(--color-warning); }
+  .sign-status.none .ico { background: #CBD5E1; }
+
+  /* 审批流程步骤条 */
+  .flow-card { background:#fff; border:1px solid var(--color-border); border-radius: var(--radius-lg); padding: 24px 28px; margin-bottom: 24px; }
+  .flow-card h3 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  .flow-sub { font-size: 12.5px; color: var(--color-text-tertiary); margin-bottom: 24px; }
+  .flow-row {
+    display: flex; align-items: center; gap: 0;
+    position: relative;
+  }
+  .flow-step {
+    display: flex; flex-direction: column; align-items: center;
+    position: relative; flex: 1;
+  }
+  .flow-step .node {
+    width: 40px; height: 40px;
+    border-radius: 50%;
+    background: #F1F5F9;
+    color: var(--color-text-tertiary);
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 600;
+    border: 2px solid #E2E8F0;
+    z-index: 1;
+    transition: all 0.2s;
+  }
+  .flow-step.done .node {
+    background: linear-gradient(135deg,#10B981,#059669);
+    color: #fff;
+    border-color: transparent;
+  }
+  .flow-step.current .node {
+    background: var(--gradient-brand);
+    color: #fff;
+    border-color: transparent;
+    box-shadow: 0 0 0 4px rgba(79,107,255,0.2);
+  }
+  .flow-step .lbl {
+    margin-top: 8px;
+    font-size: 12.5px;
+    color: var(--color-text-tertiary);
+    font-weight: 500;
+    text-align: center;
+  }
+  .flow-step.done .lbl, .flow-step.current .lbl { color: var(--color-text-primary); }
+  .flow-step .meta {
+    font-size: 11px; color: var(--color-text-tertiary);
+    margin-top: 2px;
+  }
+  .flow-line {
+    flex: 1; height: 2px; background: #E2E8F0;
+    margin: 0 -8px; align-self: center; position: relative;
+    top: -10px;
+  }
+  .flow-line.done { background: linear-gradient(90deg,#10B981,#059669); }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html" class="active"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <div>
+          <div class="breadcrumb"><span>业务</span><span class="sep">/</span><span>合同管理</span></div>
+          <h1 class="page-title">合同管理</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">⌕</div>
+        <div class="topbar-icon"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;" class="fade-up">
+        <div class="stat-card">
+          <div class="stat-label">合同总数 <span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF;">▦</span></div>
+          <div class="stat-value">86 <span class="unit">份</span></div>
+          <div class="stat-delta">执行中 47 份</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">合同总金额 <span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981;">¥</span></div>
+          <div class="stat-value">¥ 2,486 <span class="unit">万</span></div>
+          <div class="stat-delta">本年累计</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">待审批 <span class="stat-icon" style="background:rgba(245,158,11,0.12);color:#F59E0B;">⏱</span></div>
+          <div class="stat-value">5 <span class="unit">份</span></div>
+          <div class="stat-delta">需法务审核</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">即将到期 <span class="stat-icon" style="background:rgba(239,68,68,0.12);color:#EF4444;">!</span></div>
+          <div class="stat-value">7 <span class="unit">份</span></div>
+          <div class="stat-delta">30 天内到期</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div style="padding:16px 22px 0;">
+          <div class="filter-bar">
+            <a href="#" class="filter-chip active">全部 (86)</a>
+            <a href="#" class="filter-chip">销售合同 (52)</a>
+            <a href="#" class="filter-chip">采购合同 (18)</a>
+            <a href="#" class="filter-chip">服务合同 (12)</a>
+            <a href="#" class="filter-chip">框架协议 (4)</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="flow-card">
+        <h3>当前审批流程 · HT-2026-031 销售服务合同</h3>
+        <div class="flow-sub">由李明于 2026-06-11 提交，预计今日 18:00 前完成全部审批</div>
+        <div class="flow-row">
+          <div class="flow-step done">
+            <div class="node">✓</div>
+            <div class="lbl">起草</div>
+            <div class="meta">李明 · 06-11 10:23</div>
+          </div>
+          <div class="flow-line done"></div>
+          <div class="flow-step done">
+            <div class="node">✓</div>
+            <div class="lbl">法务审核</div>
+            <div class="meta">王律师 · 06-11 14:30</div>
+          </div>
+          <div class="flow-line done"></div>
+          <div class="flow-step current">
+            <div class="node">3</div>
+            <div class="lbl">财务审核</div>
+            <div class="meta">张明 · 审核中</div>
+          </div>
+          <div class="flow-line"></div>
+          <div class="flow-step">
+            <div class="node">4</div>
+            <div class="lbl">总经理审批</div>
+            <div class="meta">待提交</div>
+          </div>
+          <div class="flow-line"></div>
+          <div class="flow-step">
+            <div class="node">5</div>
+            <div class="lbl">电子签</div>
+            <div class="meta">未开始</div>
+          </div>
+          <div class="flow-line"></div>
+          <div class="flow-step">
+            <div class="node">6</div>
+            <div class="lbl">归档</div>
+            <div class="meta">未开始</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="table-card">
+        <div class="table-head">
+          <h3 style="font-size:15px;font-weight:600;">合同列表</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="搜索合同名 / 客户..." />
+            <select style="height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;">
+              <option>所有客户</option>
+              <option>万象科技</option>
+              <option>北辰集团</option>
+            </select>
+            <input type="date" style="height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;color:var(--color-text-tertiary);" />
+            <button class="btn btn-outline btn-sm">⇩ 导出</button>
+            <button class="btn btn-primary btn-sm">+ 新建合同</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>合同编号</th>
+              <th>合同名称</th>
+              <th>客户</th>
+              <th>类型</th>
+              <th style="text-align:right;">金额</th>
+              <th>签订日期</th>
+              <th>到期日期</th>
+              <th>审批状态</th>
+              <th>电子签</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="cell-mono">HT-2026-031</span></td>
+              <td>万象科技 SaaS 服务合同 2026Q2</td>
+              <td>万象科技有限公司</td>
+              <td><span class="tag tag-primary">销售</span></td>
+              <td class="cell-amount">¥ 86,500.00</td>
+              <td>2026-06-11</td>
+              <td>2027-06-10</td>
+              <td><span class="tag tag-warning">审批中</span></td>
+              <td><span class="sign-status none"><span class="ico">!</span>未签</span></td>
+              <td class="cell-actions"><a>查看</a><a>催办</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-030</span></td>
+              <td>北辰集团 BI 系统升级服务合同</td>
+              <td>北辰实业集团</td>
+              <td><span class="tag tag-primary">销售</span></td>
+              <td class="cell-amount">¥ 286,000.00</td>
+              <td>2026-06-10</td>
+              <td>2026-12-31</td>
+              <td><span class="tag tag-success">已签订</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a><a>下载</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-029</span></td>
+              <td>朗驰智能设备改造工程合同</td>
+              <td>朗驰智能设备有限公司</td>
+              <td><span class="tag tag-primary">销售</span></td>
+              <td class="cell-amount">¥ 568,000.00</td>
+              <td>2026-06-08</td>
+              <td>2026-12-15</td>
+              <td><span class="tag tag-success">已签订</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a><a>下载</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-028</span></td>
+              <td>数智化二期 SaaS 平台年度服务</td>
+              <td>万象科技有限公司</td>
+              <td><span class="tag" style="background:#EDE9FE;color:#7C3AED;">框架</span></td>
+              <td class="cell-amount">¥ 1,280,000.00</td>
+              <td>2026-05-20</td>
+              <td>2027-05-19</td>
+              <td><span class="tag tag-success">执行中</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a><a>续签</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-027</span></td>
+              <td>AWS 云资源采购合同</td>
+              <td>亚马逊通技术服务</td>
+              <td><span class="tag" style="background:#D1FAE5;color:#047857;">采购</span></td>
+              <td class="cell-amount">¥ 168,000.00</td>
+              <td>2026-05-15</td>
+              <td>2027-05-14</td>
+              <td><span class="tag tag-success">执行中</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-026</span></td>
+              <td>集团 2026 培训服务合同</td>
+              <td>集团总部</td>
+              <td><span class="tag" style="background:#CFFAFE;color:#0E7490;">服务</span></td>
+              <td class="cell-amount">¥ 86,500.00</td>
+              <td>2026-05-10</td>
+              <td>2026-08-31</td>
+              <td><span class="tag tag-success">执行中</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-025</span></td>
+              <td>办公耗材年度采购框架</td>
+              <td>京东企业购</td>
+              <td><span class="tag" style="background:#D1FAE5;color:#047857;">采购</span></td>
+              <td class="cell-amount">¥ 36,000.00</td>
+              <td>2026-05-08</td>
+              <td>2027-05-07</td>
+              <td><span class="tag tag-success">执行中</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-024</span></td>
+              <td>财务系统年度服务合同</td>
+              <td>用友网络</td>
+              <td><span class="tag" style="background:#CFFAFE;color:#0E7490;">服务</span></td>
+              <td class="cell-amount">¥ 128,000.00</td>
+              <td>2026-05-05</td>
+              <td>2027-05-04</td>
+              <td><span class="tag tag-warning">即将到期</span></td>
+              <td><span class="sign-status partial"><span class="ico">!</span>部分</span></td>
+              <td class="cell-actions"><a>查看</a><a>续签</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-023</span></td>
+              <td>数智化一期验收补充协议</td>
+              <td>万象科技有限公司</td>
+              <td><span class="tag" style="background:#EDE9FE;color:#7C3AED;">框架</span></td>
+              <td class="cell-amount">¥ 56,000.00</td>
+              <td>2026-05-01</td>
+              <td>2026-07-31</td>
+              <td><span class="tag tag-danger">已到期</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a><a>归档</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-022</span></td>
+              <td>差旅服务合作协议</td>
+              <td>携程商旅</td>
+              <td><span class="tag" style="background:#CFFAFE;color:#0E7490;">服务</span></td>
+              <td class="cell-amount">¥ 24,000.00</td>
+              <td>2026-04-25</td>
+              <td>2027-04-24</td>
+              <td><span class="tag tag-success">执行中</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="cell-mono">HT-2026-021</span></td>
+              <td>行业峰会赞助协议</td>
+              <td>数智化峰会组委会</td>
+              <td><span class="tag" style="background:#FEF3C7;color:#B45309;">其他</span></td>
+              <td class="cell-amount">¥ 80,000.00</td>
+              <td>2026-04-20</td>
+              <td>2026-09-15</td>
+              <td><span class="tag tag-info">已归档</span></td>
+              <td><span class="sign-status done"><span class="ico">✓</span>已签</span></td>
+              <td class="cell-actions"><a>查看</a></td>
+            </tr>
+          </tbody>
+        </table>
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 22px;border-top:1px solid var(--color-border);">
+          <span style="font-size:12.5px;color:var(--color-text-tertiary);">共 86 份 · 显示 1-11</span>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm">‹</button>
+            <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+            <button class="btn btn-ghost btn-sm">2</button>
+            <button class="btn btn-ghost btn-sm">3</button>
+            <button class="btn btn-ghost btn-sm">…</button>
+            <button class="btn btn-ghost btn-sm">8</button>
+            <button class="btn btn-ghost btn-sm">›</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

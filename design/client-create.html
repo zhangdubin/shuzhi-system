@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>新建客户档案 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .form-section { background: #fff; border: 1px solid var(--color-border); border-radius: var(--radius-lg); margin-bottom: 20px; overflow: hidden; }
+  .fs-head {
+    padding: 14px 22px; border-bottom: 1px solid var(--color-border);
+    background: #FAFBFF;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .fs-head h3 { font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+  .fs-body { padding: 22px 24px; }
+  .form-row-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; }
+  .form-row-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  .form-row-1 { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .form-row-3 .field, .form-row-2 .field, .form-row-1 .field { display: flex; flex-direction: column; gap: 6px; }
+  .form-row-3 .field label, .form-row-2 .field label, .form-row-1 .field label {
+    font-size: 12.5px; font-weight: 500; color: var(--color-text-secondary);
+  }
+  .form-row-3 .field input, .form-row-3 .field select, .form-row-3 .field textarea,
+  .form-row-2 .field input, .form-row-2 .field select,
+  .form-row-1 .field input, .form-row-1 .field select, .form-row-1 .field textarea {
+    padding: 10px 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 13.5px;
+    color: var(--color-text-primary);
+    background: #fff;
+    outline: none;
+    transition: all 0.15s;
+    font-family: inherit;
+  }
+  .form-row-3 .field input:focus, .form-row-2 .field input:focus, .form-row-1 .field input:focus,
+  .form-row-3 .field select:focus, .form-row-2 .field select:focus, .form-row-1 .field select:focus,
+  .form-row-3 .field textarea:focus, .form-row-1 .field textarea:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-bg);
+  }
+  .form-row-1 .field textarea { min-height: 70px; resize: vertical; }
+  .req-mark { color: var(--color-danger); }
+
+  /* 等级选择 */
+  .level-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; }
+  .level-card {
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 14px;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    background: #fff;
+  }
+  .level-card:hover { border-color: var(--color-primary); }
+  .level-card.active {
+    border-color: var(--color-primary);
+    background: var(--color-primary-bg);
+  }
+  .level-card .badge {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    margin: 0 auto 6px;
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 700;
+    color: #fff;
+  }
+  .level-card .name { font-size: 13.5px; font-weight: 600; }
+  .level-card .desc { font-size: 11px; color: var(--color-text-tertiary); margin-top: 2px; }
+  .level-card[data-level="A"] .badge { background: linear-gradient(135deg,#F59E0B,#D97706); }
+  .level-card[data-level="B"] .badge { background: linear-gradient(135deg,#4F6BFF,#7C3AED); }
+  .level-card[data-level="C"] .badge { background: linear-gradient(135deg,#10B981,#059669); }
+  .level-card[data-level="D"] .badge { background: linear-gradient(135deg,#94A3B8,#64748B); }
+
+  /* 重复检查提示 */
+  .dup-alert {
+    background: rgba(245,158,11,0.08);
+    border: 1px solid rgba(245,158,11,0.3);
+    border-radius: var(--radius-md);
+    padding: 12px 14px;
+    margin-top: 8px;
+    display: flex; gap: 10px;
+    font-size: 12.5px;
+  }
+  .dup-alert .ico { color: var(--color-warning); font-size: 16px; flex-shrink: 0; }
+  .dup-alert .body { flex: 1; }
+  .dup-alert .body .t { font-weight: 600; color: #B45309; margin-bottom: 4px; }
+  .dup-alert .body .item {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 6px 10px;
+    background: #fff;
+    border-radius: var(--radius-sm);
+    margin-bottom: 4px;
+  }
+  .dup-alert .body .item .name { font-size: 12.5px; font-weight: 500; }
+  .dup-alert .body .item .actions { display: flex; gap: 4px; }
+  .dup-alert .body .item .actions a {
+    font-size: 11.5px;
+    color: var(--color-primary);
+    padding: 2px 8px;
+  }
+
+  .form-foot {
+    position: sticky; bottom: 0;
+    background: #fff; border-top: 1px solid var(--color-border);
+    padding: 14px 24px;
+    margin: 0 -28px -40px;
+    display: flex; justify-content: space-between; align-items: center;
+    z-index: 10;
+  }
+  .tip-box {
+    display: flex; gap: 10px;
+    padding: 12px 14px;
+    background: rgba(79,107,255,0.05);
+    border: 1px solid rgba(79,107,255,0.2);
+    border-radius: var(--radius-md);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li><a href="invoice-ocr.html"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span></a></li>
+      <li><a href="invoice-ocr-batch.html"><span class="nav-icon">⇪</span>批量上传</a></li>
+      <li><a href="invoice-ocr-records.html"><span class="nav-icon">▤</span>识别记录</a></li>
+      <li><a href="invoice-ocr-verify.html"><span class="nav-icon">✓</span>查验真伪</a></li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>业务</span><span class="sep">/</span>
+            <span>客户管理</span>
+            <span class="sep">/</span>
+            <span>新建客户</span>
+          </div>
+          <h1 class="page-title">新建客户档案</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">⊗ 取消</button>
+        <button class="btn btn-outline btn-sm">💾 存为草稿</button>
+        <button class="btn btn-primary btn-sm">✓ 创建客户</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="tip-box">
+        <div style="color:var(--color-primary);font-size:16px;">ⓘ</div>
+        <div>
+          <strong>客户档案：</strong> 创建后可在合同、项目、发票、回款等模块引用。纳税人识别号一旦保存不可修改，请仔细核对。系统会实时检测重复客户。
+        </div>
+      </div>
+
+      <!-- 1. 基本信息 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>🏢 基本信息 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">* 必填</span></h3>
+        </div>
+        <div class="fs-body">
+
+          <div class="form-row-2" style="margin-bottom:16px;">
+            <div class="field">
+              <label>客户全称 <span class="req-mark">*</span></label>
+              <input type="text" placeholder="营业执照上的公司全称" value="朗驰智能设备有限公司" />
+            </div>
+            <div class="field">
+              <label>客户简称</label>
+              <input type="text" placeholder="用于列表显示，可选" value="朗驰智能" />
+            </div>
+          </div>
+
+          <div class="form-row-3" style="margin-bottom:16px;">
+            <div class="field">
+              <label>纳税人识别号 <span class="req-mark">*</span></label>
+              <input type="text" placeholder="18 位统一社会信用代码" value="91310112MA1GK3X9P" style="font-family:var(--font-mono);font-size:13px;" />
+            </div>
+            <div class="field">
+              <label>法定代表人</label>
+              <input type="text" value="张志强" />
+            </div>
+            <div class="field">
+              <label>所属行业</label>
+              <select>
+                <option>制造业</option>
+                <option>互联网/IT</option>
+                <option>金融业</option>
+                <option>零售/电商</option>
+                <option>服务业</option>
+                <option selected>智能设备</option>
+                <option>教育</option>
+                <option>医疗</option>
+                <option>其他</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 重复检查提示 -->
+          <div class="dup-alert">
+            <div class="ico">⚠</div>
+            <div class="body">
+              <div class="t">系统检测到 1 个相似客户，请确认是否重复</div>
+              <div class="item">
+                <div>
+                  <div class="name">朗驰智能设备有限公司</div>
+                  <div style="font-size:11px;color:var(--color-text-tertiary);">税号 91310112MA1GK3X9Q · 2025 年 8 月创建</div>
+                </div>
+                <div class="actions">
+                  <a>查看</a>
+                  <a>合并到此客户</a>
+                </div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- 2. 主要联系人 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>👤 主要联系人 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">至少 1 位</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="form-row-3" style="margin-bottom:16px;">
+            <div class="field">
+              <label>联系人姓名 <span class="req-mark">*</span></label>
+              <input type="text" value="王经理" />
+            </div>
+            <div class="field">
+              <label>职位</label>
+              <input type="text" value="采购总监" />
+            </div>
+            <div class="field">
+              <label>角色</label>
+              <select>
+                <option selected>主要联系人</option>
+                <option>商务联系人</option>
+                <option>技术联系人</option>
+                <option>财务联系人</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-3" style="margin-bottom:16px;">
+            <div class="field">
+              <label>手机 <span class="req-mark">*</span></label>
+              <input type="text" value="138 1234 5678" />
+            </div>
+            <div class="field">
+              <label>邮箱</label>
+              <input type="text" value="wangjl@langchi.com" />
+            </div>
+            <div class="field">
+              <label>微信</label>
+              <input type="text" placeholder="选填" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 3. 财务信息 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>💳 财务信息 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">开票与回款所需</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="form-row-2" style="margin-bottom:16px;">
+            <div class="field">
+              <label>开户银行</label>
+              <input type="text" value="招商银行上海分行" />
+            </div>
+            <div class="field">
+              <label>银行账号</label>
+              <input type="text" value="6225 1234 5678 9012" style="font-family:var(--font-mono);font-size:12.5px;" />
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-bottom:16px;">
+            <div class="field">
+              <label>注册地址</label>
+              <input type="text" value="上海市浦东新区张江高科技园区科苑路 88 号 5 号楼 3 楼" />
+            </div>
+            <div class="field">
+              <label>开票地址电话</label>
+              <input type="text" placeholder="用于开发票" value="同上 / 021-58880000" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4. 客户分级 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>⭐ 客户分级 <span style="font-size:11.5px;color:var(--color-text-tertiary);font-weight:400;">影响后续销售策略与审批权限</span></h3>
+        </div>
+        <div class="fs-body">
+          <div class="level-grid">
+            <div class="level-card" data-level="A">
+              <div class="badge">A</div>
+              <div class="name">战略客户</div>
+              <div class="desc">年合同额 ≥ 100 万</div>
+            </div>
+            <div class="level-card active" data-level="B">
+              <div class="badge">B</div>
+              <div class="name">重点客户</div>
+              <div class="desc">年合同额 30-100 万</div>
+            </div>
+            <div class="level-card" data-level="C">
+              <div class="badge">C</div>
+              <div class="name">普通客户</div>
+              <div class="desc">年合同额 5-30 万</div>
+            </div>
+            <div class="level-card" data-level="D">
+              <div class="badge">D</div>
+              <div class="name">潜在客户</div>
+              <div class="desc">年合同额 &lt; 5 万</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5. 备注 -->
+      <div class="form-section">
+        <div class="fs-head">
+          <h3>📝 备注</h3>
+        </div>
+        <div class="fs-body">
+          <div class="form-row-1">
+            <div class="field">
+              <label>客户背景 / 备注</label>
+              <textarea placeholder="客户背景、来源、合作历史、特殊要求等">智能设备制造行业 Top 10，主营 AGV 机器人。2024 年起合作，已完成 3 期 SaaS 部署。对系统集成能力要求高，需要持续技术支持。建议作为重点客户维护。</textarea>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-foot">
+        <div style="font-size:12px;color:var(--color-text-tertiary);">
+          💡 创建后可继续编辑联系人、开票信息、关联项目
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button class="btn btn-ghost btn-sm">⊗ 取消</button>
+          <button class="btn btn-outline btn-sm">💾 存为草稿</button>
+          <button class="btn btn-primary btn-sm">✓ 创建客户</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

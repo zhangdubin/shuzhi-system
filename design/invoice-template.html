@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>发票模板 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .filter-bar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+  }
+  .filter-chip {
+    padding: 6px 14px;
+    border-radius: var(--radius-full);
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    background: #fff;
+    border: 1px solid var(--color-border);
+    cursor: pointer;
+    transition: all 0.15s;
+    font-weight: 500;
+  }
+  .filter-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .filter-chip.active {
+    background: var(--gradient-brand);
+    color: #fff;
+    border-color: transparent;
+  }
+  .template-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+  .tpl-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 20px;
+    transition: all 0.2s;
+    cursor: pointer;
+    position: relative;
+  }
+  .tpl-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    border-color: transparent;
+  }
+  .tpl-head {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 14px;
+  }
+  .tpl-icon {
+    width: 48px; height: 48px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    color: #fff;
+    font-weight: 700;
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+  .tpl-info { flex: 1; min-width: 0; }
+  .tpl-info h4 {
+    font-size: 14.5px;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+  .tpl-info p {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    line-height: 1.5;
+    margin: 0;
+  }
+  .tpl-tags { margin-bottom: 14px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .tpl-stats {
+    display: flex;
+    justify-content: space-between;
+    padding: 12px 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 12px;
+  }
+  .tpl-stat { text-align: center; flex: 1; }
+  .tpl-stat .v {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+  }
+  .tpl-stat .l {
+    font-size: 10.5px;
+    color: var(--color-text-tertiary);
+    margin-top: 2px;
+  }
+  .tpl-foot {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .tpl-creator {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11.5px;
+    color: var(--color-text-tertiary);
+  }
+  .tpl-creator img {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+  }
+  .tpl-actions { display: flex; gap: 4px; }
+  .tpl-actions button {
+    width: 28px; height: 28px;
+    border-radius: var(--radius-sm);
+    display: grid; place-items: center;
+    color: var(--color-text-tertiary);
+    font-size: 13px;
+    transition: all 0.15s;
+  }
+  .tpl-actions button:hover {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+  }
+  .tpl-status {
+    position: absolute;
+    top: 16px; right: 16px;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html" class="active"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <div>
+          <div class="breadcrumb"><span>财务</span><span class="sep">/</span><span>发票模板</span></div>
+          <h1 class="page-title">发票模板管理</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">⌕</div>
+        <div class="topbar-icon"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div class="stats-grid fade-up" style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;">
+        <div class="stat-card">
+          <div class="stat-label">模板总数 <span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF;">▣</span></div>
+          <div class="stat-value">12 <span class="unit">个</span></div>
+          <div class="stat-delta">本月新增 <span class="up">↑ 3</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">本月使用次数 <span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981;">↻</span></div>
+          <div class="stat-value">186 <span class="unit">次</span></div>
+          <div class="stat-delta">较上月 <span class="up">↑ 24%</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">启用中 <span class="stat-icon" style="background:rgba(124,58,237,0.12);color:#7C3AED;">✓</span></div>
+          <div class="stat-value">9 <span class="unit">个</span></div>
+          <div class="stat-delta">3 个待启用</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">节省人工 <span class="stat-icon" style="background:rgba(245,158,11,0.12);color:#F59E0B;">⏱</span></div>
+          <div class="stat-value">42 <span class="unit">小时</span></div>
+          <div class="stat-delta">本月累计</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div class="card-head" style="border-bottom:none;padding-bottom:0;">
+          <h3>分类</h3>
+        </div>
+        <div style="padding: 0 22px 16px;">
+          <div class="filter-bar">
+            <a href="#" class="filter-chip active">全部模板 (12)</a>
+            <a href="#" class="filter-chip">我创建的 (4)</a>
+            <a href="#" class="filter-chip">共享给我 (6)</a>
+            <a href="#" class="filter-chip">模板市场 (2)</a>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-head">
+          <h3>模板列表</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="搜索模板名..." />
+            <select class="btn btn-outline btn-sm" style="height:32px;">
+              <option>所有类型</option>
+              <option>差旅</option>
+              <option>招待</option>
+              <option>办公</option>
+            </select>
+            <select class="btn btn-outline btn-sm" style="height:32px;">
+              <option>所有状态</option>
+              <option>启用中</option>
+              <option>已停用</option>
+            </select>
+            <button class="btn btn-primary btn-sm">+ 新建模板</button>
+          </div>
+        </div>
+        <div style="padding: 20px 22px 22px;">
+          <div class="template-grid">
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-success">启用中</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#4F6BFF,#7C3AED);">差</div>
+                <div class="tpl-info">
+                  <h4>差旅报销模板</h4>
+                  <p>含机票/酒店/打车/餐补，自动汇总</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">12 字段</span>
+                <span class="tag tag-primary">常用</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">86</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">8</div><div class="l">关联项目</div></div>
+                <div class="tpl-stat"><div class="v">4.8</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=15" alt="">
+                  <span>张明 · 2 天前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button title="编辑">✎</button>
+                  <button title="复制">⎘</button>
+                  <button title="删除">🗑</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-success">启用中</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#10B981,#059669);">办</div>
+                <div class="tpl-info">
+                  <h4>办公采购模板</h4>
+                  <p>含办公用品/设备/耗材，自动关联供应商</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">8 字段</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">42</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">3</div><div class="l">关联项目</div></div>
+                <div class="tpl-stat"><div class="v">4.6</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=23" alt="">
+                  <span>王芳 · 5 天前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button>✎</button><button>⎘</button><button>🗑</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-success">启用中</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#F59E0B,#D97706);">软</div>
+                <div class="tpl-info">
+                  <h4>软件服务费模板</h4>
+                  <p>SaaS 订阅/服务费，专属税率 6%</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">10 字段</span>
+                <span class="tag tag-primary">常用</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">28</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">12</div><div class="l">关联项目</div></div>
+                <div class="tpl-stat"><div class="v">4.9</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=15" alt="">
+                  <span>张明 · 1 周前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button>✎</button><button>⎘</button><button>🗑</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-success">启用中</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#EC4899,#BE185D);">客</div>
+                <div class="tpl-info">
+                  <h4>客户回款发票模板</h4>
+                  <p>按合同节点开票，自动匹配回款计划</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">14 字段</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">23</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">18</div><div class="l">关联合同</div></div>
+                <div class="tpl-stat"><div class="v">4.7</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=33" alt="">
+                  <span>李明 · 2 周前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button>✎</button><button>⎘</button><button>🗑</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-success">启用中</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#06B6D4,#0891B2);">工</div>
+                <div class="tpl-info">
+                  <h4>工程款发票模板</h4>
+                  <p>含工程量/进度款/质保金分摊</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">16 字段</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">14</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">6</div><div class="l">关联项目</div></div>
+                <div class="tpl-stat"><div class="v">4.5</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=12" alt="">
+                  <span>陈思琪 · 3 周前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button>✎</button><button>⎘</button><button>🗑</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="tpl-card">
+              <div class="tpl-status"><span class="tag tag-warning">待启用</span></div>
+              <div class="tpl-head">
+                <div class="tpl-icon" style="background:linear-gradient(135deg,#8B5CF6,#6D28D9);">培</div>
+                <div class="tpl-info">
+                  <h4>培训服务费模板</h4>
+                  <p>含学员人数/课时/讲师费拆分</p>
+                </div>
+              </div>
+              <div class="tpl-tags">
+                <span class="tag">11 字段</span>
+                <span class="tag tag-info">新版</span>
+              </div>
+              <div class="tpl-stats">
+                <div class="tpl-stat"><div class="v">3</div><div class="l">使用次数</div></div>
+                <div class="tpl-stat"><div class="v">1</div><div class="l">关联项目</div></div>
+                <div class="tpl-stat"><div class="v">4.3</div><div class="l">评分</div></div>
+              </div>
+              <div class="tpl-foot">
+                <div class="tpl-creator">
+                  <img src="https://i.pravatar.cc/64?img=45" alt="">
+                  <span>刘洋 · 1 天前</span>
+                </div>
+                <div class="tpl-actions">
+                  <button>✎</button><button>⎘</button><button>🗑</button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:16px;border-top:1px solid var(--color-border);">
+            <span style="font-size:12.5px;color:var(--color-text-tertiary);">共 12 个模板 · 显示 1-6</span>
+            <div style="display:flex;gap:4px;">
+              <button class="btn btn-ghost btn-sm">‹ 上一页</button>
+              <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+              <button class="btn btn-ghost btn-sm">2</button>
+              <button class="btn btn-ghost btn-sm">下一页 ›</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

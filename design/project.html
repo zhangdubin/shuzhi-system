@@ -1,0 +1,454 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>项目管理 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  .filter-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:16px; }
+  .filter-chip {
+    padding: 6px 14px; border-radius: var(--radius-full);
+    font-size: 12.5px; color: var(--color-text-secondary);
+    background: #fff; border: 1px solid var(--color-border);
+    cursor: pointer; transition: all 0.15s; font-weight: 500;
+  }
+  .filter-chip:hover { border-color: var(--color-primary); color: var(--color-primary); }
+  .filter-chip.active { background: var(--gradient-brand); color: #fff; border-color: transparent; }
+
+  .view-tabs {
+    display: inline-flex;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 2px;
+  }
+  .view-tabs a {
+    padding: 5px 12px; font-size: 12.5px;
+    color: var(--color-text-secondary);
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .view-tabs a.active { background: var(--color-primary-bg); color: var(--color-primary); }
+
+  .project-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 18px; }
+  .project-card {
+    background: #fff; border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg); padding: 22px;
+    transition: all 0.2s; cursor: pointer;
+    position: relative; overflow: hidden;
+  }
+  .project-card:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-lg);
+    border-color: transparent;
+  }
+  .project-card::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; height: 3px;
+    background: var(--gradient-brand);
+  }
+  .project-card.warning::before { background: linear-gradient(135deg,#F59E0B,#EF4444); }
+  .project-card.success::before { background: linear-gradient(135deg,#10B981,#059669); }
+  .project-card.paused::before { background: linear-gradient(135deg,#94A3B8,#64748B); }
+
+  .p-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 12px;
+  }
+  .p-head .p-id {
+    font-size: 11.5px; color: var(--color-text-tertiary);
+    font-family: var(--font-mono);
+    margin-bottom: 2px;
+  }
+  .p-head h4 { font-size: 15.5px; font-weight: 600; }
+  .p-client { font-size: 12.5px; color: var(--color-text-secondary); margin-bottom: 14px; }
+  .p-client strong { color: var(--color-text-primary); font-weight: 500; }
+
+  .progress-row { margin-bottom: 16px; }
+  .progress-label {
+    display: flex; justify-content: space-between;
+    font-size: 12px; margin-bottom: 6px;
+  }
+  .progress-label .pct { font-weight: 700; color: var(--color-primary); }
+  .progress-bar {
+    height: 8px; background: #F1F5F9;
+    border-radius: var(--radius-full); overflow: hidden;
+  }
+  .progress-fill {
+    height: 100%; background: var(--gradient-brand);
+    border-radius: var(--radius-full);
+  }
+  .project-card.warning .progress-fill { background: linear-gradient(135deg,#F59E0B,#EF4444); }
+  .project-card.success .progress-fill { background: linear-gradient(135deg,#10B981,#059669); }
+
+  .p-dates {
+    display: flex; gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--color-border);
+    border-bottom: 1px solid var(--color-border);
+    margin-bottom: 14px;
+  }
+  .p-dates .d { flex: 1; font-size: 11.5px; }
+  .p-dates .d .l { color: var(--color-text-tertiary); margin-bottom: 2px; }
+  .p-dates .d .v { color: var(--color-text-primary); font-weight: 500; }
+
+  .p-foot {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .p-team { display: flex; }
+  .p-team img {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid #fff; margin-left: -8px;
+    object-fit: cover;
+  }
+  .p-team img:first-child { margin-left: 0; }
+  .p-team .more {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #F1F5F9; color: var(--color-text-secondary);
+    font-size: 11px; font-weight: 600;
+    display: grid; place-items: center;
+    border: 2px solid #fff; margin-left: -8px;
+  }
+  .p-meta { display: flex; gap: 12px; font-size: 12px; color: var(--color-text-tertiary); }
+  .p-meta .item { display: flex; align-items: center; gap: 4px; }
+  .p-meta .item strong { color: var(--color-text-primary); font-weight: 600; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html" class="active"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <div>
+          <div class="breadcrumb"><span>业务</span><span class="sep">/</span><span>项目管理</span></div>
+          <h1 class="page-title">项目管理</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon">⌕</div>
+        <div class="topbar-icon"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-bottom:24px;" class="fade-up">
+        <div class="stat-card">
+          <div class="stat-label">进行中项目 <span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF;">▥</span></div>
+          <div class="stat-value">23 <span class="unit">个</span></div>
+          <div class="stat-delta">本周新增 <span class="up">↑ 3</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">本月完成 <span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981;">✓</span></div>
+          <div class="stat-value">5 <span class="unit">个</span></div>
+          <div class="stat-delta">较上月 <span class="up">↑ 2</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">即将到期 <span class="stat-icon" style="background:rgba(245,158,11,0.12);color:#F59E0B;">⏱</span></div>
+          <div class="stat-value">4 <span class="unit">个</span></div>
+          <div class="stat-delta">需关注</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">总合同金额 <span class="stat-icon" style="background:rgba(124,58,237,0.12);color:#7C3AED;">¥</span></div>
+          <div class="stat-value">¥ 1,286 <span class="unit">万</span></div>
+          <div class="stat-delta">在执行中</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:24px;">
+        <div style="padding:16px 22px 0;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">
+          <div class="filter-bar">
+            <a href="#" class="filter-chip active">全部 (28)</a>
+            <a href="#" class="filter-chip">进行中 (23)</a>
+            <a href="#" class="filter-chip">已完成 (47)</a>
+            <a href="#" class="filter-chip">已暂停 (2)</a>
+            <a href="#" class="filter-chip">已归档 (12)</a>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <input class="search-input" placeholder="搜索项目..." style="width:200px;" />
+            <select style="height:32px;padding:0 12px;border:1px solid var(--color-border);border-radius:var(--radius-md);font-size:12px;">
+              <option>所有负责人</option>
+              <option>张明</option>
+              <option>陈思琪</option>
+            </select>
+            <div class="view-tabs">
+              <a href="#" class="active">▦ 列表</a>
+              <a href="#">▤ 看板</a>
+              <a href="#">▥ 甘特</a>
+            </div>
+            <button class="btn btn-primary btn-sm">+ 新建项目</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="project-grid">
+
+        <div class="project-card">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-018</div>
+              <h4>数智化二期</h4>
+            </div>
+            <span class="tag tag-primary">进行中</span>
+          </div>
+          <div class="p-client">客户：<strong>万象科技有限公司</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct">68%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:68%;"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-03-15</div></div>
+            <div class="d"><div class="l">截止日期</div><div class="v">2026-08-30</div></div>
+            <div class="d"><div class="l">剩余</div><div class="v">79 天</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=15" alt="">
+              <img src="https://i.pravatar.cc/64?img=23" alt="">
+              <img src="https://i.pravatar.cc/64?img=12" alt="">
+              <img src="https://i.pravatar.cc/64?img=33" alt="">
+              <span class="more">+3</span>
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>3</strong> 合同</span>
+              <span class="item">▤ <strong>12</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-card warning">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-022</div>
+              <h4>万象科技 SaaS 部署</h4>
+            </div>
+            <span class="tag tag-warning">即将到期</span>
+          </div>
+          <div class="p-client">客户：<strong>万象科技有限公司</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct">45%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:45%;"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-04-10</div></div>
+            <div class="d"><div class="l">截止日期</div><div class="v">2026-06-30</div></div>
+            <div class="d"><div class="l">剩余</div><div class="v" style="color:var(--color-danger);">18 天</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=12" alt="">
+              <img src="https://i.pravatar.cc/64?img=33" alt="">
+              <img src="https://i.pravatar.cc/64?img=45" alt="">
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>2</strong> 合同</span>
+              <span class="item">▤ <strong>6</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-card success">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-015</div>
+              <h4>北辰集团 BI 升级</h4>
+            </div>
+            <span class="tag tag-success">即将完成</span>
+          </div>
+          <div class="p-client">客户：<strong>北辰实业集团</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct">92%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:92%;"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-01-20</div></div>
+            <div class="d"><div class="l">截止日期</div><div class="v">2026-06-25</div></div>
+            <div class="d"><div class="l">剩余</div><div class="v">13 天</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=15" alt="">
+              <img src="https://i.pravatar.cc/64?img=12" alt="">
+              <img src="https://i.pravatar.cc/64?img=23" alt="">
+              <img src="https://i.pravatar.cc/64?img=33" alt="">
+              <img src="https://i.pravatar.cc/64?img=45" alt="">
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>4</strong> 合同</span>
+              <span class="item">▤ <strong>18</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-card">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-024</div>
+              <h4>朗驰智能设备改造</h4>
+            </div>
+            <span class="tag tag-primary">进行中</span>
+          </div>
+          <div class="p-client">客户：<strong>朗驰智能设备有限公司</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct">30%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:30%;"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-05-08</div></div>
+            <div class="d"><div class="l">截止日期</div><div class="v">2026-09-15</div></div>
+            <div class="d"><div class="l">剩余</div><div class="v">95 天</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=33" alt="">
+              <img src="https://i.pravatar.cc/64?img=45" alt="">
+              <img src="https://i.pravatar.cc/64?img=23" alt="">
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>1</strong> 合同</span>
+              <span class="item">▤ <strong>3</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-card paused">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-012</div>
+              <h4>培训体系建设</h4>
+            </div>
+            <span class="tag" style="background:#F1F5F9;color:#64748B;">已暂停</span>
+          </div>
+          <div class="p-client">客户：<strong>集团内部</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct" style="color:var(--color-text-tertiary);">55%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:55%; background:linear-gradient(135deg,#94A3B8,#64748B);"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-02-01</div></div>
+            <div class="d"><div class="l">暂停于</div><div class="v">2026-05-20</div></div>
+            <div class="d"><div class="l">原因</div><div class="v">预算调整</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=23" alt="">
+              <img src="https://i.pravatar.cc/64?img=45" alt="">
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>1</strong> 合同</span>
+              <span class="item">▤ <strong>2</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-card">
+          <div class="p-head">
+            <div>
+              <div class="p-id">PRJ-2026-026</div>
+              <h4>集团 CRM 迁移</h4>
+            </div>
+            <span class="tag tag-info">新启动</span>
+          </div>
+          <div class="p-client">客户：<strong>集团总部</strong></div>
+          <div class="progress-row">
+            <div class="progress-label">
+              <span>整体进度</span>
+              <span class="pct">12%</span>
+            </div>
+            <div class="progress-bar"><div class="progress-fill" style="width:12%;"></div></div>
+          </div>
+          <div class="p-dates">
+            <div class="d"><div class="l">开始日期</div><div class="v">2026-06-01</div></div>
+            <div class="d"><div class="l">截止日期</div><div class="v">2026-12-15</div></div>
+            <div class="d"><div class="l">剩余</div><div class="v">186 天</div></div>
+          </div>
+          <div class="p-foot">
+            <div class="p-team">
+              <img src="https://i.pravatar.cc/64?img=15" alt="">
+              <img src="https://i.pravatar.cc/64?img=12" alt="">
+              <img src="https://i.pravatar.cc/64?img=33" alt="">
+              <img src="https://i.pravatar.cc/64?img=23" alt="">
+            </div>
+            <div class="p-meta">
+              <span class="item">📄 <strong>2</strong> 合同</span>
+              <span class="item">▤ <strong>0</strong> 发票</span>
+            </div>
+          </div>
+        </div>
+
+      </div>
+
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;padding-top:16px;">
+        <span style="font-size:12.5px;color:var(--color-text-tertiary);">共 28 个项目 · 显示 1-6</span>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-ghost btn-sm">‹</button>
+          <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+          <button class="btn btn-ghost btn-sm">2</button>
+          <button class="btn btn-ghost btn-sm">3</button>
+          <button class="btn btn-ghost btn-sm">4</button>
+          <button class="btn btn-ghost btn-sm">5</button>
+          <button class="btn btn-ghost btn-sm">›</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

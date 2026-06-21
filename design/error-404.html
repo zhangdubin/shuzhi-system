@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>404 · 页面未找到</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  body { background: var(--color-bg); min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+  .err-wrap {
+    max-width: 520px;
+    text-align: center;
+    padding: 48px 32px;
+  }
+  .err-code {
+    font-size: 120px;
+    font-weight: 800;
+    line-height: 1;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 16px;
+    letter-spacing: -4px;
+  }
+  .err-icon {
+    font-size: 80px;
+    margin-bottom: 16px;
+    display: inline-block;
+  }
+  .err-title {
+    font-size: 22px;
+    font-weight: 700;
+    color: var(--color-text-primary);
+    margin-bottom: 8px;
+  }
+  .err-sub {
+    font-size: 14px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+    margin-bottom: 28px;
+  }
+  .err-actions {
+    display: flex; justify-content: center; gap: 10px;
+    flex-wrap: wrap;
+  }
+  .err-tips {
+    margin-top: 40px;
+    padding: 16px 20px;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-align: left;
+  }
+  .err-tips .head {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--color-text-tertiary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 8px;
+  }
+  .err-tips ul {
+    list-style: none;
+    padding: 0; margin: 0;
+  }
+  .err-tips li {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    padding: 4px 0;
+    padding-left: 16px;
+    position: relative;
+  }
+  .err-tips li::before {
+    content: '→';
+    position: absolute;
+    left: 0;
+    color: var(--color-primary);
+    font-weight: 600;
+  }
+  .err-tips li a { color: var(--color-primary); }
+</style>
+</head>
+<body>
+<div class="err-wrap">
+  <div class="err-code">404</div>
+  <div class="err-icon">🔍</div>
+  <h1 class="err-title">页面走丢了</h1>
+  <p class="err-sub">
+    你访问的页面不存在、已被移除或暂时无法访问。<br/>
+    请检查 URL 是否正确，或返回首页继续操作。
+  </p>
+  <div class="err-actions">
+    <a href="dashboard.html" class="btn btn-primary btn-lg">🏠 返回首页</a>
+    <a href="javascript:history.back()" class="btn btn-outline btn-lg">← 返回上页</a>
+    <a href="index.html" class="btn btn-ghost">📑 页面总览</a>
+  </div>
+  <div class="err-tips">
+    <div class="head">💡 你可能想访问</div>
+    <ul>
+      <li><a href="dashboard.html">Dashboard 总览</a></li>
+      <li><a href="invoice-ocr.html">发票识别</a></li>
+      <li><a href="contract.html">合同管理</a></li>
+      <li><a href="project.html">项目管理</a></li>
+    </ul>
+  </div>
+</div>
+</body>
+</html>

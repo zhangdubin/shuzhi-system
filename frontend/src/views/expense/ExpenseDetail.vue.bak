@@ -1,0 +1,579 @@
+<script setup lang="ts">
+/**
+ * ExpenseDetail · 销售费用详情（无 design，参考 contract-detail/receivable-detail pattern）
+ * - detail-hero（费用类型 + 编号 + 申请人 + 金额 + 状态）
+ * - detail-tabs 4 个（费用信息/审批流程/相关单据/报销历史）
+ * - detail-section × 3（费用信息/费用明细/审批信息）
+ * - meta-card × N（当前节点/审批历史/相关单据/合规检查）
+ */
+import { ref, reactive, onMounted } from 'vue'
+import { useRouter, useRoute } from 'vue-router'
+import { ElMessage } from 'element-plus'
+import { expenseApi } from '@/api/modules'
+
+const router = useRouter()
+const route = useRoute()
+
+const activeTab = ref<'basic' | 'flow' | 'related' | 'history'>('basic')
+const loading = ref(false)
+
+const mock = reactive({
+  id: 3,
+  code: 'EX-2026-0611-006',
+  type: '差旅',
+  typeColor: 'info',
+  reason: '广交会参展差旅（上海-广州）',
+  applicant: '陈思琪',
+  applicantDept: '销售部',
+  amount: 12800,
+  status: '审批中',
+  statusColor: 'warning',
+  applyDate: '2026-06-11 16:42',
+  approver: '张明',
+  project: 'PRJ-2026-018',
+  description: '参加 2026 广州广交会，3 天 2 晚，主要支出为机票（¥ 2,800）、酒店（¥ 1,600/晚）、餐饮、出租车等。',
+  items: [
+    { item: '机票（上海-广州往返）', spec: '经济舱', qty: 1, price: 2800, amount: 2800, invoice: '已上传' },
+    { item: '酒店住宿（2 晚）',     spec: '锦江之星',  qty: 2, price: 800,  amount: 1600, invoice: '已上传' },
+    { item: '餐饮',                 spec: '工作餐',    qty: 6, price: 80,   amount: 480,  invoice: '已上传' },
+    { item: '出租车/地铁',           spec: '市内交通',  qty: 1, price: 920,  amount: 920,  invoice: '已上传' },
+  ],
+  trip: {
+    from: '上海',
+    to: '广州',
+    startDate: '2026-06-18',
+    endDate: '2026-06-20',
+    purpose: '参展',
+  },
+})
+
+// 5 步审批流
+const flowSteps = ref([
+  { state: 'done',    label: '填写申请',  meta: '陈思琪 · 06-11 16:42' },
+  { state: 'current', label: '部门主管',  meta: '刘洋 · 审核中' },
+  { state: 'todo',    label: '财务审核',  meta: '张明 · 待提交' },
+  { state: 'todo',    label: '总经理',    meta: '≥1万需总经理' },
+  { state: 'todo',    label: '出纳付款',  meta: '未开始' },
+])
+
+// 审批历史
+const history = ref([
+  { t: '提交申请',     m: '陈思琪 · 2026-06-11 16:42', d: '差旅费 ¥ 12,800，含机票/酒店/餐饮/交通。', done: true },
+  { t: '发票已上传',   m: '陈思琪 · 2026-06-11 16:45', d: '已上传 4 张电子发票。', done: true },
+])
+
+// 相关单据
+const related = ref([
+  { type: '合同', no: 'HT-2026-024', name: '财务系统年度服务合同',   amount: '¥ 128,000' },
+  { type: '项目', no: 'PRJ-2026-018', name: '数智化二期 SaaS 平台', amount: '¥ 1,280,000' },
+])
+
+// 4 合规检查
+const checks = ref([
+  { item: '预算充足性',   status: 'pass', desc: '项目预算 ¥ 1,280,000 已用 ¥ 286,000，剩余充足' },
+  { item: '发票合规性',   status: 'pass', desc: '4 张电子发票均通过国税查验' },
+  { item: '金额合理性',   status: 'pass', desc: '差旅金额在标准 1.2 万限额内' },
+  { item: '差旅标准',     status: 'pass', desc: '符合《差旅报销管理办法》经济舱/三星级酒店' },
+])
+
+function goBack() { router.push('/expense/list') }
+function approve() { ElMessage.success('已审批通过') }
+function reject() { ElMessage.warning('已驳回') }
+function reassign() { ElMessage.info('转交') }
+function uploadInvoice() { ElMessage.info('上传发票') }
+function downloadInvoice(item: any) { ElMessage.info(`下载发票: ${item.item}`) }
+
+onMounted(() => {
+  loading.value = true
+  expenseApi.detail(Number(route.params.id) || mock.id)
+    .then(() => { /* mock */ })
+    .catch(() => { /* mock */ })
+    .finally(() => { loading.value = false })
+})
+</script>
+
+<template>
+  <div class="page-container">
+    <!-- 顶部 detail-hero -->
+    <div class="expense-hero">
+      <div class="eh-left">
+        <div class="eh-id">
+          <span class="code">{{ mock.code }}</span>
+          <span :class="['tag', `tag-${mock.typeColor}`]">{{ mock.type }}</span>
+          <span :class="['tag', `tag-${mock.statusColor}`]">{{ mock.status }}</span>
+        </div>
+        <h1 class="eh-title">{{ mock.reason }}</h1>
+        <div class="eh-meta">
+          <span>👤 {{ mock.applicant }} · {{ mock.applicantDept }}</span>
+          <span class="sep">·</span>
+          <span>📅 {{ mock.applyDate }}</span>
+          <span class="sep">·</span>
+          <span>📦 {{ mock.project }}</span>
+        </div>
+      </div>
+      <div class="eh-right">
+        <div class="eh-amount-l">报销金额</div>
+        <div class="eh-amount">¥ {{ mock.amount.toLocaleString() }}</div>
+        <div class="eh-amount-c">含 4 项费用明细</div>
+        <div class="eh-actions">
+          <button class="btn btn-ghost btn-sm" @click="ElMessage.info('编辑')">✎ 编辑</button>
+          <button class="btn btn-outline btn-sm" @click="ElMessage.info('复制')">📋 复制申请</button>
+          <button class="btn btn-primary btn-sm" @click="ElMessage.info('重新提交')">↻ 重新提交</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- detail-tabs -->
+    <div class="detail-tabs">
+      <a href="javascript:void(0)" :class="{ active: activeTab === 'basic' }"   @click="activeTab = 'basic'">📋 费用信息</a>
+      <a href="javascript:void(0)" :class="{ active: activeTab === 'flow' }"    @click="activeTab = 'flow'">🔄 审批流程</a>
+      <a href="javascript:void(0)" :class="{ active: activeTab === 'related' }" @click="activeTab = 'related'">🔗 相关单据</a>
+      <a href="javascript:void(0)" :class="{ active: activeTab === 'history' }" @click="activeTab = 'history'">📜 操作历史</a>
+    </div>
+
+    <div class="detail-layout">
+      <!-- 左主区 -->
+      <div>
+        <!-- 费用信息 -->
+        <div v-show="activeTab === 'basic'">
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>📋 申请信息</h4>
+              <span class="tag tag-info">差旅报销</span>
+            </div>
+            <div class="detail-section-body">
+              <div class="info-grid">
+                <div class="info-row"><span class="l">申请单号</span><span class="v mono">{{ mock.code }}</span></div>
+                <div class="info-row"><span class="l">费用类型</span><span class="v">{{ mock.type }}</span></div>
+                <div class="info-row"><span class="l">申请人</span><span class="v">{{ mock.applicant }}</span></div>
+                <div class="info-row"><span class="l">部门</span><span class="v">{{ mock.applicantDept }}</span></div>
+                <div class="info-row"><span class="l">申请日期</span><span class="v">{{ mock.applyDate }}</span></div>
+                <div class="info-row"><span class="l">关联项目</span><span class="v mono">{{ mock.project }}</span></div>
+                <div class="info-row"><span class="l">出差地点</span><span class="v">{{ mock.trip.from }} → {{ mock.trip.to }}</span></div>
+                <div class="info-row"><span class="l">出差日期</span><span class="v">{{ mock.trip.startDate }} ~ {{ mock.trip.endDate }}</span></div>
+                <div class="info-row full">
+                  <span class="l">费用说明</span>
+                  <div class="notes-block">{{ mock.description }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 费用明细 -->
+          <div class="detail-section">
+            <div class="detail-section-head">
+              <h4>💰 费用明细（4 项）</h4>
+              <a class="link-primary" @click="ElMessage.info('添加明细')">+ 添加明细</a>
+            </div>
+            <div class="detail-section-body">
+              <table class="item-table">
+                <thead>
+                  <tr><th>#</th><th>项目</th><th>规格</th><th style="text-align: right;">单价</th><th style="text-align: right;">数量</th><th style="text-align: right;">金额</th><th>发票</th><th>操作</th></tr>
+                </thead>
+                <tbody>
+                  <tr v-for="(it, i) in mock.items" :key="i">
+                    <td>{{ i + 1 }}</td>
+                    <td><strong>{{ it.item }}</strong></td>
+                    <td>{{ it.spec }}</td>
+                    <td class="cell-num">¥ {{ it.price.toLocaleString() }}</td>
+                    <td class="cell-num">{{ it.qty }}</td>
+                    <td class="cell-amount">¥ {{ it.amount.toLocaleString() }}</td>
+                    <td><span class="tag tag-success">{{ it.invoice }}</span></td>
+                    <td><a class="link-primary" @click="downloadInvoice(it)">下载</a></td>
+                  </tr>
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="5"><strong>合计</strong></td>
+                    <td class="cell-amount total">¥ {{ mock.amount.toLocaleString() }}</td>
+                    <td colspan="2"></td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          <!-- 合规检查 -->
+          <div class="check-card">
+            <div class="head">
+              <div class="ico">✓</div>
+              <div class="t">合规检查 · 全部通过</div>
+            </div>
+            <div class="body">
+              <div v-for="(c, i) in checks" :key="i" class="check-item">
+                <div :class="['check-status', c.status]">{{ c.status === 'pass' ? '✓' : '!' }}</div>
+                <div>
+                  <div class="c-name">{{ c.item }}</div>
+                  <div class="c-desc">{{ c.desc }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 审批流程 -->
+        <div v-show="activeTab === 'flow'" class="detail-section">
+          <div class="detail-section-head">
+            <h4>🔄 审批流程 · {{ mock.code }}</h4>
+          </div>
+          <div class="detail-section-body">
+            <div class="flow-row">
+              <template v-for="(step, i) in flowSteps" :key="i">
+                <div :class="['flow-step', step.state]">
+                  <div class="node">{{ step.state === 'done' ? '✓' : (i + 1) }}</div>
+                  <div class="lbl">{{ step.label }}</div>
+                  <div class="meta">{{ step.meta }}</div>
+                </div>
+                <div v-if="i < flowSteps.length - 1" :class="['flow-line', step.state === 'done' ? 'done' : '']"></div>
+              </template>
+            </div>
+          </div>
+        </div>
+
+        <!-- 相关单据 -->
+        <div v-show="activeTab === 'related'" class="detail-section">
+          <div class="detail-section-head">
+            <h4>🔗 相关单据</h4>
+          </div>
+          <div class="detail-section-body">
+            <div v-for="(r, i) in related" :key="i" class="rel-item">
+              <div :class="['rel-type', r.type]">{{ r.type }}</div>
+              <div class="body">
+                <div class="t"><span class="cell-mono">{{ r.no }}</span> {{ r.name }}</div>
+                <div class="m">金额：{{ r.amount }}</div>
+              </div>
+              <a class="link-primary">查看</a>
+            </div>
+          </div>
+        </div>
+
+        <!-- 操作历史 -->
+        <div v-show="activeTab === 'history'" class="detail-section">
+          <div class="detail-section-head">
+            <h4>📜 操作历史</h4>
+          </div>
+          <div class="detail-section-body">
+            <div class="timeline-det">
+              <div v-for="(h, i) in history" :key="i" :class="['timeline-det-item', { done: h.done }]">
+                <div class="t">{{ h.t }}</div>
+                <div class="m">{{ h.m }}</div>
+                <div class="d">{{ h.d }}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 右主区 meta-card -->
+      <div>
+        <div class="meta-card">
+          <h4>📌 当前节点</h4>
+          <div class="current-node">
+            <div class="n-title">部门主管审核</div>
+            <div class="n-meta">由 <strong>刘洋</strong> 处理</div>
+            <div class="n-time">2026-06-11 16:45 到达 · 已等待 8 小时</div>
+          </div>
+          <div class="node-actions">
+            <button class="btn btn-primary btn-sm" @click="approve">✓ 审批通过</button>
+            <button class="btn btn-outline btn-sm danger" @click="reject">✕ 驳回</button>
+            <button class="btn btn-ghost btn-sm" @click="reassign">↻ 转交</button>
+          </div>
+        </div>
+
+        <div class="meta-card">
+          <h4>📎 上传发票</h4>
+          <div class="up-zone" @click="uploadInvoice">
+            <div class="ico">📂</div>
+            <div class="t">上传更多发票</div>
+            <div class="m">已上传 4 张 · 最多 10 张</div>
+          </div>
+        </div>
+
+        <div class="meta-card">
+          <h4>💰 费用统计</h4>
+          <div class="info-grid compact">
+            <div class="info-row"><span class="l">机票</span><span class="v">¥ 2,800</span></div>
+            <div class="info-row"><span class="l">住宿</span><span class="v">¥ 1,600</span></div>
+            <div class="info-row"><span class="l">餐饮</span><span class="v">¥ 480</span></div>
+            <div class="info-row"><span class="l">交通</span><span class="v">¥ 920</span></div>
+            <div class="info-row full"><span class="l">合计</span><span class="v amount">¥ 12,800</span></div>
+          </div>
+        </div>
+
+        <div class="meta-card">
+          <h4>🔍 合规检查</h4>
+          <div v-for="(c, i) in checks" :key="i" class="check-row">
+            <div :class="['dot', c.status]"></div>
+            <span>{{ c.item }}</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</template>
+
+<style lang="scss" scoped>
+@use "@/assets/styles/variables.scss" as *;
+@use "@/assets/styles/mixins.scss" as *;
+
+// expense-hero（顶部）
+.expense-hero {
+  background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  color: #fff;
+  border-radius: $radius-lg;
+  padding: 24px 28px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+  position: relative;
+  overflow: hidden;
+  &::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: radial-gradient(circle at 30% 60%, rgba(255,255,255,0.1) 0%, transparent 50%);
+    pointer-events: none;
+  }
+  .eh-left { position: relative; z-index: 1; flex: 1; min-width: 0; }
+  .eh-id { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+  .eh-id .code {
+    font-family: $font-family-mono;
+    font-size: 12.5px;
+    color: rgba(255,255,255,0.85);
+  }
+  .eh-id .tag {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    padding: 2px 10px;
+    border-radius: 9999px;
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .eh-title { font-size: 22px; font-weight: 700; margin: 0 0 8px 0; color: #fff; }
+  .eh-meta { font-size: 12.5px; color: rgba(255,255,255,0.8); .sep { margin: 0 8px; opacity: 0.5; } }
+  .eh-right { text-align: right; position: relative; z-index: 1; flex-shrink: 0; }
+  .eh-amount-l { font-size: 12px; color: rgba(255,255,255,0.75); margin-bottom: 4px; }
+  .eh-amount {
+    font-size: 32px; font-weight: 700; color: #fff;
+    font-family: $font-family-mono;
+  }
+  .eh-amount-c { font-size: 11.5px; color: rgba(255,255,255,0.6); margin-bottom: 16px; }
+  .eh-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  .btn {
+    background: rgba(255,255,255,0.18);
+    color: #fff;
+    border-color: rgba(255,255,255,0.3);
+    &:hover { background: rgba(255,255,255,0.28); }
+    &.btn-primary { background: #fff; color: $color-primary; border-color: #fff; }
+  }
+}
+
+.detail-tabs {
+  display: flex; gap: 4px;
+  background: #fff; padding: 4px; border-radius: $radius-md;
+  box-shadow: $shadow-sm; margin-bottom: 16px; width: fit-content;
+  a {
+    padding: 8px 16px; border-radius: $radius-sm;
+    font-size: 13px; color: $color-text-secondary;
+    text-decoration: none; cursor: pointer; font-weight: 500;
+    &:hover { background: $color-bg; color: $color-primary; }
+    &.active { background: $color-primary; color: #fff; font-weight: 600; }
+  }
+}
+
+.detail-layout {
+  display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start;
+  @media (max-width: 1100px) { grid-template-columns: 1fr; }
+}
+
+.detail-section { @include detail-section; }
+.detail-section-head { @include detail-section-head; }
+.detail-section-body { @include detail-section-body; }
+
+.info-grid { @include info-grid(2); }
+.info-grid.compact { gap: 8px 12px; }
+.info-row { @include info-row; }
+.info-row .v.amount { font-weight: 700; color: $color-text-primary; font-size: 16px; }
+
+// notes-block
+.notes-block {
+  background: #FAFBFF;
+  border-left: 3px solid $color-primary;
+  padding: 12px 16px;
+  border-radius: 0 $radius-md $radius-md 0;
+  font-size: 13px;
+  color: $color-text-secondary;
+  line-height: 1.7;
+  margin-top: 4px;
+}
+
+// item-table（费用明细）
+.item-table {
+  width: 100%; border-collapse: collapse; font-size: 13px;
+  th { background: $color-bg; text-align: left; padding: 10px 14px; font-size: 12px; font-weight: 600; color: $color-text-tertiary; border-bottom: 1px solid $color-border; }
+  td { padding: 12px 14px; border-bottom: 1px solid $color-border; }
+  tfoot td { background: $color-bg; border-bottom: none; font-weight: 600; }
+  .cell-num { font-family: $font-family-mono; text-align: right; }
+  .cell-amount { font-family: $font-family-mono; font-weight: 600; text-align: right; }
+  .total { color: $color-primary; font-size: 14px; }
+}
+
+// check-card
+.check-card {
+  background: rgba(16,185,129,0.04);
+  border: 1px solid rgba(16,185,129,0.2);
+  border-radius: $radius-md;
+  padding: 14px 16px;
+  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .head .ico {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: rgba(16,185,129,0.15);
+    color: $color-success;
+    display: grid; place-items: center;
+    font-weight: 700;
+  }
+  .head .t { font-size: 14px; font-weight: 600; color: #047857; }
+  .body .check-item {
+    display: flex; gap: 10px; padding: 6px 0;
+    .check-status {
+      width: 22px; height: 22px; border-radius: 50%;
+      display: grid; place-items: center;
+      font-size: 12px; font-weight: 700;
+      color: #fff;
+      background: $color-success;
+      flex-shrink: 0;
+    }
+    .c-name { font-size: 12.5px; font-weight: 500; color: $color-text-primary; }
+    .c-desc { font-size: 11.5px; color: $color-text-tertiary; margin-top: 2px; }
+  }
+}
+
+// flow（审批流）
+.flow-row { display: flex; align-items: flex-start; gap: 0; }
+.flow-step {
+  display: flex; flex-direction: column; align-items: center;
+  position: relative; flex: 1; min-width: 80px;
+  .node {
+    width: 40px; height: 40px; border-radius: 50%;
+    background: $color-bg; color: $color-text-tertiary;
+    display: grid; place-items: center;
+    font-size: 14px; font-weight: 600;
+    border: 2px solid $color-border-strong;
+    z-index: 1;
+  }
+  &.done .node { background: linear-gradient(135deg, #10B981, #059669); color: #fff; border-color: transparent; }
+  &.current .node {
+    background: $gradient-brand; color: #fff; border-color: transparent;
+    box-shadow: 0 0 0 4px rgba(79,107,255,0.2);
+  }
+  .lbl { margin-top: 8px; font-size: 12.5px; color: $color-text-tertiary; font-weight: 500; text-align: center; }
+  &.done .lbl, &.current .lbl { color: $color-text-primary; }
+  .meta { font-size: 11px; color: $color-text-tertiary; margin-top: 2px; text-align: center; }
+}
+.flow-line {
+  flex: 1; height: 2px; background: $color-border-strong;
+  margin: 0 -8px; align-self: center; position: relative; top: -10px;
+  &.done { background: linear-gradient(90deg, #10B981, #059669); }
+}
+
+// rel-item
+.rel-item {
+  display: flex; align-items: center; gap: 12px;
+  padding: 12px 0;
+  border-bottom: 1px solid $color-border;
+  &:last-child { border-bottom: none; }
+  .rel-type {
+    width: 48px; height: 32px; border-radius: $radius-sm;
+    background: $color-primary-bg;
+    color: $color-primary;
+    display: grid; place-items: center;
+    font-size: 12px; font-weight: 600;
+    flex-shrink: 0;
+    &.合同 { background: rgba(79,107,255,0.12); color: $color-primary; }
+    &.项目 { background: rgba(124,58,237,0.12); color: #7C3AED; }
+  }
+  .body { flex: 1; min-width: 0; }
+  .t { font-size: 13px; color: $color-text-primary; }
+  .m { font-size: 11.5px; color: $color-text-tertiary; margin-top: 2px; }
+}
+
+// timeline-det
+.timeline-det { position: relative; padding-left: 28px;
+  &::before { content: ''; position: absolute; left: 11px; top: 14px; bottom: 14px; width: 1.5px; background: $color-border; }
+}
+.timeline-det-item {
+  position: relative; padding-bottom: 16px;
+  &::before { content: ''; position: absolute; left: -22px; top: 6px; width: 12px; height: 12px; border-radius: 50%; background: #fff; border: 2.5px solid $color-primary; }
+  &.done::before { background: $color-primary; }
+  &:last-child { padding-bottom: 0; }
+  .t { font-size: 13px; font-weight: 500; color: $color-text-primary; }
+  .m { font-size: 11.5px; color: $color-text-tertiary; margin-top: 2px; }
+  .d { font-size: 12px; color: $color-text-secondary; margin-top: 4px; line-height: 1.5; }
+}
+
+// meta-card
+.meta-card {
+  background: #fff;
+  border: 1px solid $color-border;
+  border-radius: $radius-lg;
+  padding: 18px 20px;
+  margin-bottom: 14px;
+  h4 { font-size: 13.5px; font-weight: 600; margin: 0 0 12px 0; display: flex; align-items: center; gap: 6px; }
+}
+.current-node {
+  background: $color-primary-bg;
+  border-radius: $radius-md;
+  padding: 14px;
+  margin-bottom: 12px;
+  .n-title { font-size: 13.5px; font-weight: 600; color: $color-primary; }
+  .n-meta { font-size: 11.5px; color: $color-text-secondary; margin-top: 4px; }
+  .n-time { font-size: 11.5px; color: $color-text-tertiary; margin-top: 4px; }
+}
+.node-actions { display: flex; flex-direction: column; gap: 8px; }
+
+.up-zone {
+  border: 1.5px dashed $color-border;
+  border-radius: $radius-md;
+  padding: 20px;
+  text-align: center;
+  background: #FAFBFF;
+  cursor: pointer;
+  &:hover { border-color: $color-primary; background: $color-primary-bg; }
+  .ico { font-size: 28px; color: $color-primary; margin-bottom: 4px; }
+  .t { font-size: 12.5px; font-weight: 500; color: $color-text-primary; }
+  .m { font-size: 11px; color: $color-text-tertiary; margin-top: 4px; }
+}
+
+.check-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 4px 0;
+  font-size: 12.5px;
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: $color-success; }
+  .dot.fail { background: $color-danger; }
+}
+
+.tag {
+  display: inline-flex; align-items: center; padding: 2px 10px;
+  font-size: 12px; font-weight: 500; border-radius: 9999px;
+  &.tag-success { background: #D1FAE5; color: #047857; }
+  &.tag-info    { background: #CFFAFE; color: #0E7490; }
+  &.tag-warning { background: #FEF3C7; color: #B45309; }
+  &.tag-danger  { background: #FEE2E2; color: #B91C1C; }
+  &.tag-primary { background: #E0E6FF; color: #4F6BFF; }
+}
+
+.link-primary { color: $color-primary; font-size: 12.5px; cursor: pointer; }
+.link-primary:hover { text-decoration: underline; }
+
+.btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  gap: 6px; padding: 0 14px; font-size: 13px; font-weight: 500;
+  border-radius: $radius-md; transition: all 0.15s;
+  border: 1px solid transparent; cursor: pointer; font-family: inherit;
+  &.btn-primary { background: $gradient-brand; color: #fff; &:hover { box-shadow: 0 4px 12px rgba(79, 107, 255, 0.4); } }
+  &.btn-outline { background: #fff; border-color: $color-border; color: $color-text-primary; &:hover { border-color: $color-primary; color: $color-primary; } &.danger { color: $color-danger; border-color: rgba(239,68,68,0.3); &:hover { border-color: $color-danger; background: rgba(239,68,68,0.06); } } }
+  &.btn-ghost { background: transparent; color: $color-text-secondary; &:hover { background: $color-primary-bg; color: $color-primary; } }
+  &.btn-sm { height: 32px; padding: 0 10px; font-size: 12px; }
+}
+</style>

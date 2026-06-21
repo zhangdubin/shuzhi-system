@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>查验真伪 · 发票识别 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 单张查验表单 */
+  .verify-form-card {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+  }
+  .verify-form-head {
+    display: flex; justify-content: space-between; align-items: flex-start;
+    margin-bottom: 18px;
+  }
+  .verify-form-head h3 {
+    font-size: 15px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .verify-form-head .sub {
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin-top: 4px;
+  }
+  .verify-form-head .badge {
+    background: var(--color-success-bg);
+    color: #047857;
+    padding: 4px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-weight: 500;
+    display: flex; align-items: center; gap: 4px;
+  }
+  .verify-form-head .badge::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--color-success);
+    animation: pulse 1.5s infinite;
+  }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+  /* Tab 切换单张/批量 */
+  .verify-tabs {
+    display: inline-flex;
+    background: #F1F5F9;
+    border-radius: var(--radius-md);
+    padding: 3px;
+    gap: 2px;
+  }
+  .verify-tabs a {
+    padding: 6px 16px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    border-radius: 6px;
+    font-weight: 500;
+  }
+  .verify-tabs a.active {
+    background: #fff;
+    color: var(--color-primary);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .verify-form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 14px;
+  }
+
+  .verify-batch {
+    background: #FAFBFF;
+    border: 1px dashed var(--color-border);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    text-align: center;
+    color: var(--color-text-tertiary);
+  }
+
+  /* 查验结果大卡 */
+  .verify-result {
+    border-radius: var(--radius-lg);
+    padding: 24px 28px;
+    margin-bottom: 20px;
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+  }
+  .verify-result.success {
+    background: linear-gradient(135deg, #10B981 0%, #059669 100%);
+  }
+  .verify-result.warning {
+    background: linear-gradient(135deg, #F59E0B 0%, #D97706 100%);
+  }
+  .verify-result.danger {
+    background: linear-gradient(135deg, #DC2626 0%, #EF4444 100%);
+  }
+  .verify-result::before {
+    content: '';
+    position: absolute;
+    right: -50px; top: -50px;
+    width: 240px; height: 240px;
+    background: rgba(255,255,255,0.1);
+    border-radius: 50%;
+  }
+  .vr-top { display: flex; align-items: center; gap: 16px; margin-bottom: 18px; position: relative; z-index: 1; }
+  .vr-icon {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.2);
+    display: grid; place-items: center;
+    font-size: 28px;
+    flex-shrink: 0;
+  }
+  .vr-title { font-size: 20px; font-weight: 700; }
+  .vr-sub { font-size: 12.5px; color: rgba(255,255,255,0.85); margin-top: 4px; }
+  .vr-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    position: relative; z-index: 1;
+  }
+  .vr-item .l { font-size: 11.5px; color: rgba(255,255,255,0.7); margin-bottom: 4px; }
+  .vr-item .v { font-size: 15px; font-weight: 600; }
+  .vr-item .v.mono { font-family: var(--font-mono); }
+
+  /* 风险告警 */
+  .risk-card {
+    background: linear-gradient(135deg, rgba(239,68,68,0.06), rgba(245,158,11,0.06));
+    border: 1px solid rgba(239,68,68,0.25);
+    border-radius: var(--radius-md);
+    padding: 14px 18px;
+    margin-bottom: 16px;
+  }
+  .risk-card .head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .risk-card .ico {
+    width: 32px; height: 32px;
+    border-radius: 8px;
+    background: rgba(239,68,68,0.15);
+    color: var(--color-danger);
+    display: grid; place-items: center;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+  .risk-card .head .t { font-size: 14px; font-weight: 600; color: var(--color-danger); }
+  .risk-card .body {
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    line-height: 1.6;
+  }
+  .risk-card .body .row { margin-bottom: 4px; }
+  .risk-card .body .row strong { color: var(--color-text-primary); }
+
+  /* 查验记录表 */
+  .verify-table { width: 100%; border-collapse: collapse; }
+  .verify-table th {
+    background: #F8FAFC;
+    text-align: left; padding: 12px 16px;
+    font-size: 11.5px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .verify-table td {
+    padding: 13px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .verify-table tr:last-child td { border-bottom: none; }
+  .verify-table tr:hover { background: #FAFBFF; }
+
+  .v-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 10px;
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .v-pill::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+  }
+  .v-pill.success { background: var(--color-success-bg); color: #047857; }
+  .v-pill.success::before { background: var(--color-success); }
+  .v-pill.warning { background: var(--color-warning-bg); color: #B45309; }
+  .v-pill.warning::before { background: var(--color-warning); }
+  .v-pill.danger { background: var(--color-danger-bg); color: #B91C1C; }
+  .v-pill.danger::before { background: var(--color-danger); }
+
+  /* 4 个数据卡 */
+  .verify-stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 18px;
+    margin-bottom: 20px;
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent open">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html" class="active"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-ocr-batch.html"><span class="nav-icon">⇪</span>批量上传</a></li>
+      <li><a href="invoice-ocr-records.html"><span class="nav-icon">▤</span>识别记录</a></li>
+      <li><a href="invoice-ocr-verify.html"><span class="nav-icon">✓</span>查验真伪</a></li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>财务</span><span class="sep">/</span>
+            <span><a href="invoice-ocr.html" style="color:var(--color-text-tertiary);">发票识别</a></span>
+            <span class="sep">/</span>
+            <span>查验真伪</span>
+          </div>
+          <h1 class="page-title">发票查验真伪</h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">📋 查验记录</button>
+        <button class="btn btn-outline btn-sm">⚙️ 查验规则</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 4 个统计 -->
+      <div class="verify-stats fade-up">
+        <div class="stat-card">
+          <div class="stat-label">本月查验 <span class="stat-icon" style="background:rgba(79,107,255,0.12);color:#4F6BFF;">✓</span></div>
+          <div class="stat-value">186 <span class="unit">张</span></div>
+          <div class="stat-delta">较上月 <span class="up">↑ 24%</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">查验通过 <span class="stat-icon" style="background:rgba(16,185,129,0.12);color:#10B981;">✓</span></div>
+          <div class="stat-value">182 <span class="unit">张</span></div>
+          <div class="stat-delta">通过率 <span class="up">97.8%</span></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">风险发票 <span class="stat-icon" style="background:rgba(239,68,68,0.12);color:#EF4444;">!</span></div>
+          <div class="stat-value">3 <span class="unit">张</span></div>
+          <div class="stat-delta">需人工复核</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">本月查验金额 <span class="stat-icon" style="background:rgba(124,58,237,0.12);color:#7C3AED;">¥</span></div>
+          <div class="stat-value">¥ 1,286 <span class="unit">万</span></div>
+          <div class="stat-delta">全部通过</div>
+        </div>
+      </div>
+
+      <!-- 风险告警 -->
+      <div class="risk-card">
+        <div class="head">
+          <div class="ico">⚠</div>
+          <div class="t">3 张发票存在查验风险，需立即处理</div>
+        </div>
+        <div class="body">
+          <div class="row">· <strong>25113300...99887766</strong> 已被报销 2 次（疑似重复报销）· 涉及 ¥ 56,000</div>
+          <div class="row">· <strong>25113300...77665544</strong> 销售方纳税人识别号国税接口无法查到（疑似假票）· 涉及 ¥ 86,500</div>
+          <div class="row">· <strong>25113300...55443300</strong> 发票已超过 2 年有效期 · 涉及 ¥ 12,800</div>
+        </div>
+      </div>
+
+      <!-- 单张查验表单 -->
+      <div class="verify-form-card">
+        <div class="verify-form-head">
+          <div>
+            <h3>🔍 发起查验</h3>
+            <div class="sub">向国家税务总局发票查验平台发起真伪核验</div>
+          </div>
+          <div style="display:flex;gap:12px;align-items:center;">
+            <div class="verify-tabs">
+              <a href="#" class="active">单张查验</a>
+              <a href="#">批量查验</a>
+              <a href="#">从识别记录选择</a>
+            </div>
+            <span class="badge">国税接口已连接</span>
+          </div>
+        </div>
+
+        <div class="verify-form-row">
+          <div class="field">
+            <label>发票代码 <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" placeholder="如：011002600611" value="011002600611" />
+          </div>
+          <div class="field">
+            <label>发票号码 <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" placeholder="如：25113300000012345678" value="25113300000012345678" />
+          </div>
+          <div class="field">
+            <label>开票日期 <span style="color:var(--color-danger);">*</span></label>
+            <input type="date" value="2026-06-08" />
+          </div>
+          <div class="field">
+            <label>价税合计（元） <span style="color:var(--color-danger);">*</span></label>
+            <input type="text" placeholder="如：28000.00" value="28000.00" />
+          </div>
+          <div class="field">
+            <label>校验码（验证码） <span style="color:var(--color-text-tertiary);">（可选）</span></label>
+            <input type="text" placeholder="发票密码区后 6 位" />
+          </div>
+          <div class="field" style="display:flex;flex-direction:column;justify-content:flex-end;">
+            <button class="btn btn-primary" style="height:40px;">🔍 立即查验</button>
+          </div>
+        </div>
+
+        <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--color-border);font-size:11.5px;color:var(--color-text-tertiary);">
+          ⓘ 每日单平台查询次数上限 5,000 次 / 组织，单张发票最多查验 5 次/日。查验数据仅留存 30 天。
+        </div>
+      </div>
+
+      <!-- 查验结果 -->
+      <div class="verify-result success">
+        <div class="vr-top">
+          <div class="vr-icon">✓</div>
+          <div>
+            <div class="vr-title">查验通过 · 发票真实有效</div>
+            <div class="vr-sub">来源：国家税务总局全国增值税发票查验平台 · 查验时间 2026-06-12 10:24:18 · 耗时 1.8s</div>
+          </div>
+        </div>
+        <div class="vr-grid">
+          <div class="vr-item">
+            <div class="l">发票代码</div>
+            <div class="v mono">011002600611</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">发票号码</div>
+            <div class="v mono">25113300000012345678</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">开票日期</div>
+            <div class="v">2026-06-08</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">价税合计</div>
+            <div class="v">¥ 28,000.00</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">销售方</div>
+            <div class="v" style="font-size:13.5px;">上海数智信息技术有限公司</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">纳税人识别号</div>
+            <div class="v mono" style="font-size:13px;">91310000MA1FL3X9G</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">购买方</div>
+            <div class="v" style="font-size:13.5px;">万象科技有限公司</div>
+          </div>
+          <div class="vr-item">
+            <div class="l">查验次数</div>
+            <div class="v">第 1 次</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 查验记录 -->
+      <div class="queue-card">
+        <div class="queue-head">
+          <h3>查验记录（186 条）</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="搜索发票号 / 销售方..." style="width:240px;" />
+            <select class="btn btn-outline btn-sm" style="height:32px;">
+              <option>所有结果</option>
+              <option>通过</option>
+              <option>风险</option>
+              <option>不通过</option>
+            </select>
+            <button class="btn btn-outline btn-sm">⇩ 导出</button>
+          </div>
+        </div>
+
+        <table class="verify-table">
+          <thead>
+            <tr>
+              <th>发票号</th>
+              <th>销售方</th>
+              <th>金额</th>
+              <th>开票日期</th>
+              <th>查验来源</th>
+              <th>查验时间</th>
+              <th>结果</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...12345678</span></td>
+              <td>上海数智信息技术有限公司</td>
+              <td style="font-weight:600;">¥ 28,000.00</td>
+              <td>2026-06-08</td>
+              <td>国税总局</td>
+              <td>2026-06-12 10:24</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a> · <a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">重查</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...98765432</span></td>
+              <td>朗驰智能设备有限公司</td>
+              <td style="font-weight:600;">¥ 86,500.00</td>
+              <td>2026-06-07</td>
+              <td>国税总局</td>
+              <td>2026-06-12 09:15</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:#B91C1C;">25113300...99887766</span></td>
+              <td>数智科技服务（个体）</td>
+              <td style="font-weight:600;">¥ 56,000.00</td>
+              <td>2026-05-30</td>
+              <td>国税总局</td>
+              <td>2026-06-11 16:42</td>
+              <td><span class="v-pill danger">重复报销</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">详情</a> · <a style="color:var(--color-danger);font-size:12.5px;cursor:pointer;">标记</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:#B91C1C;">25113300...77665544</span></td>
+              <td>嘉诚信息技术有限公司</td>
+              <td style="font-weight:600;">¥ 86,500.00</td>
+              <td>2026-05-28</td>
+              <td>国税总局</td>
+              <td>2026-06-11 14:30</td>
+              <td><span class="v-pill danger">销售方无效</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">详情</a> · <a style="color:var(--color-danger);font-size:12.5px;cursor:pointer;">上报</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:#B45309;">25113300...55443300</span></td>
+              <td>众成广告有限公司</td>
+              <td style="font-weight:600;">¥ 12,800.00</td>
+              <td>2024-03-15</td>
+              <td>国税总局</td>
+              <td>2026-06-10 11:08</td>
+              <td><span class="v-pill warning">超期</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">详情</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...55443322</span></td>
+              <td>北辰实业集团</td>
+              <td style="font-weight:600;">¥ 142,300.00</td>
+              <td>2026-06-06</td>
+              <td>国税总局</td>
+              <td>2026-06-10 10:32</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...11223344</span></td>
+              <td>京东商城</td>
+              <td style="font-weight:600;">¥ 3,892.00</td>
+              <td>2026-06-05</td>
+              <td>国税总局</td>
+              <td>2026-06-09 16:45</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...33445566</span></td>
+              <td>用友网络</td>
+              <td style="font-weight:600;">¥ 24,800.00</td>
+              <td>2026-06-04</td>
+              <td>国税总局</td>
+              <td>2026-06-08 10:32</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...77889900</span></td>
+              <td>携程商旅</td>
+              <td style="font-weight:600;">¥ 18,500.00</td>
+              <td>2026-06-03</td>
+              <td>国税总局</td>
+              <td>2026-06-07 09:15</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...99001122</span></td>
+              <td>美团企业版</td>
+              <td style="font-weight:600;">¥ 6,580.00</td>
+              <td>2026-06-02</td>
+              <td>国税总局</td>
+              <td>2026-06-06 14:20</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...55667788</span></td>
+              <td>亚马逊通技术服务</td>
+              <td style="font-weight:600;">¥ 168,000.00</td>
+              <td>2026-05-30</td>
+              <td>国税总局</td>
+              <td>2026-06-05 11:00</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+            <tr>
+              <td><span style="font-family:var(--font-mono);color:var(--color-primary);">25113300...44556677</span></td>
+              <td>数智化峰会组委会</td>
+              <td style="font-weight:600;">¥ 80,000.00</td>
+              <td>2026-05-28</td>
+              <td>国税总局</td>
+              <td>2026-06-03 10:20</td>
+              <td><span class="v-pill success">通过</span></td>
+              <td><a style="color:var(--color-primary);font-size:12.5px;cursor:pointer;">凭证</a></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- 分页 -->
+        <div style="display:flex;justify-content:space-between;align-items:center;padding:14px 20px;border-top:1px solid var(--color-border);font-size:12.5px;color:var(--color-text-tertiary);">
+          <span>共 186 条 · 显示 1-12</span>
+          <div style="display:flex;gap:4px;">
+            <button class="btn btn-ghost btn-sm">‹</button>
+            <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+            <button class="btn btn-ghost btn-sm">2</button>
+            <button class="btn btn-ghost btn-sm">3</button>
+            <button class="btn btn-ghost btn-sm">…</button>
+            <button class="btn btn-ghost btn-sm">16</button>
+            <button class="btn btn-ghost btn-sm">›</button>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

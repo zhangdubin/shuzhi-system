@@ -1,0 +1,720 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>发票识别 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 上传区 */
+  .upload-zone {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    padding: 32px;
+    box-shadow: var(--shadow-md);
+    margin-bottom: 24px;
+  }
+  .upload-drop {
+    border: 2px dashed var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 48px 32px;
+    text-align: center;
+    transition: all 0.2s;
+    background: linear-gradient(180deg, #FAFBFF 0%, #fff 100%);
+    cursor: pointer;
+  }
+  .upload-drop:hover {
+    border-color: var(--color-primary);
+    background: var(--color-primary-bg);
+  }
+  .upload-drop .upload-icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 16px;
+    background: var(--color-primary-bg);
+    border-radius: 16px;
+    display: grid;
+    place-items: center;
+    font-size: 28px;
+    color: var(--color-primary);
+  }
+  .upload-drop h3 {
+    font-size: 18px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .upload-drop p {
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    margin-bottom: 16px;
+  }
+  .upload-actions {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+  }
+  .upload-hint {
+    margin-top: 18px;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+  }
+  .upload-hint span {
+    margin: 0 12px;
+  }
+
+  /* 统计条 */
+  .stats-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    margin-bottom: 24px;
+  }
+  .stat-mini {
+    background: #fff;
+    border-radius: var(--radius-md);
+    padding: 18px 20px;
+    box-shadow: var(--shadow-sm);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+  .stat-mini .label {
+    font-size: 12px;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+  }
+  .stat-mini .value {
+    font-size: 20px;
+    font-weight: 700;
+  }
+  .stat-mini .ico {
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    display: grid;
+    place-items: center;
+    font-size: 18px;
+  }
+
+  /* 主体两栏：左侧预览 + 右侧识别结果 */
+  .ocr-main {
+    display: grid;
+    grid-template-columns: 1fr 1.2fr;
+    gap: 20px;
+    margin-bottom: 24px;
+  }
+
+  .preview-card {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 24px;
+  }
+  .preview-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+  }
+  .preview-head h3 { font-size: 16px; font-weight: 600; }
+
+  .preview-canvas {
+    background: #F8FAFC;
+    border-radius: var(--radius-md);
+    aspect-ratio: 4 / 3;
+    position: relative;
+    overflow: hidden;
+    border: 1px solid var(--color-border);
+    display: grid;
+    place-items: center;
+  }
+  /* 模拟发票图 */
+  .fake-invoice {
+    width: 86%;
+    height: 90%;
+    background: #fff;
+    border-radius: 6px;
+    box-shadow: 0 4px 20px rgba(0,0,0,0.08);
+    padding: 16px 18px;
+    font-size: 10px;
+    position: relative;
+  }
+  .fake-invoice .fi-title {
+    text-align: center;
+    font-weight: 700;
+    font-size: 13px;
+    margin-bottom: 12px;
+    color: #1F2937;
+  }
+  .fake-invoice .fi-row {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 6px;
+    color: #4B5563;
+  }
+  .fake-invoice .fi-table {
+    margin-top: 10px;
+    border-top: 1px solid #E5E7EB;
+    border-bottom: 1px solid #E5E7EB;
+    padding: 6px 0;
+  }
+  .fake-invoice .fi-stamp {
+    position: absolute;
+    right: 16px;
+    bottom: 30px;
+    width: 60px;
+    height: 60px;
+    border: 2px solid #EF4444;
+    border-radius: 50%;
+    color: #EF4444;
+    display: grid;
+    place-items: center;
+    font-size: 11px;
+    font-weight: 700;
+    transform: rotate(-15deg);
+    opacity: 0.7;
+  }
+
+  /* 高亮框（OCR 识别） */
+  .ocr-overlay {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+  }
+  .ocr-overlay .box {
+    position: absolute;
+    border: 2px solid var(--color-primary);
+    border-radius: 4px;
+    background: rgba(79, 107, 255, 0.08);
+  }
+  .ocr-overlay .box::before {
+    content: attr(data-label);
+    position: absolute;
+    top: -22px;
+    left: 0;
+    background: var(--color-primary);
+    color: #fff;
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .preview-tools {
+    display: flex;
+    gap: 8px;
+    margin-top: 16px;
+    justify-content: center;
+  }
+
+  /* 识别结果表单 */
+  .result-card {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 24px;
+  }
+  .result-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+  }
+  .result-head h3 { font-size: 16px; font-weight: 600; }
+  .confidence-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #DCFCE7;
+    color: #15803D;
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 500;
+  }
+  .confidence-badge::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #22C55E;
+  }
+
+  .field-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+  .field-grid .full { grid-column: 1 / -1; }
+
+  .field {
+    display: flex;
+    flex-direction: column;
+  }
+  .field label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .field label .ai-tag {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+  }
+  .field input, .field select, .field textarea {
+    padding: 10px 12px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    font-family: inherit;
+    color: var(--color-text-primary);
+    background: #fff;
+    transition: all 0.2s;
+  }
+  .field input:focus, .field select:focus, .field textarea:focus {
+    outline: none;
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-bg);
+  }
+  .field input.ai-filled {
+    background: linear-gradient(90deg, #FAFBFF 0%, #fff 100%);
+  }
+  .field textarea { resize: vertical; min-height: 60px; }
+
+  .amount-display {
+    background: linear-gradient(135deg, var(--color-primary-bg), #fff);
+    border: 1.5px solid var(--color-primary);
+    border-radius: var(--radius-md);
+    padding: 14px 16px;
+  }
+  .amount-display .amount-label {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    margin-bottom: 4px;
+  }
+  .amount-display .amount-value {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--color-primary);
+    letter-spacing: 0.5px;
+  }
+
+  .result-actions {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 24px;
+    padding-top: 20px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* 历史记录表格 */
+  .table-card {
+    background: #fff;
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-md);
+    padding: 0;
+    overflow: hidden;
+  }
+  .table-card .table-head {
+    padding: 20px 24px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid var(--color-border);
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  thead th {
+    background: #FAFBFF;
+    text-align: left;
+    padding: 12px 24px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+  tbody td {
+    padding: 14px 24px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  tbody tr:hover { background: #FAFBFF; }
+  tbody tr:last-child td { border-bottom: none; }
+
+  .invoice-no {
+    font-family: 'SF Mono', Consolas, monospace;
+    color: var(--color-primary);
+    font-weight: 500;
+  }
+
+  .toolbar {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+  .search-input {
+    padding: 8px 12px;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 13px;
+    width: 220px;
+  }
+
+  /* 二级侧栏（在主内容里） */
+  .sub-tabs {
+    display: flex;
+    gap: 4px;
+    background: #fff;
+    padding: 4px;
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-sm);
+  }
+  .sub-tabs a {
+    padding: 8px 14px;
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+  }
+  .sub-tabs a.active {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-parent open">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html" class="active"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="#"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="#"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li><a href="#"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="#"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="#"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button class="btn" style="background:#fff;color:var(--color-primary);width:100%;font-weight:600;">升级 PRO</button>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <span class="menu-toggle">☰</span>
+        <h1 class="page-title">发票识别</h1>
+      </div>
+      <div class="topbar-right">
+        <div class="topbar-icon" title="搜索">⌕</div>
+        <div class="topbar-icon" title="通知"><span class="badge"></span>🔔</div>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info">
+            <div>管理员</div>
+            <small>财务部</small>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 面包屑 + 子标签 -->
+      <div class="flex-between mb-16">
+        <div>
+          <div class="breadcrumb">财务中心 / 发票识别</div>
+          <div class="sub-tabs">
+            <a href="#" class="active">智能识别</a>
+            <a href="#">批量上传</a>
+            <a href="#">识别记录</a>
+            <a href="#">查验真伪</a>
+          </div>
+        </div>
+        <div>
+          <button class="btn btn-outline">📋 使用模板</button>
+          <button class="btn btn-primary" style="margin-left:8px;">+ 手动新增</button>
+        </div>
+      </div>
+
+      <!-- 上传区 -->
+      <div class="upload-zone">
+        <div class="upload-drop">
+          <div class="upload-icon">⇪</div>
+          <h3>拖拽发票图片 / PDF 到此处</h3>
+          <p>支持单张识别、批量上传，OCR 自动提取票面信息</p>
+          <div class="upload-actions">
+            <button class="btn btn-primary">📷 选择文件</button>
+            <button class="btn btn-outline">📁 批量上传</button>
+            <button class="btn btn-ghost">📸 拍照识别</button>
+          </div>
+          <div class="upload-hint">
+            <span>JPG / PNG / PDF</span>
+            <span>单文件 ≤ 20MB</span>
+            <span>· 平均识别耗时 2.3 秒</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 统计 -->
+      <div class="stats-row">
+        <div class="stat-mini">
+          <div>
+            <div class="label">本月识别</div>
+            <div class="value">328 <small style="font-size:12px;color:var(--color-text-tertiary);font-weight:400;">张</small></div>
+          </div>
+          <div class="ico" style="background:var(--color-primary-bg);color:var(--color-primary);">▤</div>
+        </div>
+        <div class="stat-mini">
+          <div>
+            <div class="label">识别成功率</div>
+            <div class="value">98.2%</div>
+          </div>
+          <div class="ico" style="background:#DCFCE7;color:#15803D;">✓</div>
+        </div>
+        <div class="stat-mini">
+          <div>
+            <div class="label">待人工核验</div>
+            <div class="value">6 <small style="font-size:12px;color:var(--color-text-tertiary);font-weight:400;">张</small></div>
+          </div>
+          <div class="ico" style="background:#FEF3C7;color:#B45309;">!</div>
+        </div>
+        <div class="stat-mini">
+          <div>
+            <div class="label">本月入账金额</div>
+            <div class="value">¥ 286,400</div>
+          </div>
+          <div class="ico" style="background:#EDE9FE;color:#6D28D9;">¥</div>
+        </div>
+      </div>
+
+      <!-- 主体两栏 -->
+      <div class="ocr-main">
+
+        <!-- 左侧：发票预览 -->
+        <div class="preview-card">
+          <div class="preview-head">
+            <h3>📄 发票预览</h3>
+            <span class="tag tag-info">增值税电子普通发票</span>
+          </div>
+          <div class="preview-canvas">
+            <div class="fake-invoice">
+              <div class="fi-title">电子发票（普通发票）</div>
+              <div class="fi-row"><span>发票号码：</span><span>25113300000012345678</span></div>
+              <div class="fi-row"><span>开票日期：</span><span>2026-06-08</span></div>
+              <div class="fi-row"><span>购买方：</span><span>万象科技有限公司</span></div>
+              <div class="fi-row"><span>纳税人识别号：</span><span>91310000MA1FL01X9G</span></div>
+              <div class="fi-table">
+                <div class="fi-row"><span>*软件服务*技术服务费</span><span>¥ 28,000.00</span></div>
+              </div>
+              <div class="fi-row" style="margin-top:8px;"><span>价税合计（大写）</span><span>贰万捌仟元整</span></div>
+              <div class="fi-row" style="font-weight:700;color:#1F2937;"><span>（小写）</span><span>¥ 28,000.00</span></div>
+              <div class="fi-stamp">万象<br/>科技</div>
+            </div>
+            <!-- OCR 高亮框 -->
+            <div class="ocr-overlay">
+              <div class="box" data-label="发票号" style="top:14%;left:32%;width:62%;height:8%;"></div>
+              <div class="box" data-label="金额" style="top:62%;left:54%;width:38%;height:7%;"></div>
+              <div class="box" data-label="购买方" style="top:32%;left:30%;width:60%;height:7%;"></div>
+            </div>
+          </div>
+          <div class="preview-tools">
+            <button class="btn btn-ghost btn-sm">⟲ 旋转</button>
+            <button class="btn btn-ghost btn-sm">⤢ 放大</button>
+            <button class="btn btn-ghost btn-sm">⇩ 下载原图</button>
+            <button class="btn btn-outline btn-sm">↻ 重新识别</button>
+          </div>
+        </div>
+
+        <!-- 右侧：识别结果 -->
+        <div class="result-card">
+          <div class="result-head">
+            <h3>✨ 智能识别结果</h3>
+            <span class="confidence-badge">AI 识别置信度 96.8%</span>
+          </div>
+
+          <div class="field-grid">
+            <div class="field">
+              <label>发票类型 <span class="ai-tag">AI</span></label>
+              <select class="ai-filled">
+                <option>增值税电子普通发票</option>
+                <option>增值税专用发票</option>
+                <option>数电发票</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>发票代码 <span class="ai-tag">AI</span></label>
+              <input type="text" class="ai-filled" value="011002600611" />
+            </div>
+
+            <div class="field">
+              <label>发票号码 <span class="ai-tag">AI</span></label>
+              <input type="text" class="ai-filled" value="25113300000012345678" />
+            </div>
+            <div class="field">
+              <label>开票日期 <span class="ai-tag">AI</span></label>
+              <input type="date" class="ai-filled" value="2026-06-08" />
+            </div>
+
+            <div class="field full">
+              <label>销售方名称 <span class="ai-tag">AI</span></label>
+              <input type="text" class="ai-filled" value="上海数智信息技术有限公司" />
+            </div>
+
+            <div class="field">
+              <label>购买方名称 <span class="ai-tag">AI</span></label>
+              <input type="text" class="ai-filled" value="万象科技有限公司" />
+            </div>
+            <div class="field">
+              <label>纳税人识别号 <span class="ai-tag">AI</span></label>
+              <input type="text" class="ai-filled" value="91310000MA1FL01X9G" />
+            </div>
+
+            <div class="field">
+              <label>税率</label>
+              <select><option>6%</option><option>13%</option><option>3%</option></select>
+            </div>
+            <div class="field">
+              <label>税额</label>
+              <input type="text" value="¥ 1,584.91" />
+            </div>
+
+            <div class="field full">
+              <label>价税合计（小写） <span class="ai-tag">AI</span></label>
+              <div class="amount-display">
+                <div class="amount-label">本张发票总金额</div>
+                <div class="amount-value">¥ 28,000.00</div>
+              </div>
+            </div>
+
+            <div class="field full">
+              <label>关联合同 / 项目</label>
+              <select>
+                <option>HT-2026-028 · 万象科技 SaaS 服务合同</option>
+                <option>PRJ-2026-018 · 数智化二期</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label>费用类型</label>
+              <select><option>软件服务费</option><option>差旅费</option><option>办公用品</option></select>
+            </div>
+            <div class="field">
+              <label>报销人</label>
+              <select><option>张工</option><option>王芳</option><option>李明</option></select>
+            </div>
+
+            <div class="field full">
+              <label>备注</label>
+              <textarea placeholder="可补充说明，例如分摊比例、审批意见等">第二季度服务费尾款，已与 HT-2026-028 合同对齐。</textarea>
+            </div>
+          </div>
+
+          <div class="result-actions">
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline">⟲ 重新识别</button>
+              <button class="btn btn-ghost">⊘ 剔除</button>
+            </div>
+            <div style="display:flex;gap:8px;">
+              <button class="btn btn-outline">存为草稿</button>
+              <button class="btn btn-primary">✓ 提交入账</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 历史记录 -->
+      <div class="table-card">
+        <div class="table-head">
+          <h3 style="font-size:16px;font-weight:600;">最近识别记录</h3>
+          <div class="toolbar">
+            <input class="search-input" placeholder="🔍 搜索发票号 / 客户..." />
+            <button class="btn btn-outline btn-sm">⇩ 导出</button>
+          </div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>发票号码</th>
+              <th>类型</th>
+              <th>销售方</th>
+              <th>金额</th>
+              <th>开票日期</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><span class="invoice-no">25113300...12345678</span></td>
+              <td>电子普通发票</td>
+              <td>上海数智信息技术有限公司</td>
+              <td style="font-weight:600;">¥ 28,000.00</td>
+              <td>2026-06-08</td>
+              <td><span class="tag tag-warning">待核验</span></td>
+              <td><a href="#" style="color:var(--color-primary);font-weight:500;">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="invoice-no">25113300...98765432</span></td>
+              <td>数电发票</td>
+              <td>朗驰智能设备有限公司</td>
+              <td style="font-weight:600;">¥ 86,500.00</td>
+              <td>2026-06-07</td>
+              <td><span class="tag tag-success">已入账</span></td>
+              <td><a href="#" style="color:var(--color-primary);font-weight:500;">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="invoice-no">25113300...55443322</span></td>
+              <td>专用发票</td>
+              <td>北辰实业集团</td>
+              <td style="font-weight:600;">¥ 142,300.00</td>
+              <td>2026-06-06</td>
+              <td><span class="tag tag-info">已关联合同</span></td>
+              <td><a href="#" style="color:var(--color-primary);font-weight:500;">查看</a></td>
+            </tr>
+            <tr>
+              <td><span class="invoice-no">25113300...11223344</span></td>
+              <td>电子普通发票</td>
+              <td>京东商城</td>
+              <td style="font-weight:600;">¥ 3,892.00</td>
+              <td>2026-06-05</td>
+              <td><span class="tag tag-gray">已归档</span></td>
+              <td><a href="#" style="color:var(--color-primary);font-weight:500;">查看</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

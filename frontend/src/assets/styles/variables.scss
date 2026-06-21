@@ -1,0 +1,90 @@
+// ============================================================
+// 设计令牌（与 design/assets/common.css 1:1 对齐）
+// 风格：科技金融（深色侧栏 + 蓝紫渐变）
+// ============================================================
+@use "sass:color";
+
+// 品牌色
+$color-primary: #4F6BFF;
+$color-primary-hover: #3D58E8;
+$color-primary-light: #E0E6FF;
+$color-primary-bg: rgba(79, 107, 255, 0.08);
+
+// 渐变
+$gradient-brand: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+$gradient-brand-soft: linear-gradient(135deg, rgba(79,107,255,0.12) 0%, rgba(124,58,237,0.12) 100%);
+$gradient-hero: linear-gradient(135deg, #0F172A 0%, #1E1B4B 50%, #312E81 100%);
+
+// 功能色
+$color-success: #10B981;
+$color-success-bg: #D1FAE5;
+$color-warning: #F59E0B;
+$color-warning-bg: #FEF3C7;
+$color-danger: #EF4444;
+$color-danger-bg: #FEE2E2;
+$color-info: #06B6D4;
+$color-info-bg: #CFFAFE;
+
+// 文字
+$color-text-primary: #0F172A;
+$color-text-secondary: #475569;
+$color-text-tertiary: #94A3B8;
+$color-text-inverse: #F8FAFC;
+
+// 背景
+$color-bg: #F1F5F9;
+$color-bg-card: #FFFFFF;
+$color-bg-elevated: #FFFFFF;
+
+// 边框
+$color-border: #E2E8F0;
+$color-border-strong: #CBD5E1;
+
+// 深色侧栏
+$color-sidebar-bg: #0B1220;
+$color-sidebar-bg-2: #111A2E;
+$color-sidebar-text: #94A3B8;
+$color-sidebar-text-active: #FFFFFF;
+$color-sidebar-active-bg: rgba(79, 107, 255, 0.18);
+$color-sidebar-hover-bg: rgba(255, 255, 255, 0.05);
+
+// 阴影
+$shadow-sm: 0 1px 2px 0 rgba(15, 23, 42, 0.05);
+$shadow-md: 0 4px 12px -2px rgba(15, 23, 42, 0.08);
+$shadow-lg: 0 12px 32px -8px rgba(15, 23, 42, 0.12);
+$shadow-glow: 0 8px 32px -4px rgba(79, 107, 255, 0.35);
+
+// 圆角
+$radius-sm: 6px;
+$radius-md: 10px;
+$radius-lg: 14px;
+$radius-xl: 20px;
+
+// 间距
+$space-xs: 4px;
+$space-sm: 8px;
+$space-md: 16px;
+$space-lg: 24px;
+$space-xl: 32px;
+
+// 字体
+$font-family-base: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB',
+  'Microsoft YaHei', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+$font-family-mono: 'SF Mono', Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+
+// 布局
+$layout-sidebar-width: 220px;
+$layout-sidebar-collapsed-width: 64px;
+$layout-header-height: 60px;
+
+// Element Plus 主题覆盖
+$el-color-primary: $color-primary;
+$el-color-primary-light-3: color.adjust($color-primary, $lightness: 8%);
+$el-color-primary-light-5: color.adjust($color-primary, $lightness: 16%);
+$el-color-primary-light-7: color.adjust($color-primary, $lightness: 24%);
+$el-color-primary-light-9: color.adjust($color-primary, $lightness: 32%);
+$el-color-success: $color-success;
+$el-color-warning: $color-warning;
+$el-color-danger: $color-danger;
+$el-color-info: $color-info;
+$el-border-radius-base: $radius-md;

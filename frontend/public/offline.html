@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>离线模式 - 数智化管理系统</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0F1320 0%, #1E1B4B 50%, #312E81 100%);
+      color: #E5E7EB;
+      padding: 20px;
+    }
+    .container {
+      max-width: 440px;
+      text-align: center;
+      background: rgba(255, 255, 255, 0.04);
+      backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 48px 36px;
+      box-shadow: 0 24px 48px rgba(0, 0, 0, 0.4);
+    }
+    .icon {
+      width: 96px;
+      height: 96px;
+      margin: 0 auto 24px;
+      background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+      border-radius: 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 48px;
+      box-shadow: 0 12px 32px rgba(79, 107, 255, 0.4);
+    }
+    h1 {
+      font-size: 24px;
+      font-weight: 700;
+      margin-bottom: 12px;
+      background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+    .subtitle {
+      font-size: 14px;
+      color: #9CA3AF;
+      margin-bottom: 32px;
+      line-height: 1.6;
+    }
+    .reasons {
+      text-align: left;
+      background: rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 16px 20px;
+      margin-bottom: 32px;
+    }
+    .reasons li {
+      list-style: none;
+      font-size: 13px;
+      color: #D1D5DB;
+      line-height: 1.8;
+      padding-left: 20px;
+      position: relative;
+    }
+    .reasons li::before {
+      content: "•";
+      position: absolute;
+      left: 4px;
+      color: #4F6BFF;
+      font-weight: 700;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    button {
+      padding: 12px 24px;
+      font-size: 14px;
+      font-weight: 600;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-family: inherit;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(79, 107, 255, 0.3);
+    }
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 20px rgba(79, 107, 255, 0.4);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.08);
+      color: #D1D5DB;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+    }
+    .status {
+      margin-top: 24px;
+      font-size: 12px;
+      color: #6B7280;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .status .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #EF4444;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="icon">📡</div>
+    <h1>当前处于离线模式</h1>
+    <p class="subtitle">无法连接到服务器，部分功能可能不可用</p>
+    <ul class="reasons">
+      <li>已打开的页面（最近访问）仍可继续使用</li>
+      <li>已缓存的列表/图片会显示旧数据</li>
+      <li>创建/修改等写操作需要联网</li>
+      <li>网络恢复后会自动同步</li>
+    </ul>
+    <div class="actions">
+      <button class="btn-primary" onclick="window.location.reload()">🔄 重新连接</button>
+      <button class="btn-secondary" onclick="history.back()">← 返回</button>
+    </div>
+    <div class="status">
+      <span class="dot"></span>
+      <span>网络状态：离线</span>
+    </div>
+  </div>
+  <script>
+    // 网络恢复时自动 reload
+    window.addEventListener('online', () => { window.location.reload() })
+    // 尝试 fetch 看是否恢复
+    setInterval(() => {
+      fetch('/api/v1/auth/me', { method: 'GET', cache: 'no-store' })
+        .then(() => window.location.reload())
+        .catch(() => { /* still offline */ })
+    }, 10000)
+  </script>
+</body>
+</html>

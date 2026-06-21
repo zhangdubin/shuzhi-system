@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>识别记录 · 发票识别 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  /* 高级筛选面板 */
+  .filter-panel {
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 16px 20px;
+    margin-bottom: 16px;
+  }
+  .filter-panel.collapsed .filter-body { display: none; }
+  .filter-head {
+    display: flex; justify-content: space-between; align-items: center;
+    margin-bottom: 12px;
+  }
+  .filter-head h3 {
+    font-size: 14px; font-weight: 600;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .filter-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px 16px;
+  }
+  .filter-grid .field label { font-size: 11.5px; margin-bottom: 4px; }
+  .filter-grid .field input,
+  .filter-grid .field select {
+    height: 34px;
+    padding: 0 10px;
+    font-size: 12.5px;
+  }
+  .filter-actions {
+    display: flex; gap: 8px; justify-content: flex-end;
+    margin-top: 12px; padding-top: 12px;
+    border-top: 1px solid var(--color-border);
+  }
+
+  /* 状态分组 Tabs */
+  .status-tabs {
+    display: flex;
+    background: #fff;
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-lg);
+    padding: 4px;
+    gap: 2px;
+    margin-bottom: 16px;
+    overflow-x: auto;
+  }
+  .status-tabs a {
+    padding: 8px 16px;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+    white-space: nowrap;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .status-tabs a:hover { color: var(--color-text-primary); }
+  .status-tabs a.active {
+    background: var(--gradient-brand);
+    color: #fff;
+  }
+  .status-tabs a .num {
+    background: rgba(255,255,255,0.2);
+    color: inherit;
+    padding: 1px 8px;
+    border-radius: var(--radius-full);
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .status-tabs a:not(.active) .num {
+    background: var(--color-primary-bg);
+    color: var(--color-primary);
+  }
+
+  /* 主表格 */
+  .rec-table { width: 100%; border-collapse: collapse; }
+  .rec-table th {
+    background: #F8FAFC;
+    text-align: left; padding: 12px 16px;
+    font-size: 11.5px; font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase; letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rec-table td {
+    padding: 13px 16px;
+    font-size: 13px;
+    border-bottom: 1px solid var(--color-border);
+  }
+  .rec-table tr:last-child td { border-bottom: none; }
+  .rec-table tr:hover { background: #FAFBFF; }
+
+  /* 状态 pill */
+  .s-pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 3px 9px;
+    border-radius: var(--radius-full);
+    font-size: 11.5px;
+    font-weight: 500;
+  }
+  .s-pill::before {
+    content: ''; width: 6px; height: 6px; border-radius: 50%;
+  }
+  .s-pill.success { background: var(--color-success-bg); color: #047857; }
+  .s-pill.success::before { background: var(--color-success); }
+  .s-pill.warning { background: var(--color-warning-bg); color: #B45309; }
+  .s-pill.warning::before { background: var(--color-warning); }
+  .s-pill.danger { background: var(--color-danger-bg); color: #B91C1C; }
+  .s-pill.danger::before { background: var(--color-danger); }
+  .s-pill.info { background: var(--color-info-bg); color: #0E7490; }
+  .s-pill.info::before { background: var(--color-info); }
+  .s-pill.gray { background: #F1F5F9; color: #64748B; }
+  .s-pill.gray::before { background: #94A3B8; }
+
+  /* 置信度 */
+  .conf {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px;
+  }
+  .conf .v { font-weight: 600; }
+  .conf-bar {
+    width: 32px; height: 4px;
+    background: #F1F5F9;
+    border-radius: var(--radius-full);
+    overflow: hidden;
+  }
+  .conf-bar .fill { height: 100%; border-radius: var(--radius-full); }
+  .conf.high .v { color: var(--color-success); }
+  .conf.high .fill { background: var(--color-success); }
+  .conf.mid .v { color: var(--color-warning); }
+  .conf.mid .fill { background: var(--color-warning); }
+  .conf.low .v { color: var(--color-danger); }
+  .conf.low .fill { background: var(--color-danger); }
+
+  .cell-amount { font-weight: 600; text-align: right; }
+  .cell-mono { font-family: var(--font-mono); color: var(--color-primary); font-weight: 500; }
+
+  .row-actions { display: flex; gap: 4px; }
+  .row-actions a {
+    color: var(--color-primary);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 3px 7px;
+    border-radius: var(--radius-sm);
+  }
+  .row-actions a:hover { background: var(--color-primary-bg); }
+  .row-actions a.danger { color: var(--color-danger); }
+  .row-actions a.danger:hover { background: var(--color-danger-bg); }
+
+  /* 选中行高亮 */
+  .rec-table tr.selected { background: var(--color-primary-bg); }
+
+  /* 底部汇总条 */
+  .rec-foot {
+    padding: 14px 20px;
+    background: #FAFBFF;
+    border-top: 1px solid var(--color-border);
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 12.5px;
+  }
+  .rec-foot .sel {
+    display: flex; align-items: center; gap: 8px;
+    color: var(--color-text-secondary);
+  }
+  .rec-foot .sel strong { color: var(--color-primary); }
+
+  /* 缩略图 */
+  .inv-thumb {
+    width: 32px; height: 32px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, #4F6BFF, #7C3AED);
+    color: #fff;
+    display: grid; place-items: center;
+    font-size: 10px;
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  /* 关联图标组 */
+  .link-icons { display: flex; gap: 6px; }
+  .link-icons .li {
+    width: 22px; height: 22px;
+    border-radius: 4px;
+    display: grid; place-items: center;
+    font-size: 11px;
+    color: #fff;
+    cursor: pointer;
+  }
+  .link-icons .li.ht { background: linear-gradient(135deg,#EC4899,#BE185D); }
+  .link-icons .li.pj { background: linear-gradient(135deg,#F59E0B,#D97706); }
+  .link-icons .li.rv { background: linear-gradient(135deg,#8B5CF6,#6D28D9); }
+  .link-icons .li.dim { opacity: 0.3; }
+</style>
+</head>
+<body>
+<div class="layout">
+
+  <aside class="sidebar">
+    <div class="sidebar-brand">
+      <div class="brand-icon">数</div>
+      <span>数智管理系统</span>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="nav-group-title">总览</li>
+      <li><a href="dashboard.html"><span class="nav-icon">▦</span>Dashboard</a></li>
+      <li class="nav-group-title">财务</li>
+      <li class="nav-parent open">
+        <a onclick="this.parentElement.classList.toggle('open')"><span class="nav-icon">▤</span>发票识别 <span class="nav-badge">12</span><span class="arrow">▶</span></a>
+        <div class="nav-children">
+          <a href="invoice-ocr.html" data-page="invoice-ocr.html"><span>识别主页</span></a>
+          <a href="invoice-ocr-batch.html" data-page="invoice-ocr-batch.html"><span>批量上传</span></a>
+          <a href="invoice-ocr-records.html" data-page="invoice-ocr-records.html" class="active"><span>识别记录</span></a>
+          <a href="invoice-ocr-verify.html" data-page="invoice-ocr-verify.html"><span>查验真伪</span></a>
+        </div>
+      </li>
+      <li><a href="invoice-ocr-batch.html"><span class="nav-icon">⇪</span>批量上传</a></li>
+      <li><a href="invoice-ocr-records.html"><span class="nav-icon">▤</span>识别记录</a></li>
+      <li><a href="invoice-ocr-verify.html"><span class="nav-icon">✓</span>查验真伪</a></li>
+      <li><a href="invoice-template.html"><span class="nav-icon">▣</span>发票模板</a></li>
+      <li><a href="sales-expense.html"><span class="nav-icon">◈</span>销售费用</a></li>
+      <li class="nav-group-title">业务</li>
+      <li><a href="project.html"><span class="nav-icon">▥</span>项目管理</a></li>
+      <li><a href="contract.html"><span class="nav-icon">▦</span>合同管理</a></li>
+      <li><a href="receivable.html"><span class="nav-icon">▩</span>回款管理</a></li>
+    </ul>
+    <div class="sidebar-pro">
+      <h4>数据驾驶舱 PRO</h4>
+      <p>解锁 AI 智能分析、自定义看板与高级报表</p>
+      <button>升级 PRO</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <header class="topbar">
+      <div class="topbar-left">
+        <div>
+          <div class="breadcrumb">
+            <span>财务</span><span class="sep">/</span>
+            <span><a href="invoice-ocr.html" style="color:var(--color-text-tertiary);">发票识别</a></span>
+            <span class="sep">/</span>
+            <span>识别记录</span>
+          </div>
+          <h1 class="page-title">识别记录 <span style="font-size:12.5px;font-weight:400;color:var(--color-text-tertiary);margin-left:8px;">共 328 条 · 本月 86 条</span></h1>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="btn btn-ghost btn-sm">📊 报表分析</button>
+        <button class="btn btn-outline btn-sm">⇩ 导出 Excel</button>
+        <button class="btn btn-primary btn-sm">⇪ 继续上传</button>
+        <div class="user-chip">
+          <img src="https://i.pravatar.cc/64?img=15" alt="user" />
+          <div class="user-info"><div>张明 · 管理员</div><small>财务部</small></div>
+        </div>
+      </div>
+    </header>
+
+    <div class="content">
+
+      <!-- 状态 Tabs -->
+      <div class="status-tabs">
+        <a href="#" class="active">全部 <span class="num">328</span></a>
+        <a href="#">待核验 <span class="num">12</span></a>
+        <a href="#">已识别 <span class="num">186</span></a>
+        <a href="#">已入账 <span class="num">98</span></a>
+        <a href="#">已关联合同 <span class="num">24</span></a>
+        <a href="#">已归档 <span class="num">5</span></a>
+        <a href="#">已剔除 <span class="num">2</span></a>
+        <a href="#">识别失败 <span class="num">1</span></a>
+      </div>
+
+      <!-- 高级筛选 -->
+      <div class="filter-panel">
+        <div class="filter-head">
+          <h3>🔍 高级筛选</h3>
+          <a style="font-size:12px;color:var(--color-primary);cursor:pointer;">收起 ∧</a>
+        </div>
+        <div class="filter-body">
+          <div class="filter-grid">
+            <div class="field">
+              <label>关键词</label>
+              <input type="text" placeholder="发票号 / 文件名 / 客户..." />
+            </div>
+            <div class="field">
+              <label>发票类型</label>
+              <select>
+                <option>全部类型</option>
+                <option>电子普通发票</option>
+                <option>数电发票</option>
+                <option>专用发票</option>
+                <option>通用发票</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>销售方</label>
+              <select>
+                <option>全部销售方</option>
+                <option>上海数智信息技术有限公司</option>
+                <option>万象科技有限公司</option>
+                <option>北辰实业集团</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>关联合同</label>
+              <select>
+                <option>全部合同</option>
+                <option>已关联</option>
+                <option>未关联</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>金额范围</label>
+              <div style="display:flex;gap:6px;align-items:center;">
+                <input type="text" placeholder="¥ 最小" style="flex:1;" />
+                <span style="color:var(--color-text-tertiary);">—</span>
+                <input type="text" placeholder="¥ 最大" style="flex:1;" />
+              </div>
+            </div>
+            <div class="field">
+              <label>税率</label>
+              <select>
+                <option>全部</option>
+                <option>3%</option>
+                <option>6%</option>
+                <option>13%</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>上传人</label>
+              <select>
+                <option>全部上传人</option>
+                <option>张明</option>
+                <option>王芳</option>
+                <option>陈思琪</option>
+              </select>
+            </div>
+            <div class="field">
+              <label>时间范围</label>
+              <select>
+                <option>近 30 天</option>
+                <option>本月</option>
+                <option>本季度</option>
+                <option>本年</option>
+                <option>自定义...</option>
+              </select>
+            </div>
+          </div>
+          <div class="filter-actions">
+            <span style="margin-right:auto;font-size:12px;color:var(--color-text-tertiary);">
+              已应用 3 个筛选条件
+            </span>
+            <button class="btn btn-ghost btn-sm">⊗ 清空</button>
+            <button class="btn btn-outline btn-sm">💾 保存为视图</button>
+            <button class="btn btn-primary btn-sm">应用筛选</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 主表格 -->
+      <div class="queue-card">
+        <table class="rec-table">
+          <thead>
+            <tr>
+              <th style="width:36px;"><input type="checkbox" /></th>
+              <th>发票号</th>
+              <th>类型</th>
+              <th>销售方</th>
+              <th style="text-align:right;">金额</th>
+              <th>税率</th>
+              <th>开票日期</th>
+              <th>上传时间</th>
+              <th>上传人</th>
+              <th>关联</th>
+              <th>置信度</th>
+              <th>状态</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...12345678</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>上海数智信息技术有限公司</td>
+              <td class="cell-amount">¥ 28,000.00</td>
+              <td>6%</td>
+              <td>2026-06-08</td>
+              <td>2026-06-12 09:23</td>
+              <td>王芳</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-028">▦</span>
+                  <span class="li pj" title="项目 PRJ-2026-018">▥</span>
+                  <span class="li rv dim" title="无关联回款">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:96.8%;"></div></div><span class="v">96.8%</span></span></td>
+              <td><span class="s-pill warning">待核验</span></td>
+              <td><div class="row-actions"><a>核验</a><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr class="selected">
+              <td><input type="checkbox" checked /></td>
+              <td><span class="cell-mono">25113300...98765432</span></td>
+              <td><span class="tag" style="background:#FAE8FF;color:#86198F;">数电发票</span></td>
+              <td>朗驰智能设备有限公司</td>
+              <td class="cell-amount">¥ 86,500.00</td>
+              <td>13%</td>
+              <td>2026-06-07</td>
+              <td>2026-06-11 14:30</td>
+              <td>陈思琪</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-029">▦</span>
+                  <span class="li pj" title="项目 PRJ-2026-024">▥</span>
+                  <span class="li rv" title="回款 HK-2026-019">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:98.2%;"></div></div><span class="v">98.2%</span></span></td>
+              <td><span class="s-pill success">已入账</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a><a>导出</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...55443322</span></td>
+              <td><span class="tag tag-info">专用发票</span></td>
+              <td>北辰实业集团</td>
+              <td class="cell-amount">¥ 142,300.00</td>
+              <td>13%</td>
+              <td>2026-06-06</td>
+              <td>2026-06-10 11:08</td>
+              <td>王芳</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-030">▦</span>
+                  <span class="li pj" title="项目 PRJ-2026-015">▥</span>
+                  <span class="li rv dim" title="无关联回款">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:97.1%;"></div></div><span class="v">97.1%</span></span></td>
+              <td><span class="s-pill info">已关联合同</span></td>
+              <td><div class="row-actions"><a>入账</a><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" checked /></td>
+              <td><span class="cell-mono">25113300...11223344</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>京东商城</td>
+              <td class="cell-amount">¥ 3,892.00</td>
+              <td>3%</td>
+              <td>2026-06-05</td>
+              <td>2026-06-09 16:45</td>
+              <td>陈思琪</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht dim" title="未关联">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv dim" title="未关联">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:95.6%;"></div></div><span class="v">95.6%</span></span></td>
+              <td><span class="s-pill gray">已归档</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...33445566</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>用友网络</td>
+              <td class="cell-amount">¥ 24,800.00</td>
+              <td>6%</td>
+              <td>2026-06-04</td>
+              <td>2026-06-08 10:32</td>
+              <td>张明</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-024">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv dim" title="未关联">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:97.8%;"></div></div><span class="v">97.8%</span></span></td>
+              <td><span class="s-pill success">已入账</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a><a>导出</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono" style="color:var(--color-text-tertiary);">—</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>差旅_机票_001.png</td>
+              <td class="cell-amount" style="color:var(--color-text-tertiary);">¥ 0.00</td>
+              <td>—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td>2026-06-12 10:23</td>
+              <td>陈思琪</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht dim" title="未识别">▦</span>
+                  <span class="li pj dim" title="未识别">▥</span>
+                  <span class="li rv dim" title="未识别">▩</span>
+                </div>
+              </td>
+              <td><span class="conf low"><div class="conf-bar"><div class="fill" style="width:42%;"></div></div><span class="v">42%</span></span></td>
+              <td><span class="s-pill warning">需核验</span></td>
+              <td><div class="row-actions"><a>核验</a><a>剔除</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...77889900</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>携程商旅</td>
+              <td class="cell-amount">¥ 18,500.00</td>
+              <td>6%</td>
+              <td>2026-06-03</td>
+              <td>2026-06-07 09:15</td>
+              <td>王芳</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-022">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv dim" title="未关联">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:96.2%;"></div></div><span class="v">96.2%</span></span></td>
+              <td><span class="s-pill success">已入账</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...99001122</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>美团企业版</td>
+              <td class="cell-amount">¥ 6,580.00</td>
+              <td>3%</td>
+              <td>2026-06-02</td>
+              <td>2026-06-06 14:20</td>
+              <td>陈思琪</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht dim" title="未关联">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv dim" title="未关联">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:94.8%;"></div></div><span class="v">94.8%</span></span></td>
+              <td><span class="s-pill gray">已归档</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...55667788</span></td>
+              <td><span class="tag tag-info">专用发票</span></td>
+              <td>亚马逊通技术服务</td>
+              <td class="cell-amount">¥ 168,000.00</td>
+              <td>13%</td>
+              <td>2026-05-30</td>
+              <td>2026-06-05 11:00</td>
+              <td>张明</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-027">▦</span>
+                  <span class="li pj" title="项目 PRJ-2026-024">▥</span>
+                  <span class="li rv" title="回款 HK-2026-026">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:98.5%;"></div></div><span class="v">98.5%</span></span></td>
+              <td><span class="s-pill success">已入账</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono" style="color:var(--color-text-tertiary);">—</span></td>
+              <td>—</td>
+              <td style="color:var(--color-text-tertiary);">broken_invoice.pdf</td>
+              <td class="cell-amount" style="color:var(--color-text-tertiary);">—</td>
+              <td>—</td>
+              <td style="color:var(--color-text-tertiary);">—</td>
+              <td>2026-06-04 16:48</td>
+              <td>陈思琪</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht dim" title="未识别">▦</span>
+                  <span class="li pj dim" title="未识别">▥</span>
+                  <span class="li rv dim" title="未识别">▩</span>
+                </div>
+              </td>
+              <td><span style="color:var(--color-danger);font-size:12px;">—</span></td>
+              <td><span class="s-pill danger">识别失败</span></td>
+              <td><div class="row-actions"><a>重试</a><a class="danger">删除</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono">25113300...44556677</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>数智化峰会组委会</td>
+              <td class="cell-amount">¥ 80,000.00</td>
+              <td>6%</td>
+              <td>2026-05-28</td>
+              <td>2026-06-03 10:20</td>
+              <td>张明</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht" title="合同 HT-2026-021">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv" title="回款 HK-2026-021">▩</span>
+                </div>
+              </td>
+              <td><span class="conf high"><div class="conf-bar"><div class="fill" style="width:97.5%;"></div></div><span class="v">97.5%</span></span></td>
+              <td><span class="s-pill success">已入账</span></td>
+              <td><div class="row-actions"><a href="invoice-detail.html">详情</a></div></td>
+            </tr>
+            <tr>
+              <td><input type="checkbox" /></td>
+              <td><span class="cell-mono" style="color:var(--color-text-tertiary);">—</span></td>
+              <td><span class="tag tag-primary">电子普通</span></td>
+              <td>重复报销_001.pdf</td>
+              <td class="cell-amount">¥ 12,800.00</td>
+              <td>—</td>
+              <td>2026-05-25</td>
+              <td>2026-06-02 15:30</td>
+              <td>王芳</td>
+              <td>
+                <div class="link-icons">
+                  <span class="li ht dim" title="未关联">▦</span>
+                  <span class="li pj dim" title="未关联">▥</span>
+                  <span class="li rv dim" title="未关联">▩</span>
+                </div>
+              </td>
+              <td><span class="conf mid"><div class="conf-bar"><div class="fill" style="width:78%;"></div></div><span class="v">78%</span></span></td>
+              <td><span class="s-pill danger">已剔除</span></td>
+              <td><div class="row-actions"><a>恢复</a><a class="danger">删除</a></div></td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div class="rec-foot">
+          <div class="sel">
+            <input type="checkbox" />
+            <span>全选</span>
+            <span style="color:var(--color-border-strong);">|</span>
+            <span>已选 <strong>2</strong> 条 · 合计金额 <strong>¥ 229,300.00</strong></span>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm">📋 批量入账</button>
+            <button class="btn btn-ghost btn-sm">🔗 批量关联合同</button>
+            <button class="btn btn-ghost btn-sm">⇩ 批量导出</button>
+            <button class="btn btn-ghost btn-sm" style="color:var(--color-danger);">⊗ 批量剔除</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- 分页 -->
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px;padding-top:14px;font-size:12.5px;color:var(--color-text-tertiary);">
+        <span>共 328 条 · 显示 1-12</span>
+        <div style="display:flex;gap:4px;">
+          <button class="btn btn-ghost btn-sm">‹</button>
+          <button class="btn btn-primary btn-sm" style="background:var(--gradient-brand);">1</button>
+          <button class="btn btn-ghost btn-sm">2</button>
+          <button class="btn btn-ghost btn-sm">3</button>
+          <button class="btn btn-ghost btn-sm">…</button>
+          <button class="btn btn-ghost btn-sm">28</button>
+          <button class="btn btn-ghost btn-sm">›</button>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

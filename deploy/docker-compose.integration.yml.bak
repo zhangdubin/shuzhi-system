@@ -1,0 +1,189 @@
+# ============================================================
+# 联调专用 compose（最小化 + 全部 fake 仿真器）
+# 用法：docker compose -f docker-compose.integration.yml up -d --build
+# ============================================================
+services:
+
+  # ============================================================
+  # 1. PostgreSQL
+  # ============================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: shuzhi-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shuzhi
+      POSTGRES_PASSWORD: shuzhi
+      POSTGRES_DB: shuzhi
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shuzhi -d shuzhi"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 2. Redis
+  # ============================================================
+  redis:
+    image: redis:7-alpine
+    container_name: shuzhi-redis
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 3. Fake PaddleOCR（仿真器，秒起）
+  # ============================================================
+  fake-ocr:
+    build:
+      context: ..
+      dockerfile: deploy/fake-services/Dockerfile.ocr
+    container_name: shuzhi-fake-ocr
+    restart: unless-stopped
+    ports:
+      - "8001:8001"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8001/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 4. Fake 诺诺发票云（仿真器，秒起）
+  # ============================================================
+  fake-nuonuo:
+    build:
+      context: ..
+      dockerfile: deploy/fake-services/Dockerfile.nuonuo
+    container_name: shuzhi-fake-nuonuo
+    restart: unless-stopped
+    ports:
+      - "8002:8002"
+    healthcheck:
+      test: ["CMD", "curl", "-fs", "http://localhost:8002/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 5. Backend（FastAPI）
+  # ============================================================
+  backend:
+    build:
+      context: ../backend
+      dockerfile: ../deploy/backend/Dockerfile
+    container_name: shuzhi-backend
+    restart: unless-stopped
+    environment:
+      # 数据库（容器内网）—— 用 SHUZHI_ 前缀（pydantic-settings env_prefix）
+      SHUZHI_DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi
+      # Redis
+      SHUZHI_REDIS_URL: redis://redis:6379/0
+      # JWT
+      SHUZHI_JWT_SECRET_KEY: ${JWT_SECRET_KEY:-integration-test-secret-key-very-long-64-chars-aaaaaaaaaa}
+      SHUZHI_JWT_ACCESS_TOKEN_EXPIRE_MINUTES: 120
+      SHUZHI_JWT_REFRESH_TOKEN_EXPIRE_DAYS: 7
+      # CORS（逗号分隔）
+      SHUZHI_CORS_ORIGINS: '*'
+      # OCR（fake）
+      SHUZHI_OCR_SERVICE_URL: http://fake-ocr:8001
+      SHUZHI_OCR_MODE: real
+      # 诺诺（fake）
+      SHUZHI_NUONUO_API_KEY: SD63236305
+      SHUZHI_NUONUO_API_SECRET: SDDED2523BED4643
+      SHUZHI_NUONUO_API_TOKEN: integration_test_token
+      SHUZHI_NUONUO_API_URL: http://fake-nuonuo:8002/open/v1/services
+      SHUZHI_NUONUO_MODE: real
+      # 环境
+      SHUZHI_ENV: development
+      SHUZHI_LOG_LEVEL: INFO
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      fake-ocr:
+        condition: service_healthy
+      fake-nuonuo:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/app/uploads
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 6. Frontend（Nginx 静态托管 Vue 打包产物，端口 80）
+  # ============================================================
+  frontend:
+    image: nginx:alpine
+    container_name: shuzhi-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      # 本地 dist 直接 bind mount（开发期免 build）
+      - ../frontend/dist:/usr/share/nginx/html:ro
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - backend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - shuzhi-net
+
+  # ============================================================
+  # 7. Design 静态预览（端口 8081，访问 http://localhost:8081/design/）
+  # ============================================================
+  design-preview:
+    build:
+      context: ..
+      dockerfile: deploy/fake-services/Dockerfile.design
+    container_name: shuzhi-design
+    restart: unless-stopped
+    ports:
+      - "8081:80"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+    networks:
+      - shuzhi-net
+
+# ============================================================
+# 网络 + 卷
+# ============================================================
+networks:
+  shuzhi-net:
+    driver: bridge
+
+volumes:
+  pg-data:
+  redis-data:
+  uploads:

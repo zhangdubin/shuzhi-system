@@ -1,0 +1,728 @@
+// ============================================================
+// AI 数智化组件样式（与 design/assets/common.css 末尾的 ai-* 块完全一致）
+// 2026-05-21 Phase 1
+// 不破坏现有 EP 主题，仅追加新类
+// 配色策略：品牌渐变（蓝紫）作为 AI 视觉标识
+// ============================================================
+
+/* --- AI 通用 token（独立于 variables.scss，方便动态主题） --- */
+:root {
+  --color-ai: #7C3AED;
+  --color-ai-2: #4F6BFF;
+  --color-ai-bg: linear-gradient(135deg, rgba(79,107,255,0.08) 0%, rgba(124,58,237,0.08) 100%);
+  --color-ai-bg-solid: #F5F3FF;
+  --color-ai-border: rgba(124,58,237,0.25);
+  --color-confidence-high: #10B981;
+  --color-confidence-mid: #F59E0B;
+  --color-confidence-low: #EF4444;
+  --gradient-ai: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  --gradient-ai-soft: linear-gradient(135deg, rgba(79,107,255,0.15) 0%, rgba(124,58,237,0.15) 100%);
+  --shadow-ai: 0 4px 16px rgba(124, 58, 237, 0.15);
+  --shadow-ai-hover: 0 8px 24px rgba(124, 58, 237, 0.25);
+}
+
+/* --- AI 标识小角标 --- */
+.ai-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #fff;
+  background: var(--gradient-ai);
+  border-radius: 9999px;
+  letter-spacing: 0.3px;
+  line-height: 1.5;
+  vertical-align: middle;
+
+  &::before {
+    content: '✦';
+    font-size: 10px;
+    opacity: 0.9;
+  }
+
+  &.outline {
+    background: transparent;
+    color: var(--color-ai);
+    border: 1px solid var(--color-ai-border);
+  }
+}
+
+/* --- AI 卡片（区别于业务卡片） --- */
+.ai-card {
+  background: #fff;
+  border-radius: $radius-lg;
+  border: 1px solid var(--color-ai-border);
+  position: relative;
+  overflow: hidden;
+  transition: all 0.2s;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--gradient-ai);
+  }
+
+  &.elevated {
+    box-shadow: var(--shadow-ai);
+
+    &:hover {
+      box-shadow: var(--shadow-ai-hover);
+      transform: translateY(-2px);
+    }
+  }
+
+  .ai-card-head {
+    padding: 14px 18px 10px 22px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+
+    h4 {
+      font-size: 14px;
+      font-weight: 600;
+      color: $color-text-primary;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+  }
+
+  .ai-card-body {
+    padding: 4px 22px 16px;
+  }
+}
+
+/* --- AI 建议项 --- */
+.ai-suggestion {
+  display: flex;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--color-ai-bg);
+  border-radius: $radius-md;
+  border-left: 3px solid var(--color-ai);
+  margin-bottom: 10px;
+  position: relative;
+
+  .ai-s-icon {
+    width: 28px; height: 28px;
+    background: var(--gradient-ai);
+    border-radius: $radius-sm;
+    color: #fff;
+    display: grid; place-items: center;
+    font-size: 13px;
+    flex-shrink: 0;
+  }
+
+  .ai-s-body { flex: 1; min-width: 0; }
+
+  .ai-s-title {
+    font-size: 13.5px;
+    font-weight: 600;
+    color: $color-text-primary;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-s-desc {
+    font-size: 12.5px;
+    color: $color-text-secondary;
+    line-height: 1.55;
+    margin-bottom: 8px;
+  }
+
+  .ai-s-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+
+    .el-button {
+      font-size: 12px;
+    }
+  }
+
+  &.danger {
+    border-left-color: $color-danger;
+    background: $color-danger-bg;
+
+    .ai-s-icon { background: $color-danger; }
+  }
+
+  &.warning {
+    border-left-color: $color-warning;
+    background: $color-warning-bg;
+
+    .ai-s-icon { background: $color-warning; }
+  }
+
+  &.success {
+    border-left-color: $color-success;
+    background: $color-success-bg;
+
+    .ai-s-icon { background: $color-success; }
+  }
+}
+
+/* --- 置信度指示 --- */
+.ai-confidence {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  background: rgba(0,0,0,0.04);
+  vertical-align: middle;
+
+  &::before {
+    content: '';
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &.high { color: var(--color-confidence-high); background: $color-success-bg; }
+  &.mid  { color: var(--color-confidence-mid);  background: $color-warning-bg; }
+  &.low  { color: var(--color-confidence-low);  background: $color-danger-bg; }
+}
+
+/* --- AI 字段高亮（表单内） --- */
+.ai-extracted {
+  position: relative;
+  background: linear-gradient(90deg, var(--color-ai-bg-solid) 0%, transparent 100%) !important;
+  border-color: var(--color-ai) !important;
+  transition: all 0.3s;
+
+  &.fade {
+    background: #fff !important;
+    border-color: $color-border !important;
+  }
+}
+
+.ai-extracted-tooltip {
+  position: absolute;
+  top: -10px;
+  right: 8px;
+  background: var(--gradient-ai);
+  color: #fff;
+  font-size: 10.5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  box-shadow: 0 2px 6px rgba(124,58,237,0.3);
+  z-index: 2;
+
+  .ai-conf-mini {
+    background: rgba(255,255,255,0.25);
+    padding: 0 5px;
+    border-radius: 4px;
+    font-weight: 700;
+  }
+}
+
+/* --- AI 风险评级 chip（用于列表列） --- */
+.ai-risk-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 11.5px;
+  font-weight: 600;
+  white-space: nowrap;
+
+  .dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+  }
+
+  &.low    { background: $color-success-bg; color: #047857; }
+  &.low .dot    { background: $color-success; }
+  &.medium { background: $color-warning-bg; color: #B45309; }
+  &.medium .dot { background: $color-warning; }
+  &.high   { background: $color-danger-bg;  color: #B91C1C; }
+  &.high .dot   { background: $color-danger; }
+  &.unknown { background: #F1F5F9; color: $color-text-tertiary; }
+  &.unknown .dot { background: $color-text-tertiary; }
+}
+
+/* --- AI 智能标签（聚合显示在列表中） --- */
+.ai-tags {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-width: 200px;
+  vertical-align: middle;
+}
+
+.ai-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 1px 7px;
+  font-size: 10.5px;
+  font-weight: 500;
+  color: var(--color-ai);
+  background: var(--color-ai-bg);
+  border: 1px solid var(--color-ai-border);
+  border-radius: 9999px;
+  line-height: 1.6;
+
+  &.danger {
+    color: $color-danger;
+    background: $color-danger-bg;
+    border-color: rgba(239, 68, 68, 0.25);
+  }
+  &.warning {
+    color: $color-warning;
+    background: $color-warning-bg;
+    border-color: rgba(245, 158, 11, 0.25);
+  }
+  &.success {
+    color: $color-success;
+    background: $color-success-bg;
+    border-color: rgba(16, 185, 129, 0.25);
+  }
+}
+
+/* --- AI 加载状态 --- */
+.ai-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-ai);
+  padding: 4px 10px;
+  background: var(--color-ai-bg);
+  border-radius: 9999px;
+
+  &::before {
+    content: '';
+    width: 12px; height: 12px;
+    border: 2px solid var(--color-ai-border);
+    border-top-color: var(--color-ai);
+    border-radius: 50%;
+    animation: ai-spin 0.8s linear infinite;
+  }
+}
+
+@keyframes ai-spin { to { transform: rotate(360deg); } }
+
+/* --- AI 思考点（用于 SSE 流式） --- */
+.ai-thinking-dots {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+
+  span {
+    width: 5px; height: 5px;
+    background: var(--color-ai);
+    border-radius: 50%;
+    animation: ai-bounce 1.2s infinite;
+  }
+
+  span:nth-child(2) { animation-delay: 0.15s; }
+  span:nth-child(3) { animation-delay: 0.3s; }
+}
+
+@keyframes ai-bounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}
+
+/* --- AI 骨架屏 --- */
+.ai-skeleton {
+  background: linear-gradient(90deg, #F1F5F9 0%, #E2E8F0 50%, #F1F5F9 100%);
+  background-size: 200% 100%;
+  animation: ai-shimmer 1.5s infinite;
+  border-radius: $radius-sm;
+  height: 14px;
+}
+
+@keyframes ai-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* --- AI 任务进度条（OCR / 长任务） --- */
+.ai-task-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+
+  .stage {
+    font-size: 12.5px;
+    color: $color-text-secondary;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+
+    .pct { color: var(--color-ai); font-weight: 600; }
+  }
+
+  .bar {
+    height: 6px;
+    background: var(--color-ai-bg);
+    border-radius: 9999px;
+    overflow: hidden;
+    position: relative;
+
+    .fill {
+      height: 100%;
+      background: var(--gradient-ai);
+      border-radius: 9999px;
+      transition: width 0.3s ease;
+      position: relative;
+
+      &::after {
+        content: '';
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(90deg, transparent, rgba(255,255,255,0.4), transparent);
+        animation: ai-shine 1.5s infinite;
+      }
+    }
+  }
+}
+
+@keyframes ai-shine { 0% { transform: translateX(-100%); } 100% { transform: translateX(100%); } }
+
+/* --- AI 提醒卡片（Dashboard 顶部） --- */
+.ai-alert-bar {
+  background: var(--gradient-ai-soft);
+  border: 1px solid var(--color-ai-border);
+  border-radius: $radius-lg;
+  padding: 16px 20px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  position: relative;
+  overflow: hidden;
+
+  &::before {
+    content: '✦';
+    position: absolute;
+    right: -10px; bottom: -20px;
+    font-size: 80px;
+    color: rgba(124,58,237,0.08);
+    font-weight: 700;
+    pointer-events: none;
+  }
+
+  .ai-icon {
+    width: 40px; height: 40px;
+    background: var(--gradient-ai);
+    border-radius: $radius-md;
+    color: #fff;
+    display: grid; place-items: center;
+    font-size: 18px;
+    font-weight: 700;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-ai);
+  }
+
+  .ai-body { flex: 1; min-width: 0; }
+
+  .ai-body .title {
+    font-size: 14px;
+    font-weight: 600;
+    color: $color-text-primary;
+    margin-bottom: 4px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .ai-body .summary {
+    font-size: 12.5px;
+    color: $color-text-secondary;
+    line-height: 1.5;
+
+    strong { color: $color-text-primary; }
+  }
+
+  .ai-actions {
+    display: flex;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+}
+
+/* --- AI 智能摘要（一句话） --- */
+.ai-summary {
+  font-size: 12.5px;
+  color: $color-text-secondary;
+  line-height: 1.55;
+  padding: 10px 12px;
+  background: var(--color-ai-bg);
+  border-radius: $radius-md;
+  position: relative;
+  padding-left: 32px;
+
+  &::before {
+    content: '✦';
+    position: absolute;
+    left: 12px; top: 50%;
+    transform: translateY(-50%);
+    width: 16px; height: 16px;
+    background: var(--gradient-ai);
+    color: #fff;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    font-size: 10px;
+    font-weight: 700;
+  }
+}
+
+/* --- AI 答问引用（"问数"面板） --- */
+.ai-citation {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  background: var(--color-ai-bg);
+  border: 1px solid var(--color-ai-border);
+  border-radius: $radius-sm;
+  font-size: 11px;
+  color: var(--color-ai);
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    background: var(--color-ai);
+    color: #fff;
+  }
+
+  &::before { content: '🔗'; font-size: 9px; }
+}
+
+/* --- AI 反馈按钮 --- */
+.ai-feedback {
+  display: inline-flex;
+  gap: 4px;
+  padding: 2px;
+  background: #F1F5F9;
+  border-radius: 9999px;
+
+  button {
+    background: transparent;
+    border: none;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    cursor: pointer;
+    font-size: 12px;
+    display: grid; place-items: center;
+    transition: all 0.2s;
+    color: $color-text-tertiary;
+  }
+
+  button:hover { background: #fff; color: $color-text-primary; }
+  button.active.up { background: $color-success; color: #fff; }
+  button.active.down { background: $color-danger; color: #fff; }
+}
+
+/* --- AI 任务时间线（详情页分析） --- */
+.ai-timeline {
+  position: relative;
+  padding-left: 24px;
+
+  &::before {
+    content: '';
+    position: absolute;
+    left: 8px; top: 4px; bottom: 4px;
+    width: 2px;
+    background: var(--color-ai-border);
+  }
+
+  .at-item {
+    position: relative;
+    padding-bottom: 14px;
+
+    &::before {
+      content: '';
+      position: absolute;
+      left: -20px; top: 4px;
+      width: 10px; height: 10px;
+      border-radius: 50%;
+      background: var(--gradient-ai);
+      box-shadow: 0 0 0 3px var(--color-ai-bg);
+    }
+  }
+
+  .at-time {
+    font-size: 11px;
+    color: $color-text-tertiary;
+    margin-bottom: 2px;
+  }
+
+  .at-text {
+    font-size: 12.5px;
+    color: $color-text-primary;
+    line-height: 1.5;
+  }
+}
+
+/* --- AI 健康度雷达图容器 --- */
+.ai-radar {
+  width: 100%;
+  max-width: 280px;
+  margin: 0 auto;
+  display: block;
+}
+
+/* --- 移动端适配 --- */
+@media (max-width: 640px) {
+  .ai-alert-bar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 14px;
+  }
+
+  .ai-alert-bar .ai-actions {
+    width: 100%;
+
+    .el-button { flex: 1; }
+  }
+
+  .ai-suggestion {
+    padding: 10px 12px;
+
+    .ai-s-actions { flex-wrap: wrap; }
+  }
+
+  .ai-extracted-tooltip {
+    right: 4px;
+    font-size: 9.5px;
+  }
+}
+
+/* ============================================================
+   触点 #22：AI 智能筛选按钮（全局工具类，5 列表复用）
+   ============================================================ */
+.btn-ai-outline {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 12px; font-size: 12px; font-weight: 600;
+  background: $gradient-brand !important; color: #fff !important; border: none !important;
+  border-radius: $radius-sm !important; cursor: pointer;
+  box-shadow: 0 2px 6px rgba(79,107,255,0.2);
+  transition: all 0.15s;
+  &:hover { opacity: 0.92; transform: translateY(-1px); }
+}
+.btn-ai-outline.btn-sm { height: 32px; padding: 0 12px; }
+
+/* ============================================================
+   体验增强：移动端适配（响应式断点）
+   ============================================================ */
+@media (max-width: 768px) {
+  .page-card { padding: 12px !important; }
+  .stat-card { padding: 10px !important; }
+  .page-header h1 { font-size: 18px !important; }
+  .stats-grid { grid-template-columns: 1fr 1fr !important; }
+  .el-table { font-size: 11px !important; }
+  .el-drawer { width: 92vw !important; }
+  .el-dialog { width: 92vw !important; margin: 6vh auto !important; }
+  .ph-actions { flex-wrap: wrap; gap: 4px; }
+  .ph-actions .btn { font-size: 11px; padding: 4px 8px; }
+  .toolbar { flex-wrap: wrap; }
+  .cmdk-panel { width: 100vw; max-height: 100vh; border-radius: 0; }
+  .cmdk-body { grid-template-columns: 1fr; }
+  .cmdk-commands { border-right: none; border-bottom: 1px solid rgba(255,255,255,0.06); max-height: 30vh; }
+  .quick-grid { grid-template-columns: 1fr 1fr !important; }
+  .kpi-row, .stats-grid { grid-template-columns: 1fr 1fr !important; }
+  .ai-checkup-drawer,
+  .ai-match-drawer,
+  .ai-capture-drawer,
+  .ai-card-drawer,
+  .ai-draft-drawer,
+  .ai-recheck-drawer,
+  .ai-filter-drawer { padding: 0 8px; }
+  .ai-extract-toggle .ai-toggle-tip { display: none; }
+}
+
+/* ============================================================
+   R16 暗色设计系统精简：
+   - 基础 EP 覆写 + 业务页硬编码覆写 → 已迁到 dark-theme.scss（CSS 变量驱动）
+   - 下面只保留 Dashboard 业务组件特定覆写（dark-theme.scss 没盖到的局部 class）
+   ============================================================
+   Dashboard 业务组件覆写（R14A 补全） */
+
+/* Dashboard 6 模块入口卡片 */
+.theme-dark .module-card { background: #1A1F2E !important; border-color: rgba(255,255,255,0.08) !important; }
+.theme-dark .module-card .m-name { color: #E5E7EB !important; }
+.theme-dark .module-card .m-stat { color: #9CA3AF !important; }
+.theme-dark .module-card:hover { box-shadow: 0 8px 16px rgba(0,0,0,0.4) !important; }
+
+/* Dashboard 实时活动浮层 */
+.theme-dark .live-card { background: rgba(26,31,46,0.96) !important; border-color: rgba(79,107,255,0.3) !important; color: #E5E7EB !important; }
+.theme-dark .live-time { color: #9CA3AF !important; }
+
+/* Dashboard AI 建议弹层 */
+.theme-dark .ai-suggest-row { background: #1A1F2E !important; border-color: rgba(255,255,255,0.08) !important; color: #E5E7EB !important; }
+.theme-dark .ai-suggest-row .ai-suggest-body h5 { color: #E5E7EB !important; }
+.theme-dark .ai-suggest-row .ai-suggest-body p { color: #9CA3AF !important; }
+
+/* Dashboard KPI 卡片内部文字 */
+.theme-dark .stat-label { color: #9CA3AF !important; }
+.theme-dark .stat-value { color: #E5E7EB !important; }
+.theme-dark .stat-delta { color: #9CA3AF !important; }
+.theme-dark .stat-ai-interpret { color: rgba(79,107,255,0.85) !important; }
+.theme-dark .stat-icon { opacity: 0.9; }
+
+/* Dashboard 主网格内元素 */
+.theme-dark .card-head h3 { color: #E5E7EB !important; }
+.theme-dark .link-all { color: rgba(79,107,255,0.85) !important; }
+.theme-dark .panel-title { color: #E5E7EB !important; }
+.theme-dark .trend-legend { color: #9CA3AF !important; }
+.theme-dark .legend-item { color: #9CA3AF !important; }
+
+/* Dashboard 待办/活动列表 */
+.theme-dark .todo-item { border-color: rgba(255,255,255,0.08) !important; }
+.theme-dark .todo-item .todo-text,
+.theme-dark .todo-item span { color: #D1D5DB !important; }
+
+/* Dashboard 团队成员 */
+.theme-dark .team-member { background: #1A1F2E !important; border-color: rgba(255,255,255,0.06) !important; }
+.theme-dark .team-member .tm-name { color: #E5E7EB !important; }
+.theme-dark .team-member .tm-role { color: #9CA3AF !important; }
+
+/* Dashboard 欢迎条 + 快速新建按钮 */
+.theme-dark .welcome-btn.primary { background: rgba(255,255,255,0.15) !important; color: #fff !important; }
+.theme-dark .welcome-btn.primary:hover { background: rgba(255,255,255,0.25) !important; }
+
+/* Dashboard 欢迎条文字 */
+.theme-dark .welcome-text h2 { color: #fff !important; }
+.theme-dark .welcome-text p { color: rgba(255,255,255,0.85) !important; }
+.theme-dark .welcome-text strong { color: #FDE68A !important; }
+
+/* Dashboard 收支趋势图 SVG 文字 */
+.theme-dark .trend-svg text { fill: #9CA3AF !important; }
+.theme-dark .trend-svg .axis-label { fill: #9CA3AF !important; }
+.theme-dark .trend-svg line { stroke: rgba(255,255,255,0.1) !important; }
+
+/* Dashboard 最近活动时间线 */
+.theme-dark .activity-item { color: #D1D5DB !important; }
+.theme-dark .activity-time { color: #9CA3AF !important; }
+
+/* 全局命令面板弹层 */
+.theme-dark .global-cmd-overlay { background: rgba(15,19,32,0.8) !important; }
+.theme-dark .global-cmd-dialog { background: #1A1F2E !important; border-color: rgba(255,255,255,0.1) !important; }
+.theme-dark .global-cmd-dialog .cmd-input { background: rgba(255,255,255,0.04) !important; color: #E5E7EB !important; }
+.theme-dark .global-cmd-dialog .cmd-item { color: #D1D5DB !important; }
+.theme-dark .global-cmd-dialog .cmd-item:hover { background: rgba(79,107,255,0.15) !important; }
+
+/* PWA 安装提示条 */
+.theme-dark .pwa-install-bar { background: #1A1F2E !important; color: #E5E7EB !important; border-color: rgba(255,255,255,0.1) !important; }

@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>登录 · 数智化管理系统</title>
+<link rel="stylesheet" href="assets/common.css" />
+<style>
+  body {
+    background: var(--gradient-hero);
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+  /* 背景装饰光斑 */
+  body::before, body::after {
+    content: '';
+    position: fixed;
+    border-radius: 50%;
+    filter: blur(120px);
+    opacity: 0.5;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::before {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, #4F6BFF 0%, transparent 70%);
+    top: -100px; left: -100px;
+  }
+  body::after {
+    width: 600px; height: 600px;
+    background: radial-gradient(circle, #7C3AED 0%, transparent 70%);
+    bottom: -150px; right: -100px;
+  }
+
+  .login-wrap {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    width: 1000px;
+    max-width: 95vw;
+    min-height: 600px;
+    background: rgba(255,255,255,0.98);
+    border-radius: 24px;
+    overflow: hidden;
+    box-shadow: 0 40px 80px -20px rgba(0,0,0,0.4);
+    position: relative;
+    z-index: 1;
+  }
+
+  /* 左侧品牌区 */
+  .login-brand {
+    background: var(--gradient-hero);
+    padding: 56px 48px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    position: relative;
+    overflow: hidden;
+  }
+  .login-brand::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background:
+      radial-gradient(circle at 20% 20%, rgba(124,58,237,0.4) 0%, transparent 50%),
+      radial-gradient(circle at 80% 80%, rgba(79,107,255,0.3) 0%, transparent 50%);
+  }
+  .brand-top { position: relative; z-index: 1; }
+  .brand-logo {
+    display: flex; align-items: center; gap: 12px;
+    font-size: 17px; font-weight: 600;
+    margin-bottom: 64px;
+  }
+  .brand-logo .brand-icon {
+    width: 40px; height: 40px;
+    border-radius: 10px;
+    background: var(--gradient-brand);
+    display: grid; place-items: center;
+    color: #fff; font-weight: 700; font-size: 17px;
+    box-shadow: 0 4px 16px rgba(79,107,255,0.5);
+  }
+  .brand-pitch h1 {
+    font-size: 30px;
+    line-height: 1.3;
+    font-weight: 700;
+    margin-bottom: 16px;
+    letter-spacing: -0.5px;
+  }
+  .brand-pitch p {
+    font-size: 14px;
+    color: rgba(226,232,240,0.75);
+    line-height: 1.7;
+    max-width: 360px;
+  }
+  .brand-stats {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 16px;
+    margin-top: 36px;
+    padding-top: 28px;
+    border-top: 1px solid rgba(255,255,255,0.1);
+    position: relative; z-index: 1;
+  }
+  .brand-stats .stat-item .v {
+    font-size: 20px; font-weight: 700;
+    background: var(--gradient-brand);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    margin-bottom: 4px;
+  }
+  .brand-stats .stat-item .l {
+    font-size: 11.5px;
+    color: rgba(148,163,184,0.8);
+  }
+  .brand-footer {
+    position: relative; z-index: 1;
+    font-size: 11.5px;
+    color: rgba(148,163,184,0.6);
+  }
+
+  /* 右侧登录表单 */
+  .login-form-wrap {
+    padding: 56px 56px 40px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .login-form-wrap h2 {
+    font-size: 24px;
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .login-form-wrap .sub {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin-bottom: 32px;
+  }
+  .login-form-wrap .sub a {
+    color: var(--color-primary);
+    font-weight: 500;
+  }
+
+  .form-group {
+    margin-bottom: 18px;
+  }
+  .form-group label {
+    display: block;
+    font-size: 12.5px;
+    font-weight: 500;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+  }
+  .input-wrap {
+    position: relative;
+  }
+  .input-wrap .input-icon {
+    position: absolute;
+    left: 14px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-tertiary);
+    font-size: 15px;
+  }
+  .form-group input {
+    width: 100%;
+    height: 46px;
+    padding: 0 14px 0 42px;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    font-size: 14px;
+    color: var(--color-text-primary);
+    background: #fff;
+    transition: all 0.15s;
+    outline: none;
+  }
+  .form-group input:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 4px var(--color-primary-bg);
+  }
+  .form-group.password input { padding-right: 42px; }
+  .form-group.password .eye {
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    font-size: 14px;
+    padding: 4px;
+  }
+
+  .form-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin: 6px 0 24px;
+    font-size: 13px;
+  }
+  .checkbox {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    color: var(--color-text-secondary);
+    user-select: none;
+  }
+  .checkbox input {
+    width: 16px; height: 16px;
+    accent-color: var(--color-primary);
+    cursor: pointer;
+  }
+  .forgot {
+    color: var(--color-primary);
+    font-weight: 500;
+    transition: opacity 0.15s;
+  }
+  .forgot:hover { opacity: 0.8; }
+
+  .btn-login {
+    width: 100%;
+    height: 48px;
+    background: var(--gradient-brand);
+    color: #fff;
+    border-radius: var(--radius-md);
+    font-size: 15px;
+    font-weight: 600;
+    box-shadow: var(--shadow-glow);
+    transition: all 0.18s;
+    border: none;
+  }
+  .btn-login:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 32px -4px rgba(79,107,255,0.5);
+  }
+  .btn-login:active { transform: translateY(0); }
+
+  .divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 24px 0 20px;
+    color: var(--color-text-tertiary);
+    font-size: 12px;
+  }
+  .divider::before, .divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--color-border);
+  }
+
+  .sso-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 10px;
+  }
+  .sso-btn {
+    height: 44px;
+    background: #fff;
+    border: 1.5px solid var(--color-border);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    font-size: 12.5px;
+    color: var(--color-text-secondary);
+    font-weight: 500;
+    transition: all 0.15s;
+  }
+  .sso-btn:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background: var(--color-primary-bg);
+  }
+  .sso-btn .ico { font-size: 16px; }
+  /* 各家品牌色 */
+  .sso-btn.wx:hover { color: #07C160; border-color: #07C160; background: rgba(7,193,96,0.06); }
+  .sso-btn.dd:hover { color: #1677FF; border-color: #1677FF; background: rgba(22,119,255,0.06); }
+  .sso-btn.fs:hover { color: #FF6A00; border-color: #FF6A00; background: rgba(255,106,0,0.06); }
+
+  .login-bottom {
+    text-align: center;
+    font-size: 12px;
+    color: var(--color-text-tertiary);
+    margin-top: 28px;
+  }
+  .login-bottom a { color: var(--color-text-secondary); }
+
+  /* 扫码弹层（默认隐藏） */
+  .scan-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(15,23,42,0.55);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(4px);
+  }
+  .scan-modal.show { display: flex; }
+  .scan-panel {
+    background: #fff;
+    border-radius: var(--radius-xl);
+    width: 380px;
+    padding: 32px;
+    text-align: center;
+    box-shadow: 0 30px 60px -12px rgba(0,0,0,0.3);
+    animation: pop 0.25s ease-out;
+  }
+  @keyframes pop {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  .scan-tabs {
+    display: flex;
+    gap: 4px;
+    background: #F1F5F9;
+    border-radius: var(--radius-md);
+    padding: 4px;
+    margin-bottom: 24px;
+  }
+  .scan-tabs a {
+    flex: 1;
+    padding: 8px 0;
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    border-radius: var(--radius-sm);
+    font-weight: 500;
+  }
+  .scan-tabs a.active {
+    background: #fff;
+    color: var(--color-primary);
+    box-shadow: var(--shadow-sm);
+  }
+  .scan-qr {
+    width: 200px; height: 200px;
+    margin: 0 auto 16px;
+    background: #F8FAFC;
+    border-radius: var(--radius-md);
+    display: grid;
+    place-items: center;
+    position: relative;
+    overflow: hidden;
+  }
+  .scan-qr::before {
+    content: '';
+    position: absolute;
+    inset: 12px;
+    background:
+      linear-gradient(45deg, #0F172A 25%, transparent 25%, transparent 75%, #0F172A 75%) 0 0/16px 16px,
+      linear-gradient(45deg, #0F172A 25%, transparent 25%, transparent 75%, #0F172A 75%) 8px 8px/16px 16px;
+    border-radius: 6px;
+    opacity: 0.85;
+  }
+  .scan-qr::after {
+    content: '';
+    position: absolute;
+    left: 0; right: 0;
+    height: 2px;
+    background: var(--color-primary);
+    box-shadow: 0 0 10px var(--color-primary);
+    animation: scan 2s linear infinite;
+  }
+  @keyframes scan {
+    0% { top: 12px; }
+    50% { top: calc(100% - 12px); }
+    100% { top: 12px; }
+  }
+  .scan-tip {
+    font-size: 13px;
+    color: var(--color-text-secondary);
+    margin-bottom: 8px;
+  }
+  .scan-tip strong { color: var(--color-primary); }
+  .scan-close {
+    position: absolute;
+    top: 16px; right: 16px;
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    display: grid; place-items: center;
+    color: var(--color-text-tertiary);
+    cursor: pointer;
+    font-size: 16px;
+  }
+  .scan-close:hover { background: #F1F5F9; color: var(--color-text-primary); }
+</style>
+</head>
+<body>
+
+<div class="login-wrap">
+  <!-- 左侧品牌 -->
+  <div class="login-brand">
+    <div class="brand-top">
+      <div class="brand-logo">
+        <div class="brand-icon">数</div>
+        <span>数智化管理系统</span>
+      </div>
+      <div class="brand-pitch">
+        <h1>让财务、合同、项目<br/>全流程在线协同</h1>
+        <p>OCR 智能识别、自动化台账、可视化驾驶舱——把数智化变成一线团队的日常能力。</p>
+      </div>
+      <div class="brand-stats">
+        <div class="stat-item">
+          <div class="v">10K+</div>
+          <div class="l">服务企业</div>
+        </div>
+        <div class="stat-item">
+          <div class="v">99.9%</div>
+          <div class="l">系统稳定性</div>
+        </div>
+        <div class="stat-item">
+          <div class="v">2.3s</div>
+          <div class="l">平均识别</div>
+        </div>
+      </div>
+    </div>
+    <div class="brand-footer">
+      © 2026 数智化管理系统 · 金融级数据安全
+    </div>
+  </div>
+
+  <!-- 右侧表单 -->
+  <div class="login-form-wrap">
+    <h2>欢迎回来 👋</h2>
+    <p class="sub">还没有账号？<a href="#">立即注册</a></p>
+
+    <form onsubmit="event.preventDefault();">
+      <div class="form-group">
+        <label>账号</label>
+        <div class="input-wrap">
+          <span class="input-icon">👤</span>
+          <input type="text" placeholder="请输入手机号 / 邮箱 / 工号" autocomplete="username" />
+        </div>
+      </div>
+
+      <div class="form-group password">
+        <label>密码</label>
+        <div class="input-wrap">
+          <span class="input-icon">🔒</span>
+          <input type="password" placeholder="请输入密码" autocomplete="current-password" id="pwd" />
+          <span class="eye" onclick="const i=document.getElementById('pwd');i.type=i.type==='password'?'text':'password';this.textContent=i.type==='password'?'👁':'🙈';">👁</span>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <label class="checkbox">
+          <input type="checkbox" checked />
+          <span>7 天内自动登录</span>
+        </label>
+        <a href="#" class="forgot">忘记密码？</a>
+      </div>
+
+      <button type="submit" class="btn-login">登 录</button>
+    </form>
+
+    <div class="divider">其他登录方式</div>
+
+    <div class="sso-row">
+      <button class="sso-btn wx" onclick="openScan('wx')"><span class="ico">💬</span>微信扫码</button>
+      <button class="sso-btn dd" onclick="openScan('dd')"><span class="ico">📱</span>钉钉扫码</button>
+      <button class="sso-btn fs" onclick="openScan('fs')"><span class="ico">💼</span>飞书扫码</button>
+    </div>
+
+    <div class="login-bottom">
+      登录即代表同意 <a href="#">《用户协议》</a> 与 <a href="#">《隐私政策》</a>
+    </div>
+  </div>
+</div>
+
+<!-- 扫码弹层 -->
+<div class="scan-modal" id="scanModal" onclick="if(event.target===this)closeScan()">
+  <div class="scan-panel" style="position:relative;">
+    <span class="scan-close" onclick="closeScan()">×</span>
+    <div class="scan-tabs">
+      <a href="#" class="active" data-tab="wx">微信</a>
+      <a href="#" data-tab="dd">钉钉</a>
+      <a href="#" data-tab="fs">飞书</a>
+    </div>
+    <div class="scan-qr"></div>
+    <div class="scan-tip">请使用 <strong id="scanName">微信</strong> 扫描二维码登录</div>
+    <div class="scan-tip" style="font-size:11.5px;color:var(--color-text-tertiary);">二维码 2 分钟内有效</div>
+  </div>
+</div>
+
+<script>
+  function openScan(type) {
+    const names = { wx: '微信', dd: '钉钉', fs: '飞书' };
+    document.getElementById('scanName').textContent = names[type];
+    document.querySelectorAll('.scan-tabs a').forEach(a => {
+      a.classList.toggle('active', a.dataset.tab === type);
+    });
+    document.getElementById('scanModal').classList.add('show');
+  }
+  function closeScan() {
+    document.getElementById('scanModal').classList.remove('show');
+  }
+  document.querySelectorAll('.scan-tabs a').forEach(a => {
+    a.addEventListener('click', e => {
+      e.preventDefault();
+      openScan(a.dataset.tab);
+    });
+  });
+</script>
+
+</body>
+</html>
