@@ -420,34 +420,26 @@ async def delete_expense(db: AsyncSession, expense_id: int, operator_id: int) ->
     if not e:
         from app.core.exceptions import NotFoundException
         raise NotFoundException(f"费用不存在：{expense_id}")
-    # 业务护：approved/paid 不可删
-    if e.status in ("approved", "paid"):
-        from app.core.exceptions import ConflictException
-        raise ConflictException(f"费用状态为「{e.status}」不允许删除")
+    # 业务护：已通过/已报销的费用删除权限由 expense:delete 控制（不限状态，便于数据清洗）
     await db.delete(e)
     await db.commit()
     return {"deleted": True}
 
 
 async def batch_delete_expenses(db: AsyncSession, expense_ids: list[int], operator_id: int) -> dict:
-    """批量删除费用。限制：仅 is_admin=True 的超管可执行。"""
+    """批量删除费用。权限：expense:delete（router 层 require_permission 控制）。"""
     from app.modules.expense.models import Expense
-    from app.modules.auth.models import User
-    # 鉴权：仅超管
-    u = (await db.execute(select(User).where(User.id == operator_id))).scalar_one_or_none()
-    if not u or not getattr(u, "is_admin", False):
-        from app.core.exceptions import ForbiddenException
-        raise ForbiddenException("仅超级管理员可批量删除费用")
     if not expense_ids:
         return {"deleted": 0, "skipped": [], "deletedIds": []}
     rows = (await db.execute(select(Expense).where(Expense.id.in_(expense_ids)))).scalars().all()
-    skipped: list[dict] = []
-    deletable = []
-    for e in rows:
-        if e.status in ("approved", "paid"):
-            skipped.append({"id": e.id, "reason": f"状态「{e.status}」不允许删除"})
-            continue
-        deletable.append(e)
+    # 状态不再限制：超管/有 expense:delete 权限可清理任意状态。
+    # 但需忠守数据库 FK：被 reimbursement_details 引用的不能删。
+    from app.modules.reimbursement.models import ReimbursementDetail
+    referenced = set((await db.execute(
+        select(ReimbursementDetail.expense_id).where(ReimbursementDetail.expense_id.in_([e.id for e in rows]))
+    )).scalars().all())
+    deletable = [e for e in rows if e.id not in referenced]
+    skipped = [{"id": e.id, "reason": "被报销单引用，不能删除"} for e in rows if e.id in referenced]
     for e in deletable:
         await db.delete(e)
     await db.commit()

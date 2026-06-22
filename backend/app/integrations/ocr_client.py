@@ -221,6 +221,10 @@ def _normalize_real_response(data: dict, file_id: str, file_url: str, type: str)
         "model": data.get("model", "paddleocr-v3"),
         "version": data.get("version", "1.2.0"),
         "elapsedMs": data.get("elapsedMs", 0),
+        # 原始 OCR 文本（行 + 位置），用于调试/错误分析
+        "rawText": data.get("rawText") or data.get("raw_text") or [],
+        # 标题（用于上"行程单 / 火车票 / 增值税发票"类型识别）
+        "invoiceTypeHint": data.get("invoiceTypeHint") or data.get("invoice_type_hint") or "",
     }
     # R17 修复：递归清掉 NUL 字节（Postgres text/jsonb 不接受 0x00）
     return _sanitize_recursive(result)

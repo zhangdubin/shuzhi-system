@@ -368,7 +368,7 @@ async function batchDeleteSelected() {
     const data = r?.data || r || {}
     let msg = `已删除 ${data.deleted ?? ids.length} 条`
     if (Array.isArray(data.skipped) && data.skipped.length > 0) {
-      msg += `，跳过 ${data.skipped.length} 条（已通过/已报销不允许删除）`
+      msg += `，跳过 ${data.skipped.length} 条（被报销单引用，不能删除）`
     }
     ElMessage.success(msg)
     await loadData()
@@ -473,7 +473,7 @@ function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
             <span class="et-btn-icon">⇩</span>导出
           </button>
           <button
-            v-if="isAdmin"
+            v-permission="'expense:delete'"
             class="et-btn et-btn-danger"
             :disabled="selectedExpenseIds.length === 0"
             @click="batchDeleteSelected"
@@ -530,7 +530,7 @@ function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
                   <a v-permission="'expense:write'" v-if="row.status === '审批中'" @click="ElMessage.info('催办：' + row.code)">催办</a>
                   <a v-permission="'expense:write'" v-if="row.status === '已驳回'" @click="ElMessage.info('重新提交：' + row.code)">重新提交</a>
                   <a
-                    v-if="isAdmin && row.status !== '已通过' && row.status !== '已报销'"
+                    v-permission="'expense:delete'"
                     class="op-danger"
                     @click="deleteOne(row)"
                   >删除</a>

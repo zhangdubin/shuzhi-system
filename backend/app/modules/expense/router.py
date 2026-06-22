@@ -73,7 +73,7 @@ async def update_expense(
 async def delete_expense(
     expenseId: int = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("expense:write")),
+    current_user: CurrentUser = Depends(require_permission("expense:delete")),
 ):
     data = await service.delete_expense(db, expenseId, current_user.id)
     await publish_event("sse:dashboard", "activity", {
@@ -91,7 +91,7 @@ class BatchDeleteRequest(BaseModel):
 async def batch_delete_expenses(
     req: BatchDeleteRequest,
     db: AsyncSession = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("expense:write")),
+    current_user: CurrentUser = Depends(require_permission("expense:delete")),
 ):
     data = await service.batch_delete_expenses(db, req.expenseIds, current_user.id)
     await publish_event("sse:dashboard", "activity", {
@@ -100,7 +100,7 @@ async def batch_delete_expenses(
     })
     msg = f"已删除 {data['deleted']} 条"
     if data.get("skipped"):
-        msg += f"，跳过 {len(data['skipped'])} 条（已通过/已报销）"
+        msg += f"，跳过 {len(data['skipped'])} 条（被报销单引用，不能删除）"
     return {"code": 0, "data": data, "message": msg}
 
 

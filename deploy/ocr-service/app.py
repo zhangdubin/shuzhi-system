@@ -138,20 +138,39 @@ async def recognize(req: RecognizeReq):
 
         logger.info(f"[recognize] 识别到 {len(all_items)} 行")
 
-        # 3. 字段抽取
+        # 3. 字段抽取（在此之前先保留原始 OCR 行，供 postprocess 走分支使用）
+        raw_rows = [
+            {"y": round(sum(p[1] for p in poly) / 4, 1),
+             "x": round(sum(p[0] for p in poly) / 4, 1),
+             "conf": round(conf, 3),
+             "text": text}
+            for poly, text, conf in all_items
+        ]
+        # 检测标题/关键字，推断票种类型
+        full_text_lower = " ".join(t for _, t, _ in all_items).lower()
+        hint = ""
+        if "航空运输电子客票行程单" in full_text_lower or "航空运输" in full_text_lower or "民航发展基金" in full_text_lower or "燃油附加费" in full_text_lower or "航班号" in full_text_lower:
+            hint = "flight_ticket"
+        elif "铁路电子客票" in full_text_lower or "车次" in full_text_lower or "二等座" in full_text_lower:
+            hint = "train_ticket"
+        elif "增值税" in full_text_lower or "价税合计" in full_text_lower or "税率" in full_text_lower:
+            hint = "vat_invoice"
+
         fields = extract_invoice_fields(all_items)
 
         # 4. 计算综合置信度
         overall_conf = sum(c for _, _, c in all_items) / max(1, len(all_items))
 
         elapsed_ms = int((time.time() - t0) * 1000)
-        logger.info(f"[recognize] 完成: conf={overall_conf:.3f} fields={list(fields.keys())} elapsed={elapsed_ms}ms")
+        logger.info(f"[recognize] 完成: conf={overall_conf:.3f} hint={hint} fields={list(fields.keys())} elapsed={elapsed_ms}ms")
 
         return {
             "code": 0,
             "message": "ok",
             "fileId": req.file_id,
             "fileUrl": req.file_url,
+            "rawText": raw_rows,
+            "invoiceTypeHint": hint,
             "fields": fields,
             "items": fields.get("items", {}).get("value", []) if isinstance(fields.get("items"), dict) else fields.get("items", []),
             "confidence": round(overall_conf, 3),

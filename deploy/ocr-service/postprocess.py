@@ -123,10 +123,22 @@ def extract_invoice_fields(items: List[Tuple]) -> Dict[str, dict]:
     if not items:
         return {}
 
-    # 0. 类型检测：先看是不是火车票 / 其他票种
-    # 火车票特征：含 "铁路电子客票" 或 "车次" 或 "二等座/硬座" 等
+    # 0. 类型检测：航空电子客票 / 火车票 / 通用增值税发票
     full_text_raw = " ".join(t for _, t, _ in items)
-    if any(kw in full_text_raw for kw in ("铁路电子客票", "电子客票号", "车次", "二等座", "硬座", "软座", "商务座", "特等座", "动车", "高铁")):
+
+    # 航空电子客票行程单（优先级最高，避免被火车票分支抢走）
+    # 考虑 PaddleOCR 误识："航空" 可能变成 "抗空"/"抗空运输"/"航室"等，多策略匹配
+    flight_kw = ("民航发展基金", "燃油附加费", "航班号", "承运人", "机票", "客票生效日期", "免费行李")
+    flight_kw_weak = ("航空运输电子客票行程单", "航空运输电子客票", "抗空运输", "舱位", "乘机人")
+    has_strong = any(kw in full_text_raw for kw in flight_kw)
+    has_weak = any(kw in full_text_raw for kw in flight_kw_weak)
+    # 强特征必中，或弱特征 + 背景口录在同一份里同时出现两个以上
+    if has_strong or has_weak:
+        return _extract_flight_ticket_fields(items)
+
+    # 火车票
+    train_kw = ("铁路电子客票", "电子客票号", "车次", "二等座", "硬座", "软座", "商务座", "特等座", "动车", "高铁")
+    if any(kw in full_text_raw for kw in train_kw):
         return _extract_train_ticket_fields(items)
 
     # 1. 多行合并
@@ -719,3 +731,278 @@ def _cn_capital_local(amount):
     # 简化版：数字 + "元"
     return f"{amt:.2f}元"
 
+
+
+# ============================================================
+# 航空电子客票行程单识别（R29 修复：之前没分支，被通用增值税发票逻辑误判为"中国铁路"）
+# ============================================================
+# 航空电子客票行程单版式（按国标 + 实际航司版式）：
+# - 标题：电子发票（航空运输电子客票行程单）
+# - 发票号码：通常 8-10 位
+# - 开票日期：YYYY年MM月DD日
+# - 票价 / 民航发展基金 / 燃油附加费（3 个子项）
+# - 价税合计（大写）
+# - 价税合计（小写）：¥XXX.XX ← totalAmount
+# - 乘机人 + 有效身份证件号码
+# - 购方名称 + 统一社会信用代码
+# - 销方名称（航空公司）+ 销方纳税人识别号
+# - 航班号（如 CA1234）
+# - 出发机场 → 到达机场
+# - 起飞时间 / 到达时间
+# - 舱位
+
+RE_FLIGHT_NO = re.compile(r"^([A-Z]{2,3}\d{2,4})$")  # CA1234 / MU5678
+RE_FLIGHT_AIRPORT = re.compile(r"^([\u4e00-\u9fa5]{2,4})$")  # 北京首都、上海浦东
+RE_FLIGHT_TIME = re.compile(r"^(\d{1,2}):(\d{1,2})$")
+RE_FLIGHT_INVOICE_NO = re.compile(r"发票号码[::：]\s*(\d{8,25})")  # 8-25 位（航空电子客票行程单发票号 20 位）
+RE_FLIGHT_DATE = re.compile(r"(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日")
+RE_FLIGHT_PRICE = re.compile(r"(?:[¥￥¥]|CNY)\s*([0-9]+(?:\.[0-9]{1,2})?)", re.IGNORECASE)
+RE_FLIGHT_BUYER = re.compile(r"(?:购买方名称|购方名称|名称)[::：][ \t]*([^\n]+)")
+RE_FLIGHT_SELLER = re.compile(r"(?:销售方名称|销方名称|航空公司|承运人|填开单位)[::：]?[ \t]*([^\n]+)")
+RE_FLIGHT_TAX = re.compile(r"统一社会信用代码[::\uff1a]\s*([0-9A-Z]{15,20})")
+RE_FLIGHT_BUYER_TAX = re.compile(r"购买方(?:名称|公司)?(?:纳税人识别号|统一社会信用代码)?[::：]?\s*([0-9A-Z]{15,20})")
+RE_FLIGHT_SELLER_TAX = re.compile(r"(?:销售方纳税人识别号|销方纳税人识别号|销方税号|统一社会信用代码[/／、]纳税人识别号)[::：]?\s*([0-9A-Z]{15,20})")
+RE_FLIGHT_ID = re.compile(r"(?<!\d)(\d{17}[\dXx])(?!\d)")
+RE_FLIGHT_ID_MASKED = re.compile(r"(\d{6,10})\*+(\d{4})")
+RE_FLIGHT_CABIN = re.compile(r"^舱位[::：]?\s*([\u4e00-\u9fa5A-Z0-9]{1,8})$|^(?:头等舱|公务舱|经济舱|超级经济舱|高端经济舱|明珠经济舱|[WFBYJCDFHKLSUTV])$")  # W=超级经济 F=头等 J=公务等
+RE_FLIGHT_FROM = re.compile(r"^[自起][::：]?[ \t]*([^\n]+)$")  # \\s 不跨行：避免吞掉下一行
+RE_FLIGHT_TO = re.compile(r"^[至][::：]?[ \t]*([^\n]+)$")
+RE_FLIGHT_E_TICKET = re.compile(r"\u7535\u5b50\u5ba2\u7968\u53f7\u7801[::：]?\s*(\d{10,30})")  # "电子客票号码：0182353153523"
+RE_FLIGHT_DEPART_DATE = re.compile(r"^[\u65e5\u671f][::：]?\s*(\d{4})\s*\u5e74\s*(\d{1,2})\s*\u6708\s*(\d{1,2})\s*\u65e5$")  # "日期：2026年04月24日" → 出发日期
+RE_FLIGHT_FILL_DATE = re.compile(r"\u586b\u5f00\u65e5\u671f[::：]?\s*(\d{4})\s*\u5e74\s*(\d{1,2})\s*\u6708\s*(\d{1,2})\s*\u65e5")  # "填开日期：2026年05月18日" → 开票日期
+
+
+
+def _extract_flight_ticket_fields(items) -> dict:
+    """
+    提取航空电子客票行程单字段
+    注意：PaddleOCR 经常把"航空"识别成"铁路"或"航室"等，所以这里走多策略匹配
+    """
+    if not items:
+        return {}
+
+    merged = _merge_lines(items, y_threshold=25)
+    lines = [(it[0], it[1].strip(), it[2]) for it in merged if it[1].strip()]
+    overall_conf = sum(c for _, _, c in items) / max(1, len(items))
+    full_text = "\n".join(t for _, t, _ in lines)
+    fields: Dict[str, dict] = {}
+
+    # ===== 发票号码 =====
+    m = RE_FLIGHT_INVOICE_NO.search(full_text)
+    if m:
+        fields["invoiceNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+    # 兜底：找一行纯 8-12 位数字
+    if "invoiceNo" not in fields:
+        cands = []
+        for _, t, c in lines:
+            s = t.strip()
+            if 8 <= len(s) <= 12 and s.isdigit():
+                cands.append((s, c))
+        if cands:
+            # 取 confidence 最高的
+            cands.sort(key=lambda x: x[1], reverse=True)
+            fields["invoiceNo"] = {"value": cands[0][0], "confidence": _pct(cands[0][1])}
+
+    # ===== 开票日期 =====
+    # 优先级：填开日期（航空票明确"填开日期"）> 其他日期
+    m = RE_FLIGHT_FILL_DATE.search(full_text)
+    if m:
+        y, mo, d = m.groups()
+        try:
+            fields["issueDate"] = {"value": date(int(y), int(mo), int(d)).isoformat(), "confidence": _pct(overall_conf)}
+        except ValueError:
+            pass
+    if "issueDate" not in fields:
+        m = RE_FLIGHT_DATE.search(full_text)
+        if m:
+            y, mo, d = m.groups()
+            try:
+                fields["issueDate"] = {"value": date(int(y), int(mo), int(d)).isoformat(), "confidence": _pct(overall_conf)}
+            except ValueError:
+                pass
+
+    # ===== 出发日期（"日期：2026年04月24日"）=====
+    # OCR 后"日期"和"2026年04月24日"可能没合并（y 差 ~55 像素），需要分两步：
+    #  1. 找"日期"行 y
+    #  2. 在 y 附近 ±60 像素找纯日期行
+    date_y = None
+    for poly, t, c in lines:
+        if t.strip() == "日期" or "日期：" in t or t.strip().startswith("日期"):
+            y = sum(p[1] for p in poly) / 4
+            date_y = y
+            break
+    if date_y is not None:
+        for poly, t, c in lines:
+            # 匹配纯日期行（"YYYY年MM月DD日" 格式）
+            m = re.match(r"^(\d{4})\s*年\s*(\d{1,2})\s*月\s*(\d{1,2})\s*日\s*$", t)
+            if m:
+                yy = sum(p[1] for p in poly) / 4
+                if abs(yy - date_y) < 100:  # y 接近
+                    try:
+                        fields["rideDate"] = {"value": date(int(m.group(1)), int(m.group(2)), int(m.group(3))).isoformat(), "confidence": _pct(c)}
+                        break
+                    except ValueError:
+                        pass
+
+    # ===== 电子客票号 =====
+    m = RE_FLIGHT_E_TICKET.search(full_text)
+    if m:
+        fields["eTicketNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 价税合计（totalAmount） =====
+    # 优先级：找"价税合计（小写）"附近的金额；兜底：找最大的人民币金额
+    amounts = []
+    for _, t, c in lines:
+        m = RE_FLIGHT_PRICE.search(t)
+        if m:
+            try:
+                amounts.append((float(m.group(1)), c, t))
+            except ValueError:
+                pass
+    if amounts:
+        # 找"价税合计"附近
+        total_idx = None
+        for i, (_, t, _) in enumerate(lines):
+            if "价税合计" in t or "合计" in t:
+                total_idx = i
+                break
+        if total_idx is not None:
+            # 智能定位"合计"对应的金额
+            # 关键观察：
+            #  - 增值税发票："合计"与金额在同一 y 行（合并后同行）
+            #  - 航空电子客票行程单："合计"在 y=484.5，金额在 y=506-508（差 ~22 像素），合并阈值 25 没合上
+            #  - 航空票"保险费：0.00" x 接近"合计"x（都会在最右列），不能误选
+            #  - 航空票"合计"是子项之和（票价+民航基金+燃油+其他），是子项里最大的
+            # 策略：
+            #  1. 排除"保险费"行
+            #  2. 按"金额大小"选最大（避免选到 0 噪声）
+            candidates = []
+            for poly, t, c in lines:
+                if "保险费" in t:
+                    continue
+                m = RE_FLIGHT_PRICE.search(t)
+                if m:
+                    try:
+                        amt = float(m.group(1))
+                        if amt > 0:  # 排除 0
+                            candidates.append(amt)
+                    except ValueError:
+                        pass
+            if candidates:
+                best = max(candidates)
+            else:
+                best = 0.0
+                fields["totalAmount"] = {"value": best, "confidence": _pct(overall_conf)}
+                fields["taxAmount"] = {"value": 0.0, "confidence": 100}  # 航空票一般含税无单独税额
+                fields["amount"] = {"value": best, "confidence": _pct(overall_conf)}
+                fields["taxRate"] = {"value": 0.0, "confidence": 100}
+                fields["totalAmountCn"] = {"value": _cn_capital(Decimal(str(best))), "confidence": _pct(overall_conf)}
+        # 兜底：取最大金额
+        if "totalAmount" not in fields:
+            best = max(amounts, key=lambda x: x[0])[0]
+            fields["totalAmount"] = {"value": best, "confidence": _pct(overall_conf)}
+            fields["taxAmount"] = {"value": 0.0, "confidence": 100}
+            fields["amount"] = {"value": best, "confidence": _pct(overall_conf)}
+            fields["taxRate"] = {"value": 0.0, "confidence": 100}
+            fields["totalAmountCn"] = {"value": _cn_capital(Decimal(str(best))), "confidence": _pct(overall_conf)}
+
+    # ===== 乘机人身份证 =====
+    m = RE_FLIGHT_ID.search(full_text)
+    if m:
+        fields["buyerIdNumber"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+    m = RE_FLIGHT_ID_MASKED.search(full_text)
+    if m:
+        fields["buyerIdMasked"] = {"value": f"{m.group(1)}****{m.group(2)}", "confidence": _pct(overall_conf)}
+
+    # ===== 购买方（抬头） =====
+    m = RE_FLIGHT_BUYER.search(full_text)
+    if m:
+        # 去掉行尾的"统一社会信用代码"等附加内容
+        name = m.group(1).strip()
+        for noise in ("统一社会信用代码", "纳税人识别号", "纳税人", "识别号"):
+            if noise in name:
+                name = name.split(noise)[0].strip()
+        if name:
+            fields["buyerName"] = {"value": name, "confidence": _pct(overall_conf)}
+
+    m = RE_FLIGHT_BUYER_TAX.search(full_text)
+    if m:
+        fields["buyerTaxNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 销售方 =====
+    m = RE_FLIGHT_SELLER.search(full_text)
+    if m:
+        name = m.group(1).strip()
+        for noise in ("纳税人识别号", "统一社会信用代码", "纳税人", "识别号"):
+            if noise in name:
+                name = name.split(noise)[0].strip()
+        # 排除明显是购方错位 / 中国铁路这种
+        if name and name not in ("中国铁路", "中国国家铁路集团", "12306"):
+            fields["sellerName"] = {"value": name, "confidence": _pct(overall_conf)}
+
+    m = RE_FLIGHT_SELLER_TAX.search(full_text)
+    if m:
+        fields["sellerTaxNo"] = {"value": m.group(1), "confidence": _pct(overall_conf)}
+
+    # ===== 航班号 =====
+    for _, t, c in lines:
+        m = RE_FLIGHT_NO.match(t)
+        if m:
+            fields["flightNo"] = {"value": m.group(1), "confidence": _pct(c)}
+            break
+
+    # ===== 出发机场 / 到达机场 =====
+    # 优先级 1：找 "自：上海浦东" / "至：北京大兴" 这种带前导词的行
+    from_city = None
+    to_city = None
+    for _, t, c in lines:
+        m = RE_FLIGHT_FROM.match(t)
+        if m and not from_city:
+            v = m.group(1).strip()
+            # 去掉后缀"机场"
+            for suf in ("机场",):
+                if v.endswith(suf):
+                    v = v[:-len(suf)]
+            if v:
+                from_city = (v, c)
+        m = RE_FLIGHT_TO.match(t)
+        if m and not to_city:
+            v = m.group(1).strip()
+            for suf in ("机场",):
+                if v.endswith(suf):
+                    v = v[:-len(suf)]
+            if v:
+                to_city = (v, c)
+    if from_city:
+        fields["fromCity"] = {"value": from_city[0], "confidence": _pct(from_city[1])}
+    if to_city:
+        fields["toCity"] = {"value": to_city[0], "confidence": _pct(to_city[1])}
+
+    # ===== 起飞时间 / 到达时间 =====
+    times = []
+    for _, t, c in lines:
+        m = RE_FLIGHT_TIME.match(t)
+        if m:
+            times.append((f"{int(m.group(1)):02d}:{m.group(2)}", c))
+    if len(times) >= 2:
+        fields["departTime"] = {"value": times[0][0], "confidence": _pct(times[0][1])}
+        fields["arriveTime"] = {"value": times[1][0], "confidence": _pct(times[1][1])}
+    elif len(times) == 1:
+        fields["departTime"] = {"value": times[0][0], "confidence": _pct(times[0][1])}
+
+    # ===== 舱位 =====
+    for _, t, c in lines:
+        m = RE_FLIGHT_CABIN.match(t)
+        if m:
+            fields["cabin"] = {"value": m.group(1) if m.group(1) else t, "confidence": _pct(c)}
+            break
+
+    # ===== 标识（兜底） =====
+    fields["invoiceType"] = {"value": "\u822a\u7a7a\u8fd0\u8f93\u7535\u5b50\u5ba2\u7968\u884c\u7a0b\u5355", "confidence": _pct(overall_conf)}
+    if "invoiceCode" not in fields:
+        fields["invoiceCode"] = {"value": "", "confidence": 0}
+    if "remarks" not in fields:
+        fields["remarks"] = {"value": "\u673a\u7968\uff08\u5dee\u65c5\uff09", "confidence": _pct(overall_conf)}
+
+    print(f"[ocr] flight ticket: fields={list(fields.keys())}", flush=True)
+    return fields

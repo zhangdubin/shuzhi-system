@@ -48,6 +48,7 @@ PERMISSIONS = [
     ("expense:write", "expense", "write", "录入费用"),
     ("expense:approve", "expense", "approve", "审批费用"),
     ("expense:export", "expense", "export", "导出费用"),
+    ("expense:delete", "expense", "delete", "删除费用"),
 
     # 项目管理
     ("project:read", "project", "read", "查看项目"),
@@ -92,7 +93,7 @@ ROLE_PERMS = {
         "invoice:upload", "invoice:read", "invoice:write", "invoice:verify",
         "invoice:submit", "invoice:export",
         "template:read", "template:write",
-        "expense:read", "expense:write", "expense:approve", "expense:export",
+        "expense:read", "expense:write", "expense:approve", "expense:export", "expense:delete",
         "project:read",
         "contract:read", "contract:approve",
         "receivable:read", "receivable:write",
@@ -107,7 +108,7 @@ ROLE_PERMS = {
         "ai:extract", "ai:ask",
     ],
     "sales_manager": [
-        "invoice:upload", "invoice:read", "expense:read", "expense:write",
+        "invoice:upload", "invoice:read", "expense:read", "expense:write", "expense:delete",
         "project:read", "project:write",
         "contract:read", "contract:write",
         "receivable:read", "receivable:write",
