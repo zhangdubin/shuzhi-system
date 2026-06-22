@@ -5,6 +5,7 @@
 """
 from datetime import date, datetime
 from sqlalchemy import String, Text, Integer, BigInteger, ForeignKey, Date, Numeric
+from typing import Optional
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.dialects.postgresql import JSONB
 
@@ -26,6 +27,8 @@ class Expense(Base):
     contract_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("contracts.id"), nullable=True)
     project_id: Mapped[int] = mapped_column(BigInteger, ForeignKey("projects.id"), nullable=True)
     cost_center: Mapped[str] = mapped_column(String(32), nullable=True)
+    # 关联的识别发票（手动/自动，用于"相关单据"Tab 展示）
+    invoice_id: Mapped[Optional[int]] = mapped_column(BigInteger, nullable=True, index=True)
     status: Mapped[str] = mapped_column(String(16), default="draft", index=True)  # draft/pending/approved/rejected/paid
     submit_at: Mapped[datetime] = mapped_column(nullable=True)
     finish_at: Mapped[datetime] = mapped_column(nullable=True)

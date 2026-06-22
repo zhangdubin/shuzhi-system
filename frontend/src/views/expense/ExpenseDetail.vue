@@ -5,15 +5,16 @@
  * - 状态映射：draft/pending/pending_review/submitted→审批中，approved→已通过，rejected→已驳回
  * - 金额单位：API 已返回元（不再换算）
  */
-import { ref, reactive, onMounted, computed } from 'vue'
+import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { expenseApi } from '@/api/modules'
+import { expenseApi, invoiceOcrApi } from '@/api/modules'
 
 const router = useRouter()
 const route = useRoute()
 
 const activeTab = ref<'basic' | 'flow' | 'related' | 'history'>('basic')
+
 const loading = ref(false)
 const printVisible = ref(false)
 
@@ -63,8 +64,8 @@ const typeLabel = computed(() => CATEGORY_LABEL[detail.category] || detail.categ
 const typeColor = computed(() => CATEGORY_COLOR[detail.category] || 'gray')
 const statusLabel = computed(() => STATUS_LABEL[detail.status] || detail.status || '草稿')
 const statusColor = computed(() => STATUS_COLOR[detail.status] || 'gray')
-const amountYuan = computed(() => Math.round(Number(detail.amount) || 0))
-const formattedAmount = computed(() => `¥ ${amountYuan.value.toLocaleString()}`)
+const amountYuan = computed(() => Number(detail.amount) || 0)
+const formattedAmount = computed(() => `¥ ${amountYuan.value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
 const formattedApplyDate = computed(() => {
   const s = detail.submitDate || detail.createdAt
   if (!s) return '-'
@@ -102,6 +103,8 @@ async function loadDetail() {
         status: res.status || 'draft',
         createdAt: res.createdAt || '',
         updatedAt: res.updatedAt || '',
+        invoiceId: res.invoiceId ?? null,
+        relatedInvoice: res.relatedInvoice || null,
       })
     }
   } catch (e) {
@@ -125,6 +128,82 @@ function copyAs() {
 // 费用明细编辑（弹窗）
 const breakdownDialogVisible = ref(false)
 const breakdownDraft = ref<Array<{label: string, amount: number, remark: string}>>([])
+
+// 关联单据相关
+const hasAnyRelated = computed(() => !!(detail as any)?.relatedInvoice || !!(detail as any)?.contractId || !!(detail as any)?.projectId)
+const canLinkInvoice = computed(() => detail.status === 'draft' || detail.status === 'pending' || detail.status === 'pending_review' || detail.status === 'rejected')
+function verifyStatusLabel(s?: string) {
+  return ({ pending: '待核验', verified: '已核验', rejected: '已驳回', failed: '识别失败', expired: '已过期' } as Record<string,string>)[s || ''] || s || '待核验'
+}
+function goInvoice(id?: number) {
+  if (!id) return
+  router.push(`/invoice/ocr/${id}`)
+}
+function auditLabel(s?: string) {
+  return ({ match: '金额一致', partial: '部分报销', over: '超额异常', mismatch: '金额不匹配', unknown: '无法比对' } as Record<string,string>)[s || ''] || s || '未知'
+}
+function auditIcon(s?: string) {
+  return ({ match: '✅', partial: '🟡', over: '⚠️', mismatch: '❌', unknown: '❔' } as Record<string,string>)[s || ''] || '·'
+}
+
+// 关联发票弹窗
+const linkInvoiceDialog = ref(false)
+const linkKeyword = ref('')
+const linkCandidates = ref<any[]>([])
+const linkSearching = ref(false)
+const pickedInvoiceId = ref<number | null>(null)
+const linkSubmitting = ref(false)
+let linkSearchTimer: any = null
+
+async function searchInvoices() {
+  linkSearching.value = true
+  try {
+    // 走后端 /invoice/ocr/unlinked：已核验 + 未被任何费用关联
+    const res: any = await invoiceOcrApi.unlinked({ page: 1, pageSize: 50, keyword: linkKeyword.value } as any)
+    linkCandidates.value = res?.list || res?.data?.list || []
+  } catch (e) {
+    linkCandidates.value = []
+  } finally {
+    linkSearching.value = false
+  }
+}
+function debounceSearchInvoices() {
+  clearTimeout(linkSearchTimer)
+  linkSearchTimer = setTimeout(searchInvoices, 300)
+}
+async function confirmLinkInvoice() {
+  if (!pickedInvoiceId.value) return
+  linkSubmitting.value = true
+  try {
+    await expenseApi.update(detail.expenseId, { invoiceId: pickedInvoiceId.value } as any)
+    ElMessage.success('已关联发票')
+    linkInvoiceDialog.value = false
+    pickedInvoiceId.value = null
+    linkKeyword.value = ''
+    await loadDetail()
+  } catch (e: any) {
+    ElMessage.error('关联失败：' + (e?.response?.data?.msg || e?.message || '未知错误'))
+  } finally {
+    linkSubmitting.value = false
+  }
+}
+async function unlinkInvoice() {
+  try {
+    await ElMessageBox.confirm('确认解除与该发票的关联？此操作不会删除发票。', '解除关联', { type: 'warning' })
+  } catch { return }
+  try {
+    await expenseApi.update(detail.expenseId, { invoiceId: null } as any)
+    ElMessage.success('已解除关联')
+    await loadDetail()
+  } catch (e: any) {
+    ElMessage.error('解除失败：' + (e?.response?.data?.msg || e?.message || '未知错误'))
+  }
+}
+
+// 监听弹窗打开，自动拉一次
+watch(linkInvoiceDialog, (v) => { if (v) { linkKeyword.value = ''; pickedInvoiceId.value = null; searchInvoices() } })
+// 关键字变化时去抖
+watch(linkKeyword, debounceSearchInvoices)
 const breakdownSaving = ref(false)
 
 function openBreakdownEditor() {
@@ -340,6 +419,18 @@ onMounted(() => {
             <div class="info-row"><div class="l">状态</div><div class="v"><span :class="['tag', `tag-${statusColor}`]">{{ statusLabel }}</span></div></div>
             <div class="info-row"><div class="l">创建时间</div><div class="v mono">{{ detail.createdAt?.replace('T', ' ').substring(0, 19) || '-' }}</div></div>
           </div>
+
+          <!-- AI 金额审核（有关联发票时显示） -->
+          <div v-if="detail.relatedInvoice && detail.relatedInvoice.matchAudit" class="audit-bar" :class="'audit-' + detail.relatedInvoice.matchAudit.status">
+            <span class="ab-icon">{{ auditIcon(detail.relatedInvoice.matchAudit.status) }}</span>
+            <div class="ab-main">
+              <div class="ab-title">🤖 AI 金额审核 · <b>{{ auditLabel(detail.relatedInvoice.matchAudit.status) }}</b></div>
+              <div class="ab-reason">{{ detail.relatedInvoice.matchAudit.reason }}</div>
+            </div>
+            <div class="ab-actions">
+              <span class="ab-tip">{{ detail.relatedInvoice.matchAudit.status === 'match' ? '可放心提交' : '建议核对报销金额' }}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -428,19 +519,70 @@ onMounted(() => {
     <!-- 相关单据 tab -->
     <div v-show="activeTab === 'related'" class="detail-layout">
       <div class="detail-section">
-        <div class="detail-section-head"><h3>🔗 关联单据</h3></div>
+        <div class="detail-section-head">
+          <h3>🔗 关联单据</h3>
+          <div class="related-actions">
+            <button v-if="canLinkInvoice" class="ff-link" @click="linkInvoiceDialog = true">+ 关联发票</button>
+          </div>
+        </div>
         <div class="detail-section-body">
-          <div class="empty-tip" v-if="!detail.contractId && !detail.projectId">该申请未关联其他单据</div>
+          <!-- 空态 -->
+          <div v-if="!hasAnyRelated" class="empty-related">
+            <div class="er-icon">🔗</div>
+            <div class="er-title">暂无关联单据</div>
+            <div class="er-desc">本费用申请未关联合同、项目或其他发票。<br>如需关联发票（识别后），请点击右上角"关联发票"按钮。</div>
+          </div>
+
+          <!-- 关联列表 -->
           <div v-else class="related-list">
-            <div v-if="detail.contractId" class="related-item">
-              <span class="ri-type">合同</span>
-              <span class="ri-no">#{{ detail.contractId }}</span>
-              <span class="ri-name">已关联合同</span>
+            <!-- 关联发票（来自"提交入账"自动生成或手动关联） -->
+            <div class="related-item ri-invoice">
+              <span class="ri-type ri-type-invoice">📄 发票</span>
+              <div class="ri-main" @click="goInvoice(detail.relatedInvoice.invoiceId)">
+                <div class="ri-name">{{ detail.relatedInvoice.invoiceType || '发票' }} · {{ detail.relatedInvoice.sellerName || '未知销售方' }}</div>
+                <div class="ri-meta">
+                  <span class="ri-no">发票号 {{ detail.relatedInvoice.invoiceNo || '-' }}</span>
+                  <span class="ri-dot">·</span>
+                  <span>开票日期 {{ detail.relatedInvoice.issueDate || '-' }}</span>
+                  <span class="ri-dot">·</span>
+                  <span class="ri-amt">¥ {{ Number(detail.relatedInvoice.totalAmount || 0).toFixed(2) }}</span>
+                </div>
+              </div>
+              <span class="ri-status" :class="'rs-' + (detail.relatedInvoice.verifyStatus || 'pending')">
+                {{ verifyStatusLabel(detail.relatedInvoice.verifyStatus) }}
+              </span>
+              <button v-if="canLinkInvoice" class="ri-unlink" title="解除关联" @click.stop="unlinkInvoice">解除</button>
+              <span class="ri-arrow" @click="goInvoice(detail.relatedInvoice.invoiceId)">查看 ›</span>
             </div>
+
+            <!-- AI 金额审核 -->
+            <div v-if="detail.relatedInvoice.matchAudit" class="audit-bar" :class="'audit-' + detail.relatedInvoice.matchAudit.status">
+              <span class="ab-icon">{{ auditIcon(detail.relatedInvoice.matchAudit.status) }}</span>
+              <div class="ab-main">
+                <div class="ab-title">🤖 AI 金额审核 · <b>{{ auditLabel(detail.relatedInvoice.matchAudit.status) }}</b></div>
+                <div class="ab-reason">{{ detail.relatedInvoice.matchAudit.reason }}</div>
+              </div>
+              <div class="ab-actions" v-if="detail.relatedInvoice.matchAudit.status !== 'match'">
+                <span class="ab-tip">建议核对报销金额</span>
+              </div>
+            </div>
+
+            <!-- 合同 -->
+            <div v-if="detail.contractId" class="related-item">
+              <span class="ri-type">📑 合同</span>
+              <div class="ri-main">
+                <div class="ri-name">已关联合同</div>
+                <div class="ri-meta"><span class="ri-no">#{{ detail.contractId }}</span></div>
+              </div>
+            </div>
+
+            <!-- 项目 -->
             <div v-if="detail.projectId" class="related-item">
-              <span class="ri-type">项目</span>
-              <span class="ri-no">#{{ detail.projectId }}</span>
-              <span class="ri-name">已关联项目</span>
+              <span class="ri-type">📁 项目</span>
+              <div class="ri-main">
+                <div class="ri-name">已关联项目</div>
+                <div class="ri-meta"><span class="ri-no">#{{ detail.projectId }}</span></div>
+              </div>
             </div>
           </div>
         </div>
@@ -481,13 +623,58 @@ onMounted(() => {
       </div>
     </div>
 
-    <!-- 底部返回 -->
+    <!-- 底部操作栏 -->
     <div class="form-foot">
-      <button class="btn btn-ghost" @click="goBack">← 返回列表</button>
+      <div class="ff-left">
+        <button class="ff-back" @click="goBack">
+          <span class="ff-arrow">←</span>
+          <span>返回列表</span>
+        </button>
+      </div>
+      <div class="ff-right">
+        <span class="ff-tip">💡 提示：可对上方 Tab 内容继续操作；本单据状态：<b>{{ statusLabel }}</b></span>
+      </div>
     </div>
   </div>
 
   <!-- 费用明细编辑弹窗 -->
+<!-- 关联发票弹窗 -->
+<el-dialog
+  v-model="linkInvoiceDialog"
+  title="🔗 关联识别发票"
+  width="780px"
+  :close-on-click-modal="false"
+  custom-class="link-invoice-dialog"
+>
+  <div class="li-search">
+    <el-input v-model="linkKeyword" placeholder="搜索发票号 / 销售方 / 金额" clearable @input="searchInvoices" @clear="searchInvoices">
+      <template #prefix><span style="padding:0 4px">🔍</span></template>
+    </el-input>
+    <span class="li-hint">仅显示未关联其他费用的发票</span>
+  </div>
+  <div class="li-list" v-loading="linkSearching">
+    <div v-if="!linkCandidates.length" class="li-empty">没有可关联的发票</div>
+    <div v-for="inv in linkCandidates" :key="inv.invoiceId" class="li-item" :class="{ selected: pickedInvoiceId === inv.invoiceId }" @click="pickedInvoiceId = inv.invoiceId">
+      <div class="lii-icon">📄</div>
+      <div class="lii-main">
+        <div class="lii-title">{{ inv.invoiceType || '发票' }} · {{ inv.sellerName || '未知销售方' }}</div>
+        <div class="lii-meta">
+          <span>发票号 {{ inv.invoiceNo }}</span>
+          <span class="lii-dot">·</span>
+          <span>开票日期 {{ inv.issueDate }}</span>
+          <span class="lii-dot">·</span>
+          <span class="lii-amt">¥ {{ Number(inv.totalAmount).toFixed(2) }}</span>
+        </div>
+      </div>
+      <div class="lii-radio">{{ pickedInvoiceId === inv.invoiceId ? '●' : '○' }}</div>
+    </div>
+  </div>
+  <template #footer>
+    <el-button @click="linkInvoiceDialog = false">取消</el-button>
+    <el-button type="primary" :disabled="!pickedInvoiceId" :loading="linkSubmitting" @click="confirmLinkInvoice">确认关联</el-button>
+  </template>
+</el-dialog>
+
 <el-dialog
   v-model="breakdownDialogVisible"
   width="780px"
@@ -838,9 +1025,10 @@ onMounted(() => {
 .detail-tabs a { padding: 12px 4px; color: #6b7280; cursor: pointer; text-decoration: none; border-bottom: 2px solid transparent; font-size: 14px; }
 .detail-tabs a.active { color: #4f6bff; border-bottom-color: #4f6bff; font-weight: 600; }
 .detail-layout { display: flex; flex-direction: column; gap: 16px; }
-.detail-section { background: #fff; border-radius: 14px; padding: 20px; border: 1px solid #e5e7eb; }
-.detail-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
-.detail-section-head h3 { font-size: 15px; font-weight: 600; color: #111827; margin: 0; }
+.detail-section { background: #fff; border-radius: 14px; padding: 22px; border: 1px solid #e5e7eb; box-shadow: 0 1px 3px rgba(15, 23, 42, 0.04), 0 1px 2px rgba(15, 23, 42, 0.02); transition: box-shadow .2s ease; }
+.detail-section:hover { box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06), 0 2px 4px rgba(15, 23, 42, 0.03); }
+.detail-section-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 18px; padding-bottom: 12px; border-bottom: 1px solid #f3f4f6; }
+.detail-section-head h3 { font-size: 15px; font-weight: 600; color: #111827; margin: 0; display: flex; align-items: center; gap: 6px; }
 .info-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px 24px; }
 .info-row { display: flex; padding: 8px 0; border-bottom: 1px solid #f3f4f6; }
 .info-row .l { width: 100px; color: #6b7280; font-size: 13px; }
@@ -886,11 +1074,63 @@ onMounted(() => {
 .flow-meta { color: #6b7280; font-size: 13px; }
 .approval-actions { display: flex; gap: 8px; align-items: center; margin-top: 16px; padding-top: 16px; border-top: 1px solid #f3f4f6; }
 .flow-tip { margin-left: 8px; color: #9ca3af; font-size: 12px; }
-.related-list { display: flex; flex-direction: column; gap: 8px; }
-.related-item { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f9fafb; border-radius: 8px; }
-.ri-type { padding: 2px 8px; background: #4f6bff; color: #fff; border-radius: 4px; font-size: 12px; }
-.ri-no { font-family: 'SF Mono', monospace; color: #6b7280; font-size: 13px; }
-.ri-name { color: #111827; font-size: 13px; }
+.related-actions { display: flex; align-items: center; gap: 8px; }
+.ff-link { padding: 6px 14px; border-radius: 8px; background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); color: #fff; border: none; cursor: pointer; font-size: 12px; font-weight: 500; box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25); transition: all .15s ease; }
+.ff-link:hover { transform: translateY(-1px); box-shadow: 0 4px 10px rgba(99, 102, 241, 0.35); }
+.ri-unlink { margin-left: 4px; padding: 3px 10px; border-radius: 6px; background: transparent; color: #6b7280; border: 1px solid #e5e7eb; cursor: pointer; font-size: 11px; opacity: 0; transition: all .15s; }
+.ri-invoice:hover .ri-unlink { opacity: 1; }
+.ri-unlink:hover { background: #fee2e2; color: #dc2626; border-color: #fca5a5; }
+.li-search { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.li-hint { color: #9ca3af; font-size: 12px; }
+.li-list { max-height: 480px; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; }
+.li-empty { padding: 40px; text-align: center; color: #9ca3af; font-size: 13px; }
+.li-item { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid #e5e7eb; border-radius: 10px; cursor: pointer; transition: all .15s; }
+.li-item:hover { border-color: #c7d2fe; background: #f8faff; }
+.li-item.selected { border-color: #6366f1; background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%); box-shadow: 0 2px 8px rgba(99, 102, 241, 0.15); }
+.lii-icon { font-size: 24px; }
+.lii-main { flex: 1; min-width: 0; }
+.lii-title { font-size: 13px; font-weight: 500; color: #111827; margin-bottom: 2px; }
+.lii-meta { display: flex; align-items: center; gap: 6px; color: #6b7280; font-size: 12px; flex-wrap: wrap; }
+.lii-dot { color: #d1d5db; }
+.lii-amt { color: #4f6bff; font-weight: 600; }
+.lii-radio { font-size: 18px; color: #6366f1; }
+.related-list { display: flex; flex-direction: column; gap: 10px; }
+.audit-bar { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 10px; border: 1px solid; font-size: 12px; margin-top: -4px; }
+.audit-match { background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%); border-color: #6ee7b7; color: #065f46; }
+.audit-partial { background: linear-gradient(135deg, #fffbeb 0%, #fef3c7 100%); border-color: #fcd34d; color: #92400e; }
+.audit-over, .audit-mismatch { background: linear-gradient(135deg, #fef2f2 0%, #fee2e2 100%); border-color: #fca5a5; color: #991b1b; }
+.audit-unknown { background: #f3f4f6; border-color: #e5e7eb; color: #6b7280; }
+.ab-icon { font-size: 18px; line-height: 1; }
+.ab-main { flex: 1; min-width: 0; }
+.ab-title { font-weight: 600; margin-bottom: 2px; }
+.ab-title b { font-weight: 700; }
+.ab-reason { opacity: 0.85; line-height: 1.5; }
+.ab-actions { display: flex; align-items: center; }
+.ab-tip { padding: 2px 10px; background: rgba(255, 255, 255, 0.6); border-radius: 12px; font-size: 11px; font-weight: 500; }
+.related-item { display: flex; align-items: center; gap: 14px; padding: 14px 16px; background: #fff; border-radius: 12px; border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03); transition: all .2s ease; }
+.related-item:hover { border-color: #c7d2fe; box-shadow: 0 4px 12px rgba(79, 102, 241, 0.1); }
+.ri-invoice { cursor: pointer; }
+.ri-invoice:hover { background: linear-gradient(135deg, #eef2ff 0%, #f5f3ff 100%); transform: translateX(3px); }
+.ri-type { padding: 4px 12px; background: #4f6bff; color: #fff; border-radius: 8px; font-size: 12px; white-space: nowrap; font-weight: 500; box-shadow: 0 1px 2px rgba(79, 107, 255, 0.2); }
+.ri-type-invoice { background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%); box-shadow: 0 2px 6px rgba(99, 102, 241, 0.25); }
+.ri-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ri-name { color: #111827; font-size: 13px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ri-meta { display: flex; align-items: center; gap: 6px; color: #6b7280; font-size: 12px; flex-wrap: wrap; }
+.ri-no { font-family: 'SF Mono', monospace; }
+.ri-dot { color: #d1d5db; }
+.ri-amt { color: #4f6bff; font-weight: 600; }
+.ri-status { padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 500; white-space: nowrap; }
+.rs-pending { background: #fef3c7; color: #92400e; }
+.rs-verified { background: #d1fae5; color: #065f46; }
+.rs-rejected { background: #fee2e2; color: #991b1b; }
+.rs-failed, .rs-expired { background: #f3f4f6; color: #6b7280; }
+.ri-arrow { color: #4f6bff; font-size: 13px; font-weight: 500; opacity: 0; transition: opacity .15s; }
+.ri-invoice:hover .ri-arrow { opacity: 1; }
+.empty-related { display: flex; flex-direction: column; align-items: center; padding: 48px 20px; background: linear-gradient(135deg, #f0f4ff 0%, #faf5ff 100%); border-radius: 14px; border: 1px dashed #c7d2fe; position: relative; overflow: hidden; }
+.empty-related::before { content: ''; position: absolute; top: -50%; right: -20%; width: 200px; height: 200px; background: radial-gradient(circle, rgba(99, 102, 241, 0.08) 0%, transparent 70%); pointer-events: none; }
+.er-icon { font-size: 40px; margin-bottom: 10px; opacity: 0.5; position: relative; }
+.er-title { font-size: 15px; color: #374151; font-weight: 600; margin-bottom: 6px; position: relative; }
+.er-desc { font-size: 12px; color: #6b7280; text-align: center; line-height: 1.7; position: relative; max-width: 360px; }
 .timeline-det { display: flex; flex-direction: column; gap: 16px; }
 .t-item { padding-left: 16px; border-left: 2px solid #e5e7eb; }
 .t-item.done { border-left-color: #10b981; }
@@ -913,7 +1153,14 @@ onMounted(() => {
 .btn-outline.danger { color: #dc2626; border-color: #fca5a5; }
 .btn-primary { background: #4f6bff; color: #fff; }
 .btn-sm { padding: 4px 12px; font-size: 12px; }
-.form-foot { display: flex; justify-content: flex-start; padding: 16px 0; }
+.form-foot { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 20px; background: linear-gradient(180deg, rgba(255,255,255,0.6) 0%, #fff 100%); border: 1px solid #e5e7eb; border-radius: 12px; box-shadow: 0 2px 8px rgba(15, 23, 42, 0.04); margin-top: 8px; }
+.ff-left, .ff-right { display: flex; align-items: center; }
+.ff-back { display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 8px; background: #f3f4f6; color: #4b5563; border: 1px solid #e5e7eb; cursor: pointer; font-size: 13px; font-weight: 500; transition: all .15s ease; }
+.ff-back:hover { background: #e5e7eb; color: #111827; transform: translateX(-2px); }
+.ff-arrow { font-size: 16px; line-height: 1; transition: transform .2s; }
+.ff-back:hover .ff-arrow { transform: translateX(-3px); }
+.ff-tip { color: #6b7280; font-size: 12px; }
+.ff-tip b { color: #4f6bff; font-weight: 600; }
 .link-primary { color: #4f6bff; cursor: pointer; }
 .link-btn { background: none; border: none; padding: 0; font: inherit; }
 /* ================= 打印预览样式 ================= */

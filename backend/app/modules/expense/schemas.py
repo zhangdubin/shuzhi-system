@@ -80,7 +80,7 @@ class ExpenseCreate(BaseModel):
     category: str
     title: str = Field(..., min_length=1, max_length=128)
     description: Optional[str] = None
-    amount: int  # 元（前端传元，后端 *100 存分）
+    amount: float  # 元（前端传元，后端 *100 存分；允许小数如 366.95）
     expenseDate: date
     contractId: Optional[int] = None
     projectId: Optional[int] = None
@@ -93,11 +93,13 @@ class ExpenseUpdate(BaseModel):
     category: Optional[str] = None
     title: Optional[str] = None
     description: Optional[str] = None
-    amount: Optional[int] = None
+    amount: Optional[float] = None  # 允许小数
     expenseDate: Optional[date] = None
     contractId: Optional[int] = None
     projectId: Optional[int] = None
     breakdown: Optional[list[ExpenseBreakdownItem]] = None
+    # 关联/解除关联识别后的发票（None=解除）
+    invoiceId: Optional[int] = None
 
 
 class ExpenseApproveRequest(BaseModel):

@@ -525,7 +525,7 @@ function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
             </el-table-column>
             <el-table-column label="操作" min-width="160" align="center">
               <template #default="{ row }">
-                <div class="cell-actions" style="display: flex; gap: 8px; justify-content: center;">
+                <div class="cell-actions">
                   <a v-permission="'expense:read'" @click="gotoDetail(row)">查看</a>
                   <a v-permission="'expense:write'" v-if="row.status === '审批中'" @click="ElMessage.info('催办：' + row.code)">催办</a>
                   <a v-permission="'expense:write'" v-if="row.status === '已驳回'" @click="ElMessage.info('重新提交：' + row.code)">重新提交</a>
@@ -883,41 +883,21 @@ function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
   }
 }
 
-.ct-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13.5px;
-  th {
-    background: #F8FAFC;
-    text-align: left;
-    padding: 12px 16px;
-    font-size: 12px;
-    font-weight: 600;
-    color: $color-text-secondary;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    border-bottom: 1px solid $color-border;
-  }
-  td {
-    padding: 14px 16px;
-    border-bottom: 1px solid $color-border;
-    color: $color-text-primary;
-  }
-  tr:last-child td { border-bottom: none; }
-  tr:hover { background: #F8FAFC; }
-  .cell-mono { font-family: $font-family-mono; color: $color-primary; font-weight: 500; }
-  .cell-amount { font-weight: 600; text-align: right; }
-  .cell-actions { display: flex; gap: 4px; }
-  .cell-actions a {
-    color: $color-primary;
-    font-size: 12.5px;
-    font-weight: 500;
-    padding: 4px 8px;
-    border-radius: $radius-sm;
-    cursor: pointer;
-    &:hover { background: $color-primary-bg; }
-  }
+/* 操作列：鼠标放上手型 + 加大可点击区 + 渐变反馈（提到顶层以避开 el-table scoped 失效） */
+.cell-actions { display: flex; gap: 4px; justify-content: center; }
+.cell-actions a {
+  color: $color-primary;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: $radius-sm;
+  cursor: pointer !important;
+  text-decoration: none;
+  user-select: none;
+  transition: all 0.15s ease;
 }
+.cell-actions a:hover { background: $color-primary-bg; color: $color-primary; }
+.cell-actions a:active { transform: scale(0.96); }
 
 .tag {
   display: inline-flex; align-items: center;

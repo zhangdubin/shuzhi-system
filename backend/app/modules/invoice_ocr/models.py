@@ -37,6 +37,7 @@ class Invoice(Base):
     file_url: Mapped[str] = mapped_column(String(256), nullable=True)
     file_id: Mapped[str] = mapped_column(String(32), nullable=True)
     file_size: Mapped[int] = mapped_column(Integer, nullable=True)
+    template_id: Mapped[int] = mapped_column(BigInteger, nullable=True, index=True)  # R20: 批量上传时用户选中的识别模板
     items: Mapped[dict] = mapped_column(JSONB, nullable=True)  # 商品明细
     raw_ocr: Mapped[dict] = mapped_column(JSONB, nullable=True)  # 原始 OCR
     status: Mapped[str] = mapped_column(String(16), default="uploaded", index=True)

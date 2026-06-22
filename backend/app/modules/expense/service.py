@@ -17,6 +17,7 @@ from app.modules.expense.schemas import (
 )
 from app.modules.auth.models import User, Department
 from app.modules.common.approvals import create_flow, act as act_flow, get_flow, serialize_flow
+import re
 
 
 def _gen_expense_code() -> str:
@@ -183,7 +184,65 @@ async def get_expense(db: AsyncSession, expense_id: int) -> dict:
         "attachments": [],
         "approvalFlow": approval,
         "status": e.status, "createdAt": e.created_at, "updatedAt": e.updated_at,
+        "relatedInvoice": _add_match_audit(await _parse_related_invoice(db, e.invoice_id, e.description), float(Decimal(e.amount or 0) / 100)),
     }
+
+
+def _add_match_audit(ri: Optional[dict], expense_amount: float) -> Optional[dict]:
+    if not ri:
+        return None
+    ri["matchAudit"] = _audit_expense_vs_invoice(expense_amount, ri.get("totalAmount") or 0)
+    return ri
+
+
+async def _parse_related_invoice(db: AsyncSession, invoice_id, description: Optional[str]) -> Optional[dict]:
+    """优先用 invoice_id 字段查发票，fallback 到 description 解析 [关联发票 INV-xxx] 标记"""
+    from app.modules.invoice_ocr.models import Invoice
+    from sqlalchemy import select as _sel
+    inv = None
+    if invoice_id:
+        inv = (await db.execute(_sel(Invoice).where(Invoice.id == int(invoice_id)))).scalar_one_or_none()
+    if inv is None and description:
+        m = re.search(r"\[关联发票 INV-([^\]]+)\]", description)
+        if m:
+            inv_no = m.group(1).strip()
+            if inv_no:
+                inv = (await db.execute(_sel(Invoice).where(Invoice.invoice_no == inv_no))).scalar_one_or_none()
+    if not inv:
+        return None
+    return {
+        "invoiceId": inv.id,
+        "invoiceNo": inv.invoice_no,
+        "invoiceType": inv.invoice_type,
+        "sellerName": inv.seller_name,
+        "totalAmount": float(Decimal(inv.total_amount or 0) / 100),
+        "issueDate": inv.issue_date.isoformat() if inv.issue_date else None,
+        "status": inv.status,
+        "verifyStatus": inv.verify_status,
+    }
+
+
+def _audit_expense_vs_invoice(expense_amount_yuan: float, invoice_amount_yuan: float) -> dict:
+    """AI 审核：比对报销金额 vs 发票金额
+    - match: 完全一致（误差 < 0.01）
+    - partial: 报销 < 发票（合理拆分/部分报销）
+    - over: 报销 > 发票（异常，可能重复报销或填错）
+    - mismatch: 其他异常
+    """
+    if expense_amount_yuan is None or invoice_amount_yuan is None:
+        return {"status": "unknown", "diff": 0, "reason": "金额信息不完整"}
+    diff = round(invoice_amount_yuan - expense_amount_yuan, 2)
+    abs_diff = abs(diff)
+    if abs_diff < 0.01:
+        return {"status": "match", "diff": 0, "reason": "金额完全匹配 ✓"}
+    if diff > 0:
+        if abs_diff / max(invoice_amount_yuan, 0.01) < 0.05:
+            return {"status": "partial", "diff": diff, "reason": f"报销金额小于发票金额 ¥{abs_diff:.2f}，属部分报销"}
+        return {"status": "partial", "diff": diff, "reason": f"报销 ¥{expense_amount_yuan:.2f}，发票 ¥{invoice_amount_yuan:.2f}，差额 ¥{abs_diff:.2f}（{abs_diff / invoice_amount_yuan * 100:.1f}%）"}
+    # diff < 0：报销 > 发票
+    if abs_diff / max(invoice_amount_yuan, 0.01) < 0.05:
+        return {"status": "over", "diff": diff, "reason": f"报销金额超过发票 ¥{abs_diff:.2f}，请核实是否填错"}
+    return {"status": "over", "diff": diff, "reason": f"报销 ¥{expense_amount_yuan:.2f} 远超发票 ¥{invoice_amount_yuan:.2f}（多 ¥{abs_diff:.2f}），⚠️ 疑似异常"}
 
 
 # ===== 创建 =====
@@ -387,10 +446,19 @@ async def update_expense(db: AsyncSession, expense_id: int, req, operator_id: in
         raise ConflictException(f"费用状态为「{e.status}」不允许编辑")
     data = req.model_dump(exclude_unset=True)
     if "amount" in data and data["amount"] is not None:
-        e.amount = data["amount"] * 100  # 元 → 分
+        e.amount = int(round(float(data["amount"]) * 100))  # 元 → 分（保留 2 位小数）
     for k in ("category", "title", "description", "expenseDate", "contractId", "projectId"):
         if k in data and data[k] is not None:
             setattr(e, k, data[k])
+    # 关联/解除关联发票（invoiceId=null 表示解除）
+    if "invoiceId" in data:
+        new_inv_id = data["invoiceId"]
+        if new_inv_id is not None:
+            from app.modules.invoice_ocr.models import Invoice
+            inv = (await db.execute(select(Invoice).where(Invoice.id == int(new_inv_id)))).scalar_one_or_none()
+            if not inv:
+                raise NotFoundException(f"发票不存在：{new_inv_id}")
+        e.invoice_id = new_inv_id  # None 也允许（解除关联）
     # 费用明细：全量替换（前端传完整 list → 后端删除旧的 + 插入新的）
     if "breakdown" in data and data["breakdown"] is not None:
         from app.modules.expense.models import ExpenseBreakdown

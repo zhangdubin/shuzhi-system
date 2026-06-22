@@ -26,6 +26,8 @@ export const dashboardApi = {
       todos?: Array<{ type: 'warning' | 'normal' | 'danger'; title: string; meta: string; link?: string }>
       teamMembers?: Array<{ userId: string; name: string; role: string; avatar?: string; online: boolean }>
     }>('/dashboard/summary'),
+  activities: (page = 1, pageSize = 10) =>
+    http.post<{ list: any[]; total: number; page: number; pageSize: number }>('/dashboard/activities', { page, pageSize }),
 }
 
 // ---------- 项目 ----------
@@ -269,6 +271,10 @@ export const invoiceOcrApi = {
   update: (id: number, data: any) => http.post<any>('/invoice/ocr/update', data, { params: { invoiceId: id } }),
   /** 单条提交入账 */
   submit: (id: number, reason?: string) => http.post<any>('/invoice/ocr/submit', undefined, { params: { invoiceId: id, reason } }),
+  /** 重新识别（recheck） */
+  recheck: (id: number) => http.post<any>('/invoice/ocr/recheck', undefined, { params: { invoiceId: id } }),
+  /** R-extra: 可关联的发票列表（未关联任何费用、已核验） */
+  unlinked: (params: { keyword?: string; page?: number; pageSize?: number }) => http.post<{ list: any[]; total: number }>('/invoice/ocr/unlinked', params),
   /** 批量提交入账 */
   batchSubmit: (invoiceIds: number[], reason?: string) => http.post<{updated: number; invoiceIds: number[]}>('/invoice/ocr/batch/submit', { invoiceIds, reason }),
   /** 单条识别详情 */
@@ -449,6 +455,10 @@ export const reimburseApi = {
     http.post<ReimburseForm>('/reimbursements/create', data),
   update: (formId: number, data: any) => http.post<ReimburseForm>('/reimbursements/update', { ...data, formId }),
   delete: (formId: number) => http.post('/reimbursements/delete', { formId }),
+  /** R-extra: 批量删除报销单（仅超管/草稿） */
+  batchDelete: (formIds: number[]) => http.post<{deleted: number; skipped: any[]}>('/reimbursements/batch/delete', { formIds }),
+  /** R-extra: 导出报销单（CSV/Excel 当前用 CSV，含明细） */
+  exportList: (params: { keyword?: string; filters?: any }) => http.post<{csv: string; filename: string; count: number}>('/reimbursements/export', params),
   fillback: (data: { formId: number; actualAmount: number; paymentDate?: string; voucherNo?: string; remark?: string; detailAmounts?: Record<string, number> }) =>
     http.post<ReimburseForm>('/reimbursements/fillback', data),
   markPrinted: (formId: number) => http.post<ReimburseForm>('/reimbursements/mark-printed', { formId }),

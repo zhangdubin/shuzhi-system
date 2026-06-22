@@ -12,6 +12,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { sse } from '@/utils/sse'
+import { useUserStore } from '@/stores/user'
 
 interface Notice {
   id: string
@@ -27,26 +28,36 @@ const STORAGE_KEY = 'shuzhi_notices'
 const router = useRouter()
 
 const notices = ref<Notice[]>([])
+const unreadCount = computed(() => notices.value.filter(n => !n.read).length)
 const filterType = ref<string>('all')
 const filterRead = ref<'all' | 'unread'>('all')
 
-// 4 KPI
-const kpis = ref([
-  { label: '通知总数', num: 28, color: 'info',    icon: '🔔', trend: '实时更新' },
-  { label: '未读',     num: 5,  color: 'danger',  icon: '●',  trend: '需关注' },
-  { label: '合同类',   num: 12, color: 'primary', icon: '📜', trend: '本周 +3' },
-  { label: 'AI 类',    num: 6,  color: 'warning', icon: '✦',  trend: '智能分析' },
-])
+// 4 KPI（动态由 notices 驱动）
+const kpis = computed(() => {
+  const total = notices.value.length
+  const unread = notices.value.filter(n => !n.read).length
+  const contract = notices.value.filter(n => n.type === '合同').length
+  const ai = notices.value.filter(n => n.type === 'AI').length
+  return [
+    { label: '通知总数', num: total,    color: 'info',    icon: '🔔', trend: '实时更新' },
+    { label: '未读',     num: unread,   color: 'danger',  icon: '●',  trend: '需关注' },
+    { label: '合同类',   num: contract, color: 'primary', icon: '📜', trend: '本周 +' + contract },
+    { label: 'AI 类',    num: ai,       color: 'warning', icon: '✦',  trend: '智能分析' },
+  ]
+})
 
-// 5 type-tabs
-const typeTabs = ref([
-  { key: 'all',      label: '全部',   count: 28 },
-  { key: '合同',     label: '合同',   count: 12 },
-  { key: '费用',     label: '费用',   count: 5 },
-  { key: '回款',     label: '回款',   count: 3 },
-  { key: 'AI',       label: 'AI',     count: 6 },
-  { key: '系统',     label: '系统',   count: 2 },
-])
+// 5 type-tabs（动态由 notices 驱动）
+const typeTabs = computed(() => {
+  const c = (k: string) => notices.value.filter(n => n.type === k).length
+  return [
+    { key: 'all',  label: '全部', count: notices.value.length },
+    { key: '合同', label: '合同', count: c('合同') },
+    { key: '费用', label: '费用', count: c('费用') },
+    { key: '回款', label: '回款', count: c('回款') },
+    { key: 'AI',   label: 'AI',   count: c('AI') },
+    { key: '系统', label: '系统', count: c('系统') },
+  ]
+})
 
 const filteredNotices = computed(() => {
   return notices.value.filter(n => {
@@ -54,13 +65,6 @@ const filteredNotices = computed(() => {
     if (filterRead.value === 'unread' && n.read) return false
     return true
   })
-})
-
-const stats = computed(() => {
-  // 实际数用 notices 动态覆盖
-  const liveCounts: Record<string, number> = { all: notices.value.length }
-  typeTabs.value.forEach(t => { liveCounts[t.key] = notices.value.filter(n => n.type === t.key).length })
-  return { total: notices.value.length, unread: notices.value.filter(n => !n.read).length, liveCounts }
 })
 
 function loadFromStorage() {
@@ -114,8 +118,39 @@ const typeColor: Record<string, string> = {
 
 let sseCleanup: (() => void) | null = null
 
+async function loadFromBackend() {
+  try {
+    const userStore = useUserStore()
+    const r: any = await fetch('/api/v1/notices/recent?limit=30', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + (userStore.token || localStorage.getItem('shuzhi_token') || '') },
+    }).then(r => r.json())
+    if (r?.code === 0 && Array.isArray(r.data?.list)) {
+      // 合并：保留已有 read 状态 + 新数据填补
+      const readSet = new Set(notices.value.filter(n => n.read).map(n => n.id))
+      const merged = r.data.list.map((it: any) => ({
+        id: it.id,
+        type: it.type,
+        action: it.action,
+        title: it.title,
+        operator: it.operator,
+        ts: it.ts,
+        read: readSet.has(it.id),
+      }))
+      // 按时间倒序，去重
+      const m = new Map<string, Notice>()
+      for (const n of merged) m.set(n.id, n)
+      notices.value = Array.from(m.values()).sort((a, b) => b.ts - a.ts).slice(0, 200)
+      saveToStorage()
+    }
+  } catch (e) {
+    console.warn('[NoticeCenter] 拉取后端最近活动失败', e)
+  }
+}
+
 onMounted(() => {
   loadFromStorage()
+  loadFromBackend()
   sseCleanup = sse.connect('/sse/dashboard', {
     onEvent: (event, data) => {
       if (event === 'connected' || event === 'keepalive') return
@@ -153,7 +188,7 @@ onUnmounted(() => { sseCleanup?.() })
           <span class="kpi-label">{{ k.label }}</span>
           <span :class="['kpi-icon', k.color]">{{ k.icon }}</span>
         </div>
-        <div class="kpi-num">{{ stats.liveCounts?.[kpiKey(k.label)] ?? k.num }}</div>
+        <div class="kpi-num">{{ k.num }}</div>
         <div class="kpi-trend">{{ k.trend }}</div>
       </div>
     </div>
@@ -162,12 +197,12 @@ onUnmounted(() => { sseCleanup?.() })
     <div class="tab-bar">
       <div class="type-tabs">
         <div v-for="t in typeTabs" :key="t.key" :class="['tab', { active: filterType === t.key }]" @click="filterType = t.key">
-          {{ t.label }} <span class="cnt">{{ stats.liveCounts?.[t.key] ?? t.count }}</span>
+          {{ t.label }} <span class="cnt">{{ t.count }}</span>
         </div>
       </div>
       <div class="read-tabs">
         <div :class="['rt', { active: filterRead === 'all' }]" @click="filterRead = 'all'">全部</div>
-        <div :class="['rt', { active: filterRead === 'unread' }]" @click="filterRead = 'unread'">未读 <span v-if="stats.unread" class="cnt-danger">{{ stats.unread }}</span></div>
+        <div :class="['rt', { active: filterRead === 'unread' }]" @click="filterRead = 'unread'">未读 <span v-if="unreadCount" class="cnt-danger">{{ unreadCount }}</span></div>
       </div>
     </div>
 
@@ -194,13 +229,6 @@ onUnmounted(() => { sseCleanup?.() })
   </div>
 </template>
 
-<script lang="ts">
-function kpiKey(label: string): string {
-  const m: Record<string, string> = { '通知总数': 'all', '未读': 'all', '合同类': '合同', 'AI 类': 'AI' }
-  return m[label] || 'all'
-}
-export default { name: 'NoticeCenter' }
-</script>
 
 <style lang="scss" scoped>
 @use "@/assets/styles/variables.scss" as *;

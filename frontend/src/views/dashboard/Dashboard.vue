@@ -76,13 +76,49 @@ const teamMembers = ref<any[]>([])
 const aiAlerts = ref<Array<{ id: string; level: 'high' | 'medium' | 'low'; title: string; objectType?: string; objectId?: number }>>([])
 
 // 静态团队/活动（design 风格）
-const recentActivities = ref([
-  { icon: '▤', color: '#E0E6FF', iconColor: '#4F6BFF', title: '王芳 上传了 <strong>3 张发票</strong>，OCR 自动识别完成', meta: '10 分钟前 · 发票识别', module: 'invoice' },
-  { icon: '▦', color: '#FEF3C7', iconColor: '#B45309', title: '李明 创建了合同 <strong>HT-2026-031</strong>，待法务审批', meta: '32 分钟前 · 合同管理', module: 'contract' },
-  { icon: '✓', color: '#D1FAE5', iconColor: '#047857', title: '系统自动回款到账 <strong>¥ 86,500.00</strong>', meta: '1 小时前 · 回款管理', module: 'receivable' },
-  { icon: '▥', color: '#FAE8FF', iconColor: '#86198F', title: '项目 <strong>「数智化二期」</strong> 进度更新至 68%', meta: '2 小时前 · 项目管理', module: 'project' },
-  { icon: '▣', color: '#CFFAFE', iconColor: '#0E7490', title: '张明 新建了 <strong>「差旅报销」</strong> 发票模板', meta: '3 小时前 · 发票模板', module: 'template' },
-])
+const recentActivities = ref<Array<{ icon: string; color: string; iconColor: string; title: string; meta: string; module: string }>>([])
+
+const moduleIconMap: Record<string, { icon: string; color: string; iconColor: string; module: string }> = {
+  invoices:    { icon: '▤', color: '#E0E6FF', iconColor: '#4F6BFF', module: 'invoice' },
+  invoice_ocr: { icon: '▤', color: '#E0E6FF', iconColor: '#4F6BFF', module: 'invoice' },
+  contracts:   { icon: '▦', color: '#FEF3C7', iconColor: '#B45309', module: 'contract' },
+  contract:    { icon: '▦', color: '#FEF3C7', iconColor: '#B45309', module: 'contract' },
+  receivables: { icon: '✓', color: '#D1FAE5', iconColor: '#047857', module: 'receivable' },
+  receivable:  { icon: '✓', color: '#D1FAE5', iconColor: '#047857', module: 'receivable' },
+  expenses:    { icon: '◈', color: '#FAE8FF', iconColor: '#86198F', module: 'expense' },
+  expense:     { icon: '◈', color: '#FAE8FF', iconColor: '#86198F', module: 'expense' },
+  projects:    { icon: '▥', color: '#CFFAFE', iconColor: '#0E7490', module: 'project' },
+  project:     { icon: '▥', color: '#CFFAFE', iconColor: '#0E7490', module: 'project' },
+  invoice_tpl: { icon: '▣', color: '#FAE8FF', iconColor: '#A21CAF', module: 'template' },
+}
+function relTime(s: string | null | undefined): string {
+  if (!s) return ''
+  try {
+    const d = new Date(s.replace(' ', 'T'))
+    const diff = (Date.now() - d.getTime()) / 1000
+    if (diff < 60) return Math.max(0, Math.floor(diff)) + ' 秒前'
+    if (diff < 3600) return Math.floor(diff / 60) + ' 分钟前'
+    if (diff < 86400) return Math.floor(diff / 3600) + ' 小时前'
+    return Math.floor(diff / 86400) + ' 天前'
+  } catch { return s }
+}
+async function loadActivities() {
+  try {
+    const r: any = await dashboardApi.activities(1, 8)
+    const list: any[] = r?.list || []
+    recentActivities.value = list.map(it => {
+      const style = moduleIconMap[it.module] || moduleIconMap[it.type] || { icon: '•', color: '#F1F5F9', iconColor: '#64748B', module: 'system' }
+      return {
+        icon: it.icon || style.icon,
+        color: it.color || style.color,
+        iconColor: style.iconColor,
+        title: it.title || '',
+        meta: relTime(it.createdAt) + (it.module ? ' · ' + it.module : ''),
+        module: style.module,
+      }
+    })
+  } catch (e) { /* 失败时保持空列表 */ }
+}
 const staticTeam = [
   { name: '张明', role: '财务总监', avatar: 'https://i.pravatar.cc/64?img=15', online: true },
   { name: '王芳', role: '财务专员', avatar: 'https://i.pravatar.cc/64?img=23', online: true },
@@ -253,6 +289,7 @@ function goToAlert(a: any) {
 
 onMounted(() => {
   loadStats()
+  loadActivities()
   loadAiAlerts()
   startSse()
 })

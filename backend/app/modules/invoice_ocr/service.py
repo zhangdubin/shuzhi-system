@@ -8,7 +8,7 @@ import random
 import string
 import uuid
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -115,6 +115,7 @@ async def recognize_one(
     file_url: str,
     uploader_id: int,
     file_size: Optional[int] = None,
+    template_id: Optional[int] = None,
 ) -> dict:
     """OCR 识别一张发票 + 入库"""
     # R18.1: 非标准格式（PDF/HEIC/WEBP/...）转码为 JPEG 再 OCR
@@ -210,6 +211,7 @@ async def recognize_one(
         file_url=file_url,
         file_id=file_id,
         file_size=file_size,
+        template_id=template_id,
         items=_clean_items(ocr.get("items", [])),
         raw_ocr=ocr,
         uploader_id=uploader_id,
@@ -328,6 +330,7 @@ async def list_invoices(
             "uploaderName": uploader_map.get(inv.uploader_id, "—"),
             "uploadedAt": inv.uploaded_at.isoformat() if inv.uploaded_at else None,
             "relations": relations_map.get(inv.id, []),
+            "templateId": inv.template_id,
         })
     # items 后处理：去重 + 修正金额错位
     for it in items:
@@ -481,6 +484,67 @@ def _clean_items(raw_items: list) -> list:
     return out
 
 
+
+
+async def list_unlinked_invoices(
+    db: AsyncSession, keyword: str = "", page: int = 1, page_size: int = 20
+) -> dict:
+    """列出可关联的发票（未关联任何 expense、已核验、未入账）
+    - 排除 expenses.invoice_id != NULL 的发票
+    - 排除 description 含 [关联发票 INV-xxx] 的费用对应的发票
+    - 排除 status=submitted/archived 的发票
+    - 仅返回 verifyStatus=verified 的发票
+    """
+    from app.modules.expense.models import Expense
+    from sqlalchemy import func as _func, or_ as _or
+
+    # 1) 收集所有"已被占用"的发票 id
+    # 1a) expenses.invoice_id IS NOT NULL
+    q_linked = select(Expense.invoice_id).where(Expense.invoice_id.isnot(None))
+    linked_ids = set(r for r in (await db.execute(q_linked)).scalars().all() if r)
+
+    # 1b) description 含 [关联发票 INV-xxx] 的（兼容老数据）
+    desc_rows = (await db.execute(
+        select(Expense.description).where(Expense.description.ilike("%[关联发票 INV-%"))
+    )).scalars().all()
+    import re as _re
+    for d in desc_rows:
+        for m in _re.finditer(r"\[关联发票 INV-([^\]]+)\]", d or ""):
+            inv_no = m.group(1).strip()
+            if not inv_no:
+                continue
+            inv = (await db.execute(select(Invoice).where(Invoice.invoice_no == inv_no))).scalar_one_or_none()
+            if inv:
+                linked_ids.add(inv.id)
+
+    # 2) 查未在 linked_ids 里的、verifyStatus=verified、status != submitted/archived
+    filters = [
+        Invoice.verify_status == "verified",
+        Invoice.status.notin_(["submitted", "archived", "rejected"]),
+    ]
+    if linked_ids:
+        filters.append(~Invoice.id.in_(linked_ids))
+    q = select(Invoice).where(*filters)
+    if keyword:
+        kw = f"%{keyword}%"
+        q = q.where(_or(Invoice.invoice_no.ilike(kw), Invoice.seller_name.ilike(kw)))
+    total = (await db.execute(select(_func.count()).select_from(q.subquery()))).scalar() or 0
+    q = q.order_by(Invoice.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(q)).scalars().all()
+    items = [
+        {
+            "invoiceId": inv.id,
+            "invoiceNo": inv.invoice_no,
+            "invoiceType": inv.invoice_type,
+            "sellerName": inv.seller_name,
+            "totalAmount": float(Decimal(inv.total_amount or 0) / 100),
+            "issueDate": inv.issue_date.isoformat() if inv.issue_date else None,
+            "status": inv.status,
+            "verifyStatus": inv.verify_status,
+        }
+        for inv in rows
+    ]
+    return {"list": items, "total": total}
 async def get_invoice(db: AsyncSession, invoice_id: int) -> dict:
     inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
     if not inv:
@@ -558,6 +622,14 @@ async def update_invoice(
             v = Decimal(str(v))
         if k == "issueDate" and isinstance(v, str):
             v = date.fromisoformat(v)
+        if k == "verifyAt" and isinstance(v, str):
+            # ISO 字符串 → datetime（DB 列是 naive，统一转 UTC 后去掉 tzinfo）
+            try:
+                v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                if v.tzinfo is not None:
+                    v = v.astimezone(timezone.utc).replace(tzinfo=None)
+            except ValueError:
+                v = datetime.fromisoformat(v)
         setattr(inv, attr, v)
 
     # 核验通过自动写入核验时间

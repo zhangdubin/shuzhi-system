@@ -169,13 +169,13 @@ async function saveDraft() {
       category: form.category,
       title: form.purpose,
       description: form.description || null,
-      amount: Math.round(totalAmount.value), // 后端 amount: int 单位元
+      amount: Number(totalAmount.value.toFixed(2)), // 后端 amount: float 单位元
       expenseDate: form.applicantAt,
       projectId: form.projectLink ? Number(form.projectLink) : null,
       contractId: null,
         breakdown: items.value.map((it: ExpenseItem) => ({
           label: it.subCategory,
-          amount: Math.round(Number(it.amount) || 0), // 后端 ExpenseBreakdownItem.amount: int 单位元
+          amount: Number(Number(it.amount || 0).toFixed(2)), // 后端 ExpenseBreakdownItem.amount: float 单位元
           remark: it.remark || null,
         })),
     }
@@ -214,13 +214,13 @@ async function submitApproval() {
     category: form.category,
     title: form.purpose,          // 后端字段是 title
     description: form.description || null,
-    amount: Math.round(totalAmount.value), // 后端 amount: int 单位元（内部 ×100 存分）
+    amount: Number(totalAmount.value.toFixed(2)), // 后端 amount: float 单位元（内部 ×100 存分）
     expenseDate: form.applicantAt,
     projectId: form.projectLink ? Number(form.projectLink) : null,
     contractId: null,
       breakdown: items.value.map((it: ExpenseItem) => ({
         label: it.subCategory,
-        amount: Math.round(Number(it.amount) || 0), // 后端 ExpenseBreakdownItem.amount: int 单位元
+        amount: Number(Number(it.amount || 0).toFixed(2)), // 后端 ExpenseBreakdownItem.amount: float 单位元
         remark: it.remark || null,
       })),
   }

@@ -301,12 +301,115 @@ function goDetail(row: RecordRow) {
   router.push({ name: 'InvoiceOcrDetail', params: { id: String(row.id) } })
 }
 async function reviewRow(row: RecordRow) {
+  // 1) 拉取最新详情（字段在顶层，不在 fields 嵌套里）
+  let detail: any = null
   try {
-    await invoiceOcrApi.update(row.id, { verifyStatus: 'verified', verifySource: 'manual' })
-    ElMessage.success(`已核验 ${row.invoiceNo}`)
-    await _loadRecords()  // 重新拉，verifyStatus 已落库
+    detail = await invoiceOcrApi.detail(row.id)
   } catch (e: any) {
-    ElMessage.error('核验失败：' + (e?.message || '未知错误'))
+    ElMessage.error('拉取详情失败：' + (e?.message || '未知错误'))
+    return
+  }
+  const d = detail || {}
+  // 兼容：字段可能在顶层 或 fields 子对象
+  const f = (d.fields && typeof d.fields === 'object' && !Array.isArray(d.fields)) ? d.fields : d
+  const invoiceNo = f.invoiceNo || d.invoiceNo || '-'
+  const issueDate = f.issueDate || d.issueDate || '-'
+  const seller = f.sellerName || d.sellerName || '-'
+  const buyer = f.buyerName || d.buyerName || '-'
+  const totalAmount = Number(f.totalAmount ?? d.totalAmount ?? 0)
+  const taxAmount = Number(f.taxAmount ?? d.taxAmount ?? 0)
+  const amountExclTax = Number(f.amountExclTax ?? d.amountExclTax ?? 0)
+  const taxRate = Number(f.taxRate ?? d.taxRate ?? 0)
+  const confidence = Number(d.confidence ?? f.confidence ?? 0)  // 后端 0-1
+  const fileUrl = d.fileUrl || d.previewUrl || ''
+  const invoiceType = f.invoiceType || d.invoiceType || '-'
+  const code = d.code || ''
+
+  // 2) 美化弹窗：顶部 header 卡片 + 金额卡片 + 字段卡片 + PDF 链接 + 备注
+  const fmtMoney = (n: number) => '¥' + (isFinite(n) ? n.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '0.00')
+  const confColor = confidence >= 0.9 ? '#10B981' : confidence >= 0.7 ? '#F59E0B' : '#EF4444'
+  const headerHtml = `
+    <div style="display:flex;align-items:center;gap:12px;padding:14px 18px;background:linear-gradient(135deg,#f0f5ff 0%,#e6f7ff 100%);border-radius:10px;margin-bottom:14px">
+      <div style="width:42px;height:42px;border-radius:10px;background:linear-gradient(135deg,#4F6BFF 0%,#7C3AED 100%);display:flex;align-items:center;justify-content:center;color:#fff;font-size:20px;flex-shrink:0">🧾</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:15px;font-weight:600;color:#1f2937;line-height:1.4">${invoiceType}</div>
+        <div style="font-size:12px;color:#6b7280;margin-top:2px;font-family:ui-monospace,monospace">${code || invoiceNo}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-size:11px;color:#6b7280">置信度</div>
+        <div style="font-size:18px;font-weight:700;color:${confColor}">${(confidence * 100).toFixed(1)}%</div>
+      </div>
+    </div>`
+  const amountCardHtml = `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px 16px;margin-bottom:12px">
+      <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:10px">
+        <span style="font-size:12px;color:#6b7280">价税合计</span>
+        <span style="font-size:24px;font-weight:700;color:#EF4444;font-family:ui-monospace,monospace">${fmtMoney(totalAmount)}</span>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:12px">
+        <div><span style="color:#6b7280">不含税：</span><span style="color:#1f2937;font-weight:500">${fmtMoney(amountExclTax)}</span></div>
+        <div><span style="color:#6b7280">税额：</span><span style="color:#1f2937;font-weight:500">${fmtMoney(taxAmount)}</span></div>
+        <div><span style="color:#6b7280">税率：</span><span style="color:#1f2937;font-weight:500">${(taxRate * 100).toFixed(2)}%</span></div>
+      </div>
+    </div>`
+  const fieldHtml = (icon: string, label: string, value: string) => `
+    <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid #f3f4f6">
+      <div style="width:24px;height:24px;border-radius:6px;background:#f3f4f6;display:flex;align-items:center;justify-content:center;font-size:12px;flex-shrink:0">${icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:#9ca3af;line-height:1.3">${label}</div>
+        <div style="font-size:13px;color:#1f2937;margin-top:2px;word-break:break-all">${value || '-'}</div>
+      </div>
+    </div>`
+  const fieldsHtml = `
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:0 16px;margin-bottom:12px">
+      ${fieldHtml('📅', '开票日期', issueDate)}
+      ${fieldHtml('🏢', '销售方', seller)}
+      ${fieldHtml('🛒', '购买方', buyer)}
+      ${fieldHtml('🔢', '发票号', invoiceNo)}
+    </div>`
+  const fileLinkHtml = fileUrl ? `
+    <div style="display:flex;align-items:center;gap:8px;padding:10px 12px;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;margin-bottom:12px">
+      <span style="font-size:16px">📎</span>
+      <a href="${fileUrl}" target="_blank" style="color:#d97706;font-size:13px;font-weight:500;text-decoration:none;flex:1">查看原 PDF 发票</a>
+      <span style="color:#9ca3af;font-size:16px">→</span>
+    </div>` : ''
+  const remarkHtml = `
+    <div style="margin-bottom:4px">
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:#6b7280;margin-bottom:6px">
+        <span style="font-size:13px">✏️</span> 核验备注 <span style="color:#9ca3af">（可选）</span>
+      </label>
+      <textarea id="review-remark" rows="2" placeholder="如：金额一致 / 合同已匹配 / 税额异常待财务复核..." style="width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:6px;font-size:13px;resize:vertical;font-family:inherit;outline:none;transition:border 0.15s;box-sizing:border-box" onfocus="this.style.borderColor='#4F6BFF'" onblur="this.style.borderColor='#e5e7eb'"></textarea>
+    </div>`
+  const bodyHtml = headerHtml + amountCardHtml + fieldsHtml + fileLinkHtml + remarkHtml
+
+  try {
+    await ElMessageBox.confirm(
+      bodyHtml,
+      '核验发票',
+      {
+        dangerouslyUseHTMLString: true,
+        confirmButtonText: '✓ 确认核验',
+        cancelButtonText: '取消',
+        type: 'info',
+        customClass: 'review-dialog',
+        beforeClose: async (action: any, instance: any, done: any) => {
+          if (action !== 'confirm') { done(); return }
+          const remarkVal = (document.getElementById('review-remark') as HTMLTextAreaElement)?.value || ''
+          try {
+            instance.confirmButtonLoading = true
+            await invoiceOcrApi.update(row.id, { verifyStatus: 'verified', verifySource: 'manual', remarks: remarkVal || '' })
+            ElMessage.success(`已核验 ${invoiceNo}`)
+            done()
+            await _loadRecords()
+          } catch (e: any) {
+            instance.confirmButtonLoading = false
+            ElMessage.error('核验失败：' + (e?.response?.data?.msg || e?.message || '未知错误'))
+          }
+        }
+      }
+    )
+  } catch (e: any) {
+    // 用户取消
   }
 }
 
@@ -896,6 +999,50 @@ watch(() => [activeStatus.value, currentPage.value, pageSize.value, filters.valu
   &.mid  .v    { color: #F59E0B; }
   &.low  .fill { background: #EF4444; }
   &.low  .v    { color: #EF4444; }
+}
+
+/* 核验弹窗美化（review-dialog） */
+.review-dialog {
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.18);
+}
+.review-dialog .el-message-box__title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.review-dialog .el-message-box__title::before {
+  content: '🔍';
+  font-size: 18px;
+}
+.review-dialog .el-message-box__container {
+  padding: 16px 20px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+.review-dialog .el-message-box__btns {
+  padding: 12px 20px 16px;
+  border-top: 1px solid #f3f4f6;
+  background: #fafafa;
+}
+.review-dialog .el-message-box__content {
+  padding: 0;
+}
+.review-dialog .el-button--primary {
+  background: linear-gradient(135deg, #4F6BFF 0%, #7C3AED 100%);
+  border: none;
+  padding: 9px 18px;
+  font-weight: 500;
+}
+.review-dialog .el-button--primary:hover {
+  opacity: 0.92;
+}
+.review-dialog .el-button--default {
+  border-radius: 6px;
 }
 
 /* 状态 pill（design: .s-pill） */

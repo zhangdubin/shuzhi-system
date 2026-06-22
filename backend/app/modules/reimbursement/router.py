@@ -3,7 +3,8 @@
 - /api/v1/reimbursements/*
 """
 from datetime import date
-from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+import time as _time
+from fastapi import APIRouter, Depends, Query, HTTPException, UploadFile, File, Form, Body
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -56,6 +57,53 @@ async def update_form(
 ):
     data = await service.update_form(db, req)
     return {"code": 0, "data": data, "message": "已保存"}
+
+
+@router.post("/export", summary="导出报销单列表（CSV，含明细）")
+async def export_forms(
+    req: ReimburseListRequest,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """导出当前过滤条件下所有报销单为 CSV（含明细：关联费用清单）"""
+    from app.modules.reimbursement.service import list_forms
+    items, _total = await list_forms(db, page=1, page_size=10000, keyword=req.keyword or "", filters=req.filters or {})
+    rows = items
+    # CSV 表头
+    headers = ["报销单号", "标题", "模板", "报销人", "费用笔数", "报销金额(元)", "实报金额(元)", "凭证号", "状态", "创建时间"]
+    lines = [",".join(headers)]
+    for r in rows:
+        vals = [
+            r.get("formNo", ""),
+            (r.get("title") or "").replace(",", "，"),
+            r.get("templateType", ""),
+            (r.get("applicant") or {}).get("name", ""),
+            str(r.get("detailCount", 0)),
+            f'{(r.get("totalAmount") or 0) / 100:.2f}',
+            f'{(r.get("actualAmount") or 0) / 100:.2f}',
+            r.get("voucherNo", "") or "",
+            r.get("statusLabel", ""),
+            str(r.get("createdAt") or "").replace("T", " ")[:19],
+        ]
+        lines.append(",".join(f'"{v}"' for v in vals))
+    csv = chr(10).join(lines)
+    import time as _time
+    return {"code": 0, "data": {"csv": csv, "filename": f"报销单列表_{int(_time.time())}.csv", "count": len(rows)}}
+
+
+@router.post("/batch/delete", summary="批量删除报销单（仅超管/草稿）")
+async def batch_delete(
+    req: dict = Body(...),
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("reimbursement:delete")),
+):
+    from app.modules.reimbursement.service import batch_delete_forms
+    form_ids = req.get("formIds") or []
+    if not isinstance(form_ids, list) or not form_ids:
+        from app.core.exceptions import ParamErrorException
+        raise ParamErrorException("formIds 必填且为非空数组")
+    data = await batch_delete_forms(db, [int(x) for x in form_ids], _user.id)
+    return {"code": 0, "data": data, "message": f"已删除 {data.get('deleted', 0)} 张"}
 
 
 @router.post("/delete", summary="删除报销单")

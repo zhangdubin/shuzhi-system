@@ -28,14 +28,19 @@ router = APIRouter()
 @router.post("/upload", summary="上传 + 单张识别")
 async def upload(
     file: UploadFile = File(...),
+    templateId: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_permission("invoice:upload")),
 ):
     from app.modules.common.models import File as _File
     # 1. 保存文件
     file_info = await common_service.save_upload_file(db, current_user.id, file)
-    # 2. OCR
-    result = await service.recognize_one(db, file_info.fileId, file_info.url, current_user.id, file_info.size)
+    # 2. OCR（带上用户选中的识别模板；自动识别时 templateId 为空）
+    _tpl_id = int(templateId) if (templateId and str(templateId).strip()) else None
+    result = await service.recognize_one(
+        db, file_info.fileId, file_info.url, current_user.id, file_info.size,
+        template_id=_tpl_id,
+    )
     # 3. 回填 files.biz_type='invoice' biz_id=invoice.id（专门数据库管理非结构化数据）
     inv_id = result.get("invoiceId")
     if inv_id:
@@ -179,6 +184,20 @@ class UpdateInvoiceRequest(BaseModel):
     verifyStatus: Optional[str] = None
     verifyAt: Optional[str] = None
     verifySource: Optional[str] = None
+
+
+@router.post("/unlinked", summary="可关联的发票（未关联任何费用）")
+async def list_unlinked(
+    body: dict | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """返回可被费用关联的发票列表（已核验 + 未被任何费用关联过）"""
+    keyword = (body or {}).get("keyword", "")
+    page = int((body or {}).get("page", 1))
+    page_size = int((body or {}).get("pageSize", 20))
+    data = await service.list_unlinked_invoices(db, keyword=keyword, page=page, page_size=page_size)
+    return {"code": 0, "data": data}
 
 
 @router.post("/update", summary="编辑/核验发票")
