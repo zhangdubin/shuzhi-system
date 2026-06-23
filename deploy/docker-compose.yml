@@ -27,7 +27,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - /tmp/pg-data:/var/lib/postgresql/data
+      - shuzhi-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U shuzhi -d shuzhi"]
       interval: 10s
@@ -45,7 +45,7 @@ services:
     ports:
       - "6379:6379"
     volumes:
-      - /tmp/redis-data:/data
+      - shuzhi-redis-data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -151,7 +151,7 @@ services:
     volumes:
       - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - ./monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
-      - /tmp/prom-data:/prometheus
+      - shuzhi-prom-data:/prometheus
     command:
       - '--config.file=/etc/prometheus/prometheus.yml'
       - '--storage.tsdb.path=/prometheus'
@@ -225,7 +225,7 @@ services:
     environment:
       GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_PASSWORD:-admin}
     volumes:
-      - /tmp/grafana-data:/var/lib/grafana
+      - shuzhi-grafana-data:/var/lib/grafana
       - ./monitoring/grafana-provisioning:/etc/grafana/provisioning:ro
       - ./monitoring/grafana-dashboards:/var/lib/grafana/dashboards:ro
     depends_on:
@@ -278,7 +278,7 @@ services:
       - "9000:9000"  # S3 API
       - "9001:9001"  # Web Console
     volumes:
-      - /tmp/minio-data:/data
+      - shuzhi-minio-data:/data
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
       interval: 30s
@@ -308,6 +308,31 @@ services:
       - shuzhi-net
     profiles: [core, storage, all]
     restart: "no"
+
+# ============================================================
+# 网络
+# ============================================================
+
+# ============================================================
+# 命名卷（持久化数据，docker managed，不再依赖 host /tmp 目录）
+# 用法：docker compose down -v 会清空；docker compose down 不会
+# ============================================================
+volumes:
+  shuzhi-pgdata:
+    name: shuzhi-pgdata
+    external: true
+  shuzhi-redis-data:
+    name: shuzhi-redis-data
+    external: true
+  shuzhi-minio-data:
+    name: shuzhi-minio-data
+    external: true
+  shuzhi-prom-data:
+    name: shuzhi-prom-data
+    external: true
+  shuzhi-grafana-data:
+    name: shuzhi-grafana-data
+    external: true
 
 # ============================================================
 # 网络

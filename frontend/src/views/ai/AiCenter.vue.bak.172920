@@ -6,7 +6,6 @@
  * - 主体 2:1 双栏：左问数+任务 / 右提醒+模型状态+快捷入口
  */
 import { ref } from 'vue'
-import { http } from '@/utils/request'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
@@ -16,139 +15,33 @@ const askText = ref('')
 // 模型设置抽屉
 const modelSettingsVisible = ref(false)
 const selectedModel = ref<any>(null)
-async function openModelSettings(model?: any) {
+function openModelSettings(model?: any) {
   selectedModel.value = model || null
   modelSettingsVisible.value = true
-  // 每次打开都从后端拉一次当前 LLM 配置，回填到表单
-  try {
-    const r: any = await http.post('/ai/model/list', {})
-    const llm = (r?.data?.data?.models || []).find((m: any) => m.type === 'llm')
-    if (llm?.config) {
-      const c = llm.config
-      llmConfig.value = {
-        provider: c.provider || '',
-        baseUrl: c.baseUrl || '',
-        apiKey: c.apiKey || '',
-        model: c.model || '',
-        contextLimit: c.contextLimit || 128000,
-        temperature: c.temperature ?? 0.7,
-        maxTokens: c.maxTokens || 2048,
-        streaming: !!c.streaming,
-      }
-    }
-  } catch (e) {
-    // 后端不可用时静默失败，用户可以从头填
-    console.warn('[openModelSettings] load llm config failed:', e)
-  }
 }
-async function saveModelSettings() {
-  if (!llmConfig.value.baseUrl || !llmConfig.value.model) {
-    ElMessage.warning('请先填写 Base URL 和模型名称')
-    return
-  }
-  llmLoading.value = true
-  try {
-    await http.post('/ai/model/config', {
-      modelId: 'llm',
-      config: {
-        provider: llmConfig.value.provider,
-        baseUrl: llmConfig.value.baseUrl,
-        apiKey: llmConfig.value.apiKey,
-        model: llmConfig.value.model,
-        contextLimit: llmConfig.value.contextLimit,
-        temperature: llmConfig.value.temperature,
-        maxTokens: llmConfig.value.maxTokens,
-        streaming: llmConfig.value.streaming,
-      },
-      enabled: true,
-    })
-    ElMessage.success('已保存 LLM 配置，立即生效')
-    modelSettingsVisible.value = false
-  } catch (err: any) {
-    ElMessage.error('保存失败：' + (err?.response?.data?.detail || err?.message || '未知错误'))
-  } finally {
-    llmLoading.value = false
-  }
+function saveModelSettings() {
+  ElMessage.success(`已保存「${selectedModel.value?.name}」配置`)
+  modelSettingsVisible.value = false
 }
-
-// LLM 配置（v-model 用）
-const llmConfig = ref({
-  provider: '',
-  baseUrl: '',
-  apiKey: '',
-  model: '',
-  contextLimit: 128000,
-  temperature: 0.7,
-  maxTokens: 2048,
-  streaming: false,
-})
-const llmLoading = ref(false)
-const llmTestResult = ref(null)
 
 function onProviderChange(provider: string) {
-  const presets = {
-    openai:    { url: 'https://api.openai.com/v1',                        model: 'gpt-4o',           ctx: 128000 },
-    qwen:      { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-max',     ctx: 131072 },
-    deepseek:  { url: 'https://api.deepseek.com/v1',                      model: 'deepseek-chat',  ctx: 64000 },
-    minimax:   { url: 'https://api.minimaxi.com/v1',                      model: 'MiniMax-Text-01',ctx: 1000000 },
-    zhipu:     { url: 'https://open.bigmodel.cn/api/paas/v4',             model: 'glm-4-plus',     ctx: 128000 },
-    baidu:     { url: 'https://qianfan.baidubce.com/v2',                  model: 'ernie-4.0-8k',   ctx: 8192 },
-    tencent:   { url: 'https://hunyuan.cloud.tencent.com/v1',             model: 'hunyuan-pro',    ctx: 128000 },
-    moonshot:  { url: 'https://api.moonshot.cn/v1',                       model: 'moonshot-v1-128k',ctx: 128000 },
-    doubao:    { url: 'https://ark.cn-beijing.volces.com/api/v3',         model: 'doubao-pro-128k',ctx: 128000 },
-    stepfun:   { url: 'https://api.stepfun.com/v1',                       model: 'step-1-128k',    ctx: 128000 },
-    ollama:    { url: 'http://localhost:11434/v1',                        model: 'llama3.1',       ctx: 32000 },
-    custom:    { url: '',                                                  model: '',              ctx: 4096 },
+  const presets: Record<string, { url: string; model: string; ctx: number }> = {
+    openai: { url: 'https://api.openai.com/v1', model: 'gpt-4o', ctx: 128000 },
+    qwen: { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-max', ctx: 131072 },
+    deepseek: { url: 'https://api.deepseek.com/v1', model: 'deepseek-chat', ctx: 64000 },
+    minimax: { url: 'https://api.minimax.chat/v1', model: 'MiniMax-Text-01', ctx: 1000000 },
+    zhipu: { url: 'https://open.bigmodel.cn/api/paas/v4', model: 'glm-4', ctx: 128000 },
+    baidu: { url: 'https://qianfan.baidubce.com/v2', model: 'ernie-4.0-8k', ctx: 8192 },
+    tencent: { url: 'https://hunyuan.cloud.tencent.com', model: 'hunyuan-pro', ctx: 128000 },
+    custom: { url: '', model: '', ctx: 4096 },
   }
   const p = presets[provider]
-  if (p) {
-    llmConfig.value.provider = provider
-    llmConfig.value.baseUrl = p.url
-    llmConfig.value.model = p.model
-    llmConfig.value.contextLimit = p.ctx
-    ElMessage.success('已切换至 ' + provider + '，已自动填入默认地址和模型，请输入 API Key')
-  }
+  if (p) ElMessage.info(`已切换至 ${provider}，请补充 API Key 并确认模型名称`)
 }
 
-async function testLLMConnection() {
-  if (!llmConfig.value.baseUrl) {
-    ElMessage.warning('请先填写 Base URL')
-    return
-  }
-  llmLoading.value = true
-  llmTestResult.value = null
-  const t0 = Date.now()
-  let result: { ok: boolean; msg: string; latencyMs?: number } | null = null
-  try {
-    // axios 拦截器：code=0 时返回 data，code≠0 时 reject(new Error(message))
-    const r: any = await http.post('/ai/model/test', {
-      baseUrl: llmConfig.value.baseUrl,
-      apiKey: llmConfig.value.apiKey,
-      model: llmConfig.value.model,
-    })
-    // 走到这说明 code=0 成功
-    const latency = Date.now() - t0
-    result = { ok: true, msg: '连接成功，模型响应正常', latencyMs: (r && r.latencyMs) || latency }
-    ElMessage.success(`✅ ${result.msg} (${result.latencyMs}ms)`)
-  } catch (err: any) {
-    // 多种可能的错误源：axios 拦截器 reject、HTTP 4xx/5xx、网络失败
-    const msg =
-      err?.response?.data?.message ||
-      err?.response?.data?.detail ||
-      err?.message ||
-      '请求失败：未知错误'
-    result = { ok: false, msg, latencyMs: Date.now() - t0 }
-    // 用 message toast 同时显示（用户更容易看到完整错误）
-    ElMessage({
-      type: 'error',
-      message: '❌ ' + msg,
-      duration: 6000,
-      showClose: true,
-    })
-  } finally {
-    llmTestResult.value = result
-    llmLoading.value = false
-  }
+function testLLMConnection() {
+  ElMessage.info('正在测试连接...')
+  setTimeout(() => ElMessage.success('✅ 连接成功，模型响应正常'), 1200)
 }
 
 // 6 大 AI 能力
@@ -406,11 +299,11 @@ function goQuick(e: any) { router.push(e.link) }
         <div class="ms-section-title">模型参数</div>
         <div class="ms-row">
           <label>Temperature</label>
-          <el-input-number v-model="llmConfig.temperature" :min="0" :max="2" :step="0.1" :precision="1" /> <span class="ms-unit">（创造性）</span>
+          <el-input-number :min="0" :max="2" :step="0.1" :precision="1" /> <span class="ms-unit">（创造性）</span>
         </div>
         <div class="ms-row">
           <label>Max Tokens</label>
-          <el-input-number v-model="llmConfig.maxTokens" :min="256" :max="8192" :step="256" /> <span class="ms-unit">（输出上限）</span>
+          <el-input-number :min="256" :max="8192" :step="256" /> <span class="ms-unit">（输出上限）</span>
         </div>
         <div class="ms-row">
           <label>Fallback 模型</label>
@@ -426,49 +319,40 @@ function goQuick(e: any) { router.push(e.link) }
         <div class="ms-section-title">通用大模型对接</div>
         <div class="ms-row">
           <label>Provider</label>
-          <el-select v-model="llmConfig.provider" placeholder="选择服务商" style="width:200px" @change="onProviderChange">
-            <el-option label="OpenAI 兼容（含 GPT-4o/o1/o3）" value="openai" />
-            <el-option label="阿里通义 Qwen (qwen-max / qwen-plus)" value="qwen" />
-            <el-option label="DeepSeek (deepseek-chat / reasoner)" value="deepseek" />
-            <el-option label="MiniMax (MiniMax-Text-01)" value="minimax" />
-            <el-option label="智谱 GLM (glm-4-plus)" value="zhipu" />
-            <el-option label="百度 ERNIE (ernie-4.0-8k)" value="baidu" />
-            <el-option label="腾讯混元 (hunyuan-pro)" value="tencent" />
-            <el-option label="月之暗面 Moonshot (128k)" value="moonshot" />
-            <el-option label="字节豆包 (doubao-pro-128k)" value="doubao" />
-            <el-option label="阶跃星辰 Step (step-1-128k)" value="stepfun" />
-            <el-option label="Ollama 本地 (llama3.1 等)" value="ollama" />
-            <el-option label="自定义 OpenAI 兼容端点" value="custom" />
+          <el-select placeholder="选择服务商" style="width:180px" @change="onProviderChange">
+            <el-option label="OpenAI 兼容" value="openai" />
+            <el-option label="阿里通义 (Qwen)" value="qwen" />
+            <el-option label="DeepSeek" value="deepseek" />
+            <el-option label="MiniMax" value="minimax" />
+            <el-option label="智谱 (GLM)" value="zhipu" />
+            <el-option label="百度 (ERNIE)" value="baidu" />
+            <el-option label="腾讯 (Hunyuan)" value="tencent" />
+            <el-option label="自定义" value="custom" />
           </el-select>
         </div>
         <div class="ms-row ms-row-col">
           <label>Base URL</label>
-          <el-input v-model="llmConfig.baseUrl" placeholder="https://api.openai.com/v1" style="flex:1" clearable />
+          <el-input placeholder="https://api.openai.com/v1" style="flex:1" />
         </div>
         <div class="ms-row ms-row-col">
           <label>API Key</label>
-          <el-input v-model="llmConfig.apiKey" type="password" placeholder="sk-..." show-password style="flex:1" clearable />
+          <el-input type="password" placeholder="sk-..." show-password style="flex:1" />
         </div>
         <div class="ms-row ms-row-col">
           <label>模型名称</label>
-          <el-input v-model="llmConfig.model" placeholder="gpt-4o / qwen-max / deepseek-chat" style="flex:1" clearable />
+          <el-input placeholder="gpt-4o / qwen-max / deepseek-chat" style="flex:1" />
         </div>
         <div class="ms-row">
           <label>上下文上限</label>
-          <el-input-number v-model="llmConfig.contextLimit" :min="1024" :max="2000000" :step="1024" /> <span class="ms-unit">Tokens</span>
+          <el-input-number :min="1024" :max="200000" :step="1024" /> <span class="ms-unit">Tokens</span>
         </div>
         <div class="ms-row">
           <label>Streaming</label>
-          <el-switch v-model="llmConfig.streaming" /> <span class="ms-unit">启用流式输出（SSE）</span>
+          <el-switch /> <span class="ms-unit">启用流式输出（SSE）</span>
         </div>
-        <div class="ms-test-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <el-button size="small" :loading="llmLoading" @click="testLLMConnection">🔗 测试连接</el-button>
-            <span v-if="llmTestResult" class="ms-test-hint" :style="{ color: llmTestResult.ok ? '#10B981' : '#EF4444', fontWeight: 600 }">
-              {{ llmTestResult.ok ? '✅' : '❌' }}<span v-if="llmTestResult.latencyMs"> {{ llmTestResult.latencyMs }}ms ·</span> {{ llmTestResult.msg }}
-            </span>
-            <span v-else class="ms-test-hint">点击测试验证 API Key 和网络连通性</span>
-          </div>
+        <div class="ms-test-row">
+          <el-button size="small" @click="testLLMConnection">🔗 测试连接</el-button>
+          <span class="ms-test-hint">验证 API Key 和网络连通性</span>
         </div>
       </div>
 

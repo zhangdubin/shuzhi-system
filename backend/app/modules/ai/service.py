@@ -17,7 +17,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundException
 from app.core.sse import publish_event
-from app.core.cache import cache, invalidate
+from app.core import cache as cache_mod
+from app.core.cache import invalidate
 from app.config import settings
 from app.modules.ai import ai_client
 from app.modules.ai.models import AITask, AIFeedback, AIAlert
@@ -494,7 +495,12 @@ async def task_cancel(db: AsyncSession, req) -> dict:
 # ============================================================
 
 async def model_list(db: AsyncSession) -> dict:
-    """模型列表（mock 静态配置）"""
+    """模型列表（mock 静态配置 + LLM 真实 Redis 配置）"""
+    # 先并行查 LLM 配置和用量
+    llm_version, llm_config_dict = await asyncio.gather(
+        _get_llm_version(db),
+        _get_llm_config(db),
+    )
     # 查用量
     usage = {}
     rows = (await db.execute(
@@ -519,12 +525,12 @@ async def model_list(db: AsyncSession) -> dict:
         },
         {
             "id": settings.AI_LLM_MODEL,
-            "name": "通义千问 2.5",
+            "name": "通用大模型 (LLM)",
             "type": "llm",
             "status": "healthy",
-            "version": "7b-instruct",
+            "version": llm_version,
             "metrics": {"latencyMs": 1200, "tokensPerSec": 80, "qps": 10},
-            "config": {"temperature": 0.7, "maxTokens": 2048, "systemPrompt": "你是数智化系统 AI 助手"},
+            "config": llm_config_dict,
             "costPerCallCents": 2,
             "monthlyUsage": usage.get(settings.AI_LLM_MODEL, 0),
         },
@@ -544,16 +550,117 @@ async def model_list(db: AsyncSession) -> dict:
 
 
 async def model_config(db: AsyncSession, req) -> dict:
-    """更新模型配置（mock：写 ai_feedback 表当 audit 用途）"""
-    # 真实部署：写到 settings 表 / Redis
-    # mock：返回 OK
+    """更新模型配置（持久化到 Redis）"""
+    cfg = dict(req.config or {})
+    # 简单脱敏：API Key 只显示前 4 后 4
+    api_key = cfg.get("apiKey", "")
+    if isinstance(api_key, str) and len(api_key) > 8:
+        cfg["_apiKeyMasked"] = api_key[:4] + "***" + api_key[-4:]
+    # 存 Redis：key = ai:model:{modelId}
+    key = f"ai:model:{req.modelId}"
+    await cache_mod.set_(key, {"config": cfg, "enabled": req.enabled, "updatedAt": datetime.utcnow().isoformat()}, ttl=86400 * 30)
     return {
         "modelId": req.modelId,
-        "config": req.config,
+        "config": {**cfg, "apiKey": cfg.get("_apiKeyMasked", api_key and "***") if api_key else ""},
         "enabled": req.enabled,
         "updated": True,
-        "note": "（mock：真实部署会持久化到 settings 表）",
     }
+
+
+async def _get_llm_config(db: AsyncSession) -> dict:
+    """从 Redis 读 LLM 配置；没有则 fallback 到 settings.AI_LLM_* 环境变量"""
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        cfg = cached.get("config") or {}
+        # 不返回完整 apiKey（前端列表也不该看到）
+        masked = dict(cfg)
+        if masked.get("apiKey"):
+            k = str(masked["apiKey"])
+            masked["apiKey"] = k[:4] + "***" + k[-4:] if len(k) > 8 else "***"
+        masked.setdefault("temperature", 0.7)
+        masked.setdefault("maxTokens", 2048)
+        masked.setdefault("systemPrompt", "你是数智化系统 AI 助手")
+        return masked
+    return {
+        "provider": "qwen",
+        "baseUrl": settings.AI_LLM_ENDPOINT if hasattr(settings, "AI_LLM_ENDPOINT") else "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": (settings.AI_LLM_API_KEY[:4] + "***" + settings.AI_LLM_API_KEY[-4:]) if (hasattr(settings, "AI_LLM_API_KEY") and len(settings.AI_LLM_API_KEY) > 8) else "",
+        "model": settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct",
+        "contextLimit": 131072,
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "systemPrompt": "你是数智化系统 AI 助手",
+    }
+
+
+async def _get_llm_version(db: AsyncSession) -> str:
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        model = (cached.get("config") or {}).get("model")
+        if model:
+            return str(model)
+    return settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct"
+
+
+async def get_active_llm_config(db: AsyncSession) -> dict:
+    """给 ai_client.py 用：返回完整配置（含明文 API Key），无 fallback"""
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        cfg = cached.get("config") or {}
+        if cfg.get("baseUrl") and cfg.get("model"):
+            return cfg
+    # fallback: 用环境变量
+    return {
+        "provider": "qwen",
+        "baseUrl": settings.AI_LLM_ENDPOINT if hasattr(settings, "AI_LLM_ENDPOINT") else "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": settings.AI_LLM_API_KEY if hasattr(settings, "AI_LLM_API_KEY") else "",
+        "model": settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct",
+        "contextLimit": 131072,
+        "temperature": 0.7,
+        "maxTokens": 2048,
+    }
+
+
+async def model_test_connection(base_url: str, api_key: str, model: str) -> dict:
+    """测试 LLM 连通性：发一个最小 /chat/completions 请求"""
+    import httpx
+    import time
+    if not base_url:
+        return {"ok": False, "message": "Base URL 不能为空"}
+    base_url = base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model or "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 8,
+        "temperature": 0,
+    }
+    t0 = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, json=payload, headers=headers)
+        latency = int((time.time() - t0) * 1000)
+        if r.status_code == 200:
+            return {"ok": True, "message": f"连接成功（HTTP 200）", "latencyMs": latency}
+        # 401/403 通常意味着 key 错；其他是服务/网络问题
+        try:
+            err = r.json()
+            err_msg = err.get("error", {}).get("message") or err.get("message") or str(err)[:200]
+        except Exception:
+            err_msg = r.text[:200]
+        return {
+            "ok": False,
+            "message": f"HTTP {r.status_code}：{err_msg}",
+            "latencyMs": latency,
+        }
+    except httpx.TimeoutException:
+        return {"ok": False, "message": f"连接超时（10s）", "latencyMs": int((time.time() - t0) * 1000)}
+    except Exception as e:
+        return {"ok": False, "message": f"请求失败：{type(e).__name__}: {str(e)[:200]}"}
+
 
 
 # ============================================================
