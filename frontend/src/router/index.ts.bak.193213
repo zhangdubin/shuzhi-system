@@ -77,7 +77,6 @@ const routes: RouteRecordRaw[] = [
       { path: 'ai/risk', name: 'AiRisk', component: () => import('@/views/ai/AiRisk.vue'), meta: { title: 'AI 风险扫描' } },
       { path: 'ai/tasks', name: 'AiTasks', component: () => import('@/views/ai/AiTasks.vue'), meta: { title: '任务中心' } },
       { path: 'ai/alerts', name: 'AiAlerts', component: () => import('@/views/ai/AiAlerts.vue'), meta: { title: '智能预警' } },
-      { path: 'ai/settings', name: 'AiSettings', component: () => import('@/views/ai/ModelSettings.vue'), meta: { title: 'AI 模型设置', requiresAdmin: true } },
       // 通知中心
       { path: 'notice', name: 'NoticeCenter', component: () => import('@/views/notice/NoticeCenter.vue'), meta: { title: '通知中心' } },
       // AI 分析面板（独立路由页，与抽屉共用 AiDrawer 组件）

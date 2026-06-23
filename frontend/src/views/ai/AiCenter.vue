@@ -13,143 +13,7 @@ import { ElMessage } from 'element-plus'
 const router = useRouter()
 const askText = ref('')
 
-// 模型设置抽屉
-const modelSettingsVisible = ref(false)
-const selectedModel = ref<any>(null)
-async function openModelSettings(model?: any) {
-  selectedModel.value = model || null
-  modelSettingsVisible.value = true
-  // 每次打开都从后端拉一次当前 LLM 配置，回填到表单
-  try {
-    const r: any = await http.post('/ai/model/list', {})
-    const llm = (r?.data?.data?.models || []).find((m: any) => m.type === 'llm')
-    if (llm?.config) {
-      const c = llm.config
-      llmConfig.value = {
-        provider: c.provider || '',
-        baseUrl: c.baseUrl || '',
-        apiKey: c.apiKey || '',
-        model: c.model || '',
-        contextLimit: c.contextLimit || 128000,
-        temperature: c.temperature ?? 0.7,
-        maxTokens: c.maxTokens || 2048,
-        streaming: !!c.streaming,
-      }
-    }
-  } catch (e) {
-    // 后端不可用时静默失败，用户可以从头填
-    console.warn('[openModelSettings] load llm config failed:', e)
-  }
-}
-async function saveModelSettings() {
-  if (!llmConfig.value.baseUrl || !llmConfig.value.model) {
-    ElMessage.warning('请先填写 Base URL 和模型名称')
-    return
-  }
-  llmLoading.value = true
-  try {
-    await http.post('/ai/model/config', {
-      modelId: 'llm',
-      config: {
-        provider: llmConfig.value.provider,
-        baseUrl: llmConfig.value.baseUrl,
-        apiKey: llmConfig.value.apiKey,
-        model: llmConfig.value.model,
-        contextLimit: llmConfig.value.contextLimit,
-        temperature: llmConfig.value.temperature,
-        maxTokens: llmConfig.value.maxTokens,
-        streaming: llmConfig.value.streaming,
-      },
-      enabled: true,
-    })
-    ElMessage.success('已保存 LLM 配置，立即生效')
-    modelSettingsVisible.value = false
-  } catch (err: any) {
-    ElMessage.error('保存失败：' + (err?.response?.data?.detail || err?.message || '未知错误'))
-  } finally {
-    llmLoading.value = false
-  }
-}
-
 // LLM 配置（v-model 用）
-const llmConfig = ref({
-  provider: '',
-  baseUrl: '',
-  apiKey: '',
-  model: '',
-  contextLimit: 128000,
-  temperature: 0.7,
-  maxTokens: 2048,
-  streaming: false,
-})
-const llmLoading = ref(false)
-const llmTestResult = ref(null)
-
-function onProviderChange(provider: string) {
-  const presets = {
-    openai:    { url: 'https://api.openai.com/v1',                        model: 'gpt-4o',           ctx: 128000 },
-    qwen:      { url: 'https://dashscope.aliyuncs.com/compatible-mode/v1', model: 'qwen-max',     ctx: 131072 },
-    deepseek:  { url: 'https://api.deepseek.com/v1',                      model: 'deepseek-chat',  ctx: 64000 },
-    minimax:   { url: 'https://api.minimaxi.com/v1',                      model: 'MiniMax-Text-01',ctx: 1000000 },
-    zhipu:     { url: 'https://open.bigmodel.cn/api/paas/v4',             model: 'glm-4-plus',     ctx: 128000 },
-    baidu:     { url: 'https://qianfan.baidubce.com/v2',                  model: 'ernie-4.0-8k',   ctx: 8192 },
-    tencent:   { url: 'https://hunyuan.cloud.tencent.com/v1',             model: 'hunyuan-pro',    ctx: 128000 },
-    moonshot:  { url: 'https://api.moonshot.cn/v1',                       model: 'moonshot-v1-128k',ctx: 128000 },
-    doubao:    { url: 'https://ark.cn-beijing.volces.com/api/v3',         model: 'doubao-pro-128k',ctx: 128000 },
-    stepfun:   { url: 'https://api.stepfun.com/v1',                       model: 'step-1-128k',    ctx: 128000 },
-    ollama:    { url: 'http://localhost:11434/v1',                        model: 'llama3.1',       ctx: 32000 },
-    custom:    { url: '',                                                  model: '',              ctx: 4096 },
-  }
-  const p = presets[provider]
-  if (p) {
-    llmConfig.value.provider = provider
-    llmConfig.value.baseUrl = p.url
-    llmConfig.value.model = p.model
-    llmConfig.value.contextLimit = p.ctx
-    ElMessage.success('已切换至 ' + provider + '，已自动填入默认地址和模型，请输入 API Key')
-  }
-}
-
-async function testLLMConnection() {
-  if (!llmConfig.value.baseUrl) {
-    ElMessage.warning('请先填写 Base URL')
-    return
-  }
-  llmLoading.value = true
-  llmTestResult.value = null
-  const t0 = Date.now()
-  let result: { ok: boolean; msg: string; latencyMs?: number } | null = null
-  try {
-    // axios 拦截器：code=0 时返回 data，code≠0 时 reject(new Error(message))
-    const r: any = await http.post('/ai/model/test', {
-      baseUrl: llmConfig.value.baseUrl,
-      apiKey: llmConfig.value.apiKey,
-      model: llmConfig.value.model,
-    })
-    // 走到这说明 code=0 成功
-    const latency = Date.now() - t0
-    result = { ok: true, msg: '连接成功，模型响应正常', latencyMs: (r && r.latencyMs) || latency }
-    ElMessage.success(`✅ ${result.msg} (${result.latencyMs}ms)`)
-  } catch (err: any) {
-    // 多种可能的错误源：axios 拦截器 reject、HTTP 4xx/5xx、网络失败
-    const msg =
-      err?.response?.data?.message ||
-      err?.response?.data?.detail ||
-      err?.message ||
-      '请求失败：未知错误'
-    result = { ok: false, msg, latencyMs: Date.now() - t0 }
-    // 用 message toast 同时显示（用户更容易看到完整错误）
-    ElMessage({
-      type: 'error',
-      message: '❌ ' + msg,
-      duration: 6000,
-      showClose: true,
-    })
-  } finally {
-    llmTestResult.value = result
-    llmLoading.value = false
-  }
-}
 
 // 6 大 AI 能力
 const caps = ref([
@@ -210,7 +74,6 @@ function askAI() {
 }
 function useQuickQ(q: string) { askText.value = q.replace(/^[^ ]+ /, ''); askAI() }
 function handleAction(name: string) { ElMessage.success(`已操作: ${name}`) }
-function configureModel(m: any) { openModelSettings(m) }
 function goCap(c: any) { router.push(c.link) }
 function goQuick(e: any) { router.push(e.link) }
 </script>
@@ -238,7 +101,7 @@ function goQuick(e: any) { router.push(e.link) }
         <p>让 AI 处理重复劳动，让你专注决策。本月 AI 已为你节省 <strong>87.5 小时</strong>，字段抽取准确率 <strong>94.2%</strong>，风险预警命中 <strong>23 次</strong>。</p>
         <div class="ai-hero-actions">
           <button class="btn-ghost">📖 使用指南</button>
-          <button class="btn-white" @click="openModelSettings()">⚙️ 模型设置</button>
+          <button class="btn-white" @click="router.push('/ai/settings')">⚙️ 模型设置</button>
         </div>
       </div>
     </div>
@@ -366,170 +229,6 @@ function goQuick(e: any) { router.push(e.link) }
       </div>
     </div>
   </div>
-
-  <!-- 模型设置抽屉 -->
-  <el-drawer
-    v-model="modelSettingsVisible"
-    :title="selectedModel ? `⚙ 配置 · ${selectedModel.name}` : '⚙ 全局模型设置'"
-    direction="rtl"
-    size="440px"
-  >
-    <template v-if="selectedModel">
-      <!-- 单个模型配置 -->
-      <div class="ms-section">
-        <div class="ms-model-info">
-          <span :class="['ms-status-dot', selectedModel.status]"></span>
-          <span class="ms-model-name">{{ selectedModel.name }}</span>
-          <span :class="['ms-status-tag', selectedModel.status]">
-            {{ selectedModel.status === 'normal' ? '正常' : selectedModel.status === 'degraded' ? '性能降级' : '已停用' }}
-          </span>
-        </div>
-      </div>
-
-      <div class="ms-section">
-        <div class="ms-section-title">基础参数</div>
-        <div class="ms-row">
-          <label>启用状态</label>
-          <el-switch />
-        </div>
-        <div class="ms-row">
-          <label>超时时间</label>
-          <el-input-number :min="1" :max="60" :step="1" /> <span class="ms-unit">秒</span>
-        </div>
-        <div class="ms-row">
-          <label>最大重试</label>
-          <el-input-number :min="0" :max="5" :step="1" /> <span class="ms-unit">次</span>
-        </div>
-      </div>
-
-      <div class="ms-section">
-        <div class="ms-section-title">模型参数</div>
-        <div class="ms-row">
-          <label>Temperature</label>
-          <el-input-number v-model="llmConfig.temperature" :min="0" :max="2" :step="0.1" :precision="1" /> <span class="ms-unit">（创造性）</span>
-        </div>
-        <div class="ms-row">
-          <label>Max Tokens</label>
-          <el-input-number v-model="llmConfig.maxTokens" :min="256" :max="8192" :step="256" /> <span class="ms-unit">（输出上限）</span>
-        </div>
-        <div class="ms-row">
-          <label>Fallback 模型</label>
-          <el-select placeholder="无降级" style="width:160px">
-            <el-option label="无降级" value="" />
-            <el-option label="qwen2.5-7b" value="qwen2.5-7b" />
-            <el-option label="gpt-4o-mini" value="gpt-4o-mini" />
-          </el-select>
-        </div>
-      </div>
-
-      <div class="ms-section">
-        <div class="ms-section-title">通用大模型对接</div>
-        <div class="ms-row">
-          <label>Provider</label>
-          <el-select v-model="llmConfig.provider" placeholder="选择服务商" style="width:200px" @change="onProviderChange">
-            <el-option label="OpenAI 兼容（含 GPT-4o/o1/o3）" value="openai" />
-            <el-option label="阿里通义 Qwen (qwen-max / qwen-plus)" value="qwen" />
-            <el-option label="DeepSeek (deepseek-chat / reasoner)" value="deepseek" />
-            <el-option label="MiniMax (MiniMax-Text-01)" value="minimax" />
-            <el-option label="智谱 GLM (glm-4-plus)" value="zhipu" />
-            <el-option label="百度 ERNIE (ernie-4.0-8k)" value="baidu" />
-            <el-option label="腾讯混元 (hunyuan-pro)" value="tencent" />
-            <el-option label="月之暗面 Moonshot (128k)" value="moonshot" />
-            <el-option label="字节豆包 (doubao-pro-128k)" value="doubao" />
-            <el-option label="阶跃星辰 Step (step-1-128k)" value="stepfun" />
-            <el-option label="Ollama 本地 (llama3.1 等)" value="ollama" />
-            <el-option label="自定义 OpenAI 兼容端点" value="custom" />
-          </el-select>
-        </div>
-        <div class="ms-row ms-row-col">
-          <label>Base URL</label>
-          <el-input v-model="llmConfig.baseUrl" placeholder="https://api.openai.com/v1" style="flex:1" clearable />
-        </div>
-        <div class="ms-row ms-row-col">
-          <label>API Key</label>
-          <el-input v-model="llmConfig.apiKey" type="password" placeholder="sk-..." show-password style="flex:1" clearable />
-        </div>
-        <div class="ms-row ms-row-col">
-          <label>模型名称</label>
-          <el-input v-model="llmConfig.model" placeholder="gpt-4o / qwen-max / deepseek-chat" style="flex:1" clearable />
-        </div>
-        <div class="ms-row">
-          <label>上下文上限</label>
-          <el-input-number v-model="llmConfig.contextLimit" :min="1024" :max="2000000" :step="1024" /> <span class="ms-unit">Tokens</span>
-        </div>
-        <div class="ms-row">
-          <label>Streaming</label>
-          <el-switch v-model="llmConfig.streaming" /> <span class="ms-unit">启用流式输出（SSE）</span>
-        </div>
-        <div class="ms-test-row" style="flex-direction: column; align-items: stretch; gap: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <el-button size="small" :loading="llmLoading" @click="testLLMConnection">🔗 测试连接</el-button>
-            <span v-if="llmTestResult" class="ms-test-hint" :style="{ color: llmTestResult.ok ? '#10B981' : '#EF4444', fontWeight: 600 }">
-              {{ llmTestResult.ok ? '✅' : '❌' }}<span v-if="llmTestResult.latencyMs"> {{ llmTestResult.latencyMs }}ms ·</span> {{ llmTestResult.msg }}
-            </span>
-            <span v-else class="ms-test-hint">点击测试验证 API Key 和网络连通性</span>
-          </div>
-        </div>
-      </div>
-
-      <div class="ms-section">
-        <div class="ms-section-title">告警阈值</div>
-        <div class="ms-row">
-          <label>错误率告警</label>
-          <el-input-number :min="1" :max="50" :step="1" /> <span class="ms-unit">%（超限提醒）</span>
-        </div>
-        <div class="ms-row">
-          <label>延迟告警</label>
-          <el-input-number :min="1" :max="30" :step="1" /> <span class="ms-unit">秒（超限提醒）</span>
-        </div>
-      </div>
-    </template>
-
-    <template v-else>
-      <!-- 全局设置 -->
-      <div class="ms-section">
-        <div class="ms-section-title">全局策略</div>
-        <div class="ms-row">
-          <label>默认降级策略</label>
-          <el-select placeholder="选择策略" style="width:180px">
-            <el-option label="自动切换备用模型" value="auto" />
-            <el-option label="返回错误" value="error" />
-            <el-option label="使用缓存结果" value="cache" />
-          </el-select>
-        </div>
-        <div class="ms-row">
-          <label>全局超时</label>
-          <el-input-number :min="5" :max="120" :step="5" :model-value="30" /> <span class="ms-unit">秒</span>
-        </div>
-        <div class="ms-row">
-          <label>日志级别</label>
-          <el-select placeholder="日志级别" style="width:180px">
-            <el-option label="debug" value="debug" />
-            <el-option label="info" value="info" />
-            <el-option label="warn" value="warn" />
-            <el-option label="error" value="error" />
-          </el-select>
-        </div>
-      </div>
-
-      <div class="ms-section">
-        <div class="ms-section-title">全部模型</div>
-        <div v-for="(m, i) in models" :key="i" class="ms-model-row">
-          <span :class="['ms-status-dot', m.status]"></span>
-          <div class="ms-model-info">
-            <div class="ms-model-name">{{ m.name }}</div>
-            <div class="ms-model-meta">{{ m.meta }}</div>
-          </div>
-          <el-button size="small" @click="openModelSettings(m)">配置</el-button>
-        </div>
-      </div>
-    </template>
-
-    <div class="ms-footer">
-      <el-button @click="modelSettingsVisible = false">取消</el-button>
-      <el-button type="primary" @click="saveModelSettings">保存配置</el-button>
-    </div>
-  </el-drawer>
 </template>
 
 <style lang="scss" scoped>
@@ -695,7 +394,6 @@ $shadow-ai: 0 4px 16px rgba(124, 58, 237, 0.15);
 .ai-quick { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .ai-quick a { padding: 10px 12px; background: $color-ai-bg; border: 1px solid $color-ai-border; border-radius: $radius-md; font-size: 12.5px; color: $color-text-primary; display: flex; align-items: center; gap: 8px; cursor: pointer; transition: all 0.2s; .icon { width: 22px; height: 22px; background: #fff; border-radius: $radius-sm; display: grid; place-items: center; font-size: 12px; color: $color-ai; } &:hover { background: $gradient-ai; color: #fff; border-color: transparent; } &:hover .icon { background: rgba(255, 255, 255, 0.2); color: #fff; } }
 
-// 模型设置抽屉
 .ms-section { margin-bottom: 24px; padding-bottom: 20px; border-bottom: 1px solid $color-border; &:last-of-type { border-bottom: none; } }
 .ms-section-title { font-size: 12px; font-weight: 600; color: $color-text-secondary; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 14px; }
 .ms-model-info { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
