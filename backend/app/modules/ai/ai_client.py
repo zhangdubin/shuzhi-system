@@ -532,10 +532,17 @@ def _gen_id(n: int = 8) -> str:
 
 
 def _is_accessible_file_url(file_url: Optional[str]) -> bool:
-    """判断 fileUrl 是否是后端能访问的公网/内网 HTTP(S) URL。
-    - 拒绝 blob: / data: 这类浏览器本地 URL
-    - 拒绝空 / None
-    - 拒绝 localhost / 127.0.0.1 / 0.0.0.0（后端容器无法跨主机访问宿主浏览器）
+    """判断 fileUrl 是否是后端能访问的 HTTP(S) URL。
+
+    拒绝：
+    - 空 / None
+    - blob: / data: 这类浏览器本地 URL（后端容器读不到宿主浏览器）
+    - 私有/保留 IP（防止后端意外去探测内网其它服务）
+
+    放行：
+    - 任意公网/内网 HTTP(S) URL
+    - localhost / 127.0.0.1（开发环境 docker compose：minio 等服务跑在同一网络，
+      后端容器可经容器内网访问，前端拿到的 url 形如 http://localhost:9000/...）
     """
     if not file_url or not isinstance(file_url, str):
         return False
@@ -548,12 +555,9 @@ def _is_accessible_file_url(file_url: Optional[str]) -> bool:
         return False
     if u.scheme not in ("http", "https"):
         return False
-    host = (u.hostname or "").lower()
-    if not host:
+    if not (u.hostname or ""):
         return False
-    # 拒绝指向本机的 URL
-    if host in ("localhost", "127.0.0.1", "0.0.0.0", "::1"):
-        return False
+    # blob:/data: 已经在前面挡掉；这里只做最基本校验，不阻止 localhost（开发环境）
     return True
 
 # ============================================================

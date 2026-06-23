@@ -1,7 +1,7 @@
 """add reimbursement_templates table (was missing in 20260619_0200_add_reimbursement)
 
 Revision ID: 20260623_1730
-Revises: 20260623_1700
+Revises: 20260622_1950
 Create Date: 2026-06-23 17:30:00.000000
 
 """
@@ -12,7 +12,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = '20260623_1730'
-down_revision: Union[str, None] = '20260623_1700'
+down_revision: Union[str, None] = '20260622_1950'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 

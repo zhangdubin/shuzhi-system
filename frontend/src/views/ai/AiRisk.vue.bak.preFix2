@@ -50,8 +50,6 @@ type RiskItem = {
 const risks = ref<RiskItem[]>([])
 const loading = ref(false)
 const scanning = ref(false)
-const scanProgress = ref({ total: 0, done: 0, success: 0, failed: 0 })
-const scanCurrent = ref<string>('')
 const activeType = ref<'all' | 'contract' | 'project' | 'expense' | 'voucher'>('all')
 const selectedRisk = ref<RiskItem | null>(null)
 const selectedWarnings = ref<Warning[]>([])
@@ -135,90 +133,64 @@ async function fetchAllObjectList() {
   return tasks
 }
 
-// 单个对象 → RiskItem 映射（提取出来便于逐个处理）
-function toRiskItem(o: any, r: any): RiskItem {
-  const dims = r.dimensions
-    ? Object.entries(r.dimensions).map(([name, v]: any) => ({
-        name: dimMeta[name]?.label || name,
-        score: v.score,
-        weight: v.weight,
-      }))
-    : []
-  return {
-    objectType: o.type,
-    objectId: o.id,
-    objectCode: o.code,
-    objectName: o.name,
-    amount: o.amount,
-    overallScore: r.overallScore,
-    riskLevel: r.riskLevel,
-    dimensions: dims,
-    warnings: (r.warnings || []).map((w: any) => ({ ...w, objectType: o.type, objectId: o.id })),
-    scannedAt: r.scanAt || new Date().toISOString(),
-  }
-}
-
-// 受控并发：n 个一起扫，谁先返回谁先入列；边扫边显示
-async function runWithProgress(objs: Array<{ type: RiskItem['objectType']; id: number; code: string; name: string; amount?: number }>, concurrency = 3) {
-  const total = objs.length
-  scanProgress.value = { total, done: 0, success: 0, failed: 0 }
-  const items: RiskItem[] = []
-  let cursor = 0
-
-  async function worker() {
-    while (cursor < total) {
-      const idx = cursor++
-      const o = objs[idx]
-      scanCurrent.value = `${o.code} ${o.name}`
-      try {
-        const r: any = await aiApi.riskScan({ objectType: o.type as any, objectId: o.id, deepScan: false })
-        const item = toRiskItem(o, r)
-        items.push(item)
-        scanProgress.value.success += 1
-        // 流式：每扫到一条立刻 push + 排序 + 选中第一条
-        const next = [...risks.value, item].sort((a, b) => {
-          const order = { high: 0, medium: 1, low: 2 }
-          if (order[a.riskLevel] !== order[b.riskLevel]) return order[a.riskLevel] - order[b.riskLevel]
-          return a.overallScore - b.overallScore
-        })
-        risks.value = next
-        if (!selectedRisk.value) selectRisk(next[0])
-      } catch (e) {
-        scanProgress.value.failed += 1
-        console.warn(`扫描 ${o.code} 失败：`, e)
-      } finally {
-        scanProgress.value.done += 1
-        scanCurrent.value = scanProgress.value.done < total ? `准备扫描下一个…` : ''
-      }
-    }
-  }
-
-  await Promise.all(Array.from({ length: Math.min(concurrency, total) }, () => worker()))
-  return items
-}
-
 // 批量扫描
 async function scanAll(force = false) {
   if (scanning.value) return
   scanning.value = true
   if (force) {
     risks.value = []
-    selectedRisk.value = null
   }
   try {
     const objs = await fetchAllObjectList()
     if (!objs.length) {
       ElMessage.info('没有可扫描的业务对象')
+      scanning.value = false
       return
     }
-    await runWithProgress(objs, 3)
+    ElMessage.info(`开始扫描 ${objs.length} 个对象…`)
+    // 并发扫描
+    const results = await Promise.allSettled(
+      objs.map(async (o) => {
+        const r = await aiApi.riskScan({ objectType: o.type as any, objectId: o.id, deepScan: false })
+        return { o, r: r as any }
+      })
+    )
+    const items: RiskItem[] = []
+    for (const p of results) {
+      if (p.status !== 'fulfilled') continue
+      const { o, r } = p.value
+      const dims = r.dimensions
+        ? Object.entries(r.dimensions).map(([name, v]: any) => ({
+            name: dimMeta[name]?.label || name,
+            score: v.score,
+            weight: v.weight,
+          }))
+        : []
+      items.push({
+        objectType: o.type,
+        objectId: o.id,
+        objectCode: o.code,
+        objectName: o.name,
+        amount: o.amount,
+        overallScore: r.overallScore,
+        riskLevel: r.riskLevel,
+        dimensions: dims,
+        warnings: (r.warnings || []).map((w: any) => ({ ...w, objectType: o.type, objectId: o.id })),
+        scannedAt: r.scanAt || new Date().toISOString(),
+      })
+    }
+    // 按风险等级 + score 排序
+    items.sort((a, b) => {
+      const order = { high: 0, medium: 1, low: 2 }
+      if (order[a.riskLevel] !== order[b.riskLevel]) return order[a.riskLevel] - order[b.riskLevel]
+      return a.overallScore - b.overallScore
+    })
+    risks.value = items
+    if (!selectedRisk.value && items.length) selectRisk(items[0])
   } catch (e: any) {
     ElMessage.error('扫描失败：' + (e?.message || '未知错误'))
   } finally {
     scanning.value = false
-    setTimeout(() => {
-      scanCurrent.value = ''
-    }, 1500)
   }
 }
 
@@ -250,6 +222,7 @@ async function dismissWarning(w: Warning, action: 'dismiss' | 'accept' | 'fix' =
 
 async function fullScan() {
   await scanAll(true)
+  ElMessage.success('全量扫描完成')
 }
 
 onMounted(() => {
@@ -274,26 +247,6 @@ onMounted(() => {
       <div class="page-actions">
         <button class="btn btn-ghost btn-sm" @click="router.push('/ai/center')">← 返回</button>
         <button class="btn btn-primary btn-sm" :disabled="scanning" @click="fullScan">🔍 全量扫描</button>
-      </div>
-    </div>
-
-    <!-- 扫描进度条 -->
-    <div v-if="scanning || scanProgress.done > 0" class="scan-progress" :class="{ done: !scanning }">
-      <div class="sp-head">
-        <span class="sp-icon" :class="{ spinning: scanning }">{{ scanning ? '⚡' : '✓' }}</span>
-        <span class="sp-text">
-          <template v-if="scanning">
-            正在扫描 · <b>{{ scanProgress.done }}</b> / {{ scanProgress.total }}
-            <span v-if="scanCurrent" class="sp-cur">· {{ scanCurrent }}</span>
-          </template>
-          <template v-else>
-            扫描完成 · 共 {{ scanProgress.total }} 个对象（成功 {{ scanProgress.success }}，失败 {{ scanProgress.failed }}）
-          </template>
-        </span>
-        <span class="sp-pct">{{ scanProgress.total ? Math.round(scanProgress.done / scanProgress.total * 100) : 0 }}%</span>
-      </div>
-      <div class="sp-bar">
-        <div class="sp-fill" :style="{ width: (scanProgress.total ? scanProgress.done / scanProgress.total * 100 : 0) + '%' }"></div>
       </div>
     </div>
 
@@ -444,95 +397,7 @@ $color-ai-border: rgba(124, 58, 237, 0.25);
 .page-actions { display: flex; gap: 8px; }
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 0 14px; font-size: 13px; font-weight: 500; border-radius: $radius-md; transition: all 0.15s; border: 1px solid transparent; cursor: pointer; font-family: inherit; }
 .btn-primary { background: $gradient-ai; color: #fff; &:hover { box-shadow: 0 4px 12px rgba(124, 58, 237, 0.4); } &:disabled { opacity: 0.6; cursor: not-allowed; } }
-
 .btn-ghost { background: transparent; color: $color-text-secondary; &:hover { background: $color-ai-bg; color: $color-ai; } }
-
-// ============ 全量扫描进度条 ============
-.scan-progress {
-  background: #fff;
-  border: 1px solid $color-ai-border;
-  border-radius: $radius-md;
-  padding: 12px 16px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(124, 58, 237, 0.06);
-  transition: all 0.3s;
-  &.done {
-    background: var(--color-success-bg, rgba(16, 185, 129, 0.04));
-    border-color: rgba(16, 185, 129, 0.25);
-  }
-}
-.sp-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: $color-text-primary;
-  margin-bottom: 8px;
-}
-.sp-icon {
-  font-size: 16px;
-  width: 24px;
-  height: 24px;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: $color-ai-bg;
-  color: $color-ai;
-  flex-shrink: 0;
-  &.spinning {
-    animation: sp-spin 1s linear infinite;
-  }
-}
-.done .sp-icon {
-  background: var(--color-success-bg, rgba(16, 185, 129, 0.12));
-  color: var(--color-success, #10B981);
-  animation: none;
-}
-@keyframes sp-spin {
-  from { transform: rotate(0); }
-  to { transform: rotate(360deg); }
-}
-.sp-text {
-  flex: 1;
-  min-width: 0;
-  b { color: $color-ai; font-family: var(--font-family-mono, monospace); font-size: 14px; }
-  .sp-cur {
-    color: $color-text-tertiary;
-    font-size: 12.5px;
-    margin-left: 4px;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    display: inline-block;
-    max-width: 60%;
-    vertical-align: bottom;
-  }
-}
-.sp-pct {
-  font-family: var(--font-family-mono, monospace);
-  font-weight: 700;
-  color: $color-ai;
-  font-size: 14px;
-  flex-shrink: 0;
-}
-.done .sp-pct { color: var(--color-success, #10B981); }
-.sp-bar {
-  height: 6px;
-  background: #F1F5F9;
-  border-radius: var(--radius-full, 9999px);
-  overflow: hidden;
-}
-.sp-fill {
-  height: 100%;
-  background: $gradient-ai;
-  border-radius: var(--radius-full, 9999px);
-  transition: width 0.3s ease;
-  box-shadow: 0 0 8px rgba(124, 58, 237, 0.4);
-}
-.done .sp-fill {
-  background: linear-gradient(135deg, #10B981, #059669);
-  box-shadow: none;
-}
 .btn-sm { height: 32px; padding: 0 10px; font-size: 12px; }
 
 // KPI

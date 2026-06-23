@@ -29,8 +29,7 @@ const route = useRoute()
 const activeTab = ref<'basic' | 'milestones' | 'contracts' | 'team' | 'ai'>('basic')
 const loading = ref(false)
 
-// 当前项目（接真后端，找不到时落回 mock 兜底，不弹错）
-const active = reactive({
+const mock = reactive({
   id: 22,
   code: 'PRJ-2026-022',
   name: '万象科技 SaaS 平台升级',
@@ -47,62 +46,13 @@ const active = reactive({
   description: '为万象科技部署 SaaS 平台标准版，包含发票识别、模板管理、报表分析等核心模块。30 个用户账号，需完成系统集成、数据迁移、培训上线。',
 })
 
-// 状态归一化
-const projectStatusMap: Record<string, { label: string; color: string }> = {
-  in_progress: { label: '进行中', color: 'primary' },
-  planning:    { label: '规划中', color: 'info' },
-  finishing:   { label: '即将完成', color: 'warning' },
-  completed:   { label: '已完成', color: 'success' },
-  done:        { label: '已完成', color: 'success' },
-  paused:      { label: '已暂停', color: 'info' },
-  closed:      { label: '已关闭', color: 'gray' },
-}
-function normalizeProjectStatus(s: string): { label: string; color: string } {
-  return projectStatusMap[(s || '').toLowerCase()] || { label: s || '未知', color: 'gray' }
-}
-function computePeriod(start: string, end: string): string {
-  if (!start || !end) return '-'
-  const s = new Date(start), e = new Date(end)
-  if (isNaN(s.getTime()) || isNaN(e.getTime())) return '-'
-  const months = Math.max(1, Math.round((e.getTime() - s.getTime()) / (1000 * 60 * 60 * 24 * 30)))
-  return `约 ${months} 个月`
-}
-function applyProjectData(d: any) {
-  if (!d) return
-  const st = normalizeProjectStatus(d.status)
-  active.id = d.id || d.projectId || active.id
-  active.code = d.code || active.code
-  active.name = d.name || active.name
-  active.status = st.label
-  active.statusColor = st.color
-  active.progress = Number(d.progress ?? d.completionRate ?? active.progress) || 0
-  active.client = d.clientName || d.client || active.client
-  active.type = d.type || active.type
-  active.manager = d.managerName || d.manager || active.manager
-  active.startDate = d.startDate || active.startDate
-  active.endDate = d.endDate || active.endDate
-  // budget 后端单位：分
-  const budgetYuan = (Number(d.budget) || 0) / 100
-  if (budgetYuan > 0) active.budget = budgetYuan.toLocaleString('zh-CN', { maximumFractionDigits: 0 })
-  active.period = computePeriod(active.startDate, active.endDate)
-  if (d.description) active.description = d.description
-  if (Array.isArray(d.milestones) && d.milestones.length) {
-    milestones.value = d.milestones.map((m: any) => ({
-      seq: m.seq || m.id,
-      name: m.name,
-      date: m.plannedEnd || m.completedAt || m.date || '-',
-      status: m.status || 'todo',
-    }))
-  }
-}
-
-// 4 关键统计（跟随 active 实时算）
-const stats = computed(() => [
-  { v: String(active.progress),       l: '整体进度', u: '%' },
-  { v: '¥ ' + (active.budget || '0'), l: '预算总额', u: '' },
-  { v: String(milestones.value.length), l: '里程碑',   u: '个' },
-  { v: String(invoices.value.length),  l: '关联发票', u: '张' },
-])
+// 4 关键统计（design 真实数据）
+const stats = [
+  { v: '68',   l: '整体进度',   u: '%' },
+  { v: '¥ 286,000', l: '预算总额', u: '' },
+  { v: '4',    l: '里程碑',     u: '个' },
+  { v: '12',   l: '关联发票',   u: '张' },
+]
 
 // 5 里程碑（design 真实数据：done/doing/todo）
 const milestones = ref([
@@ -153,13 +103,9 @@ function downloadFile(name: string) { ElMessage.info(`下载：${name}`) }
 
 onMounted(() => {
   loading.value = true
-  const id = Number(route.params.id) || active.id
-  projectApi.detail(id)
-    .then((res: any) => {
-      const d = (res && (res.data || res.id)) ? (res.data || res) : null
-      if (d) applyProjectData(d)
-    })
-    .catch(() => { /* 静默用 mock 兜底，不弹错 */ })
+  projectApi.detail(Number(route.params.id) || mock.id)
+    .then((res: any) => { /* 用 mock */ })
+    .catch(() => { /* 用 mock */ })
     .finally(() => { loading.value = false })
 })
 
@@ -184,18 +130,18 @@ function onAiAction(cmd: string) {
     <div class="project-hero">
       <div class="ph-top">
         <div class="ph-id">
-          <span class="code">{{ active.code }}</span>
-          <span :class="['tag', `tag-${active.statusColor}`]">{{ active.status }}</span>
+          <span class="code">{{ mock.code }}</span>
+          <span :class="['tag', `tag-${mock.statusColor}`]">{{ mock.status }}</span>
         </div>
-        <h1 class="ph-title">{{ active.name }}</h1>
+        <h1 class="ph-title">{{ mock.name }}</h1>
         <div class="ph-meta">
-          <span>🏢 {{ active.client }}</span>
+          <span>🏢 {{ mock.client }}</span>
           <span class="sep">·</span>
-          <span>📦 {{ active.type }}</span>
+          <span>📦 {{ mock.type }}</span>
           <span class="sep">·</span>
-          <span>👤 {{ active.manager }}</span>
+          <span>👤 {{ mock.manager }}</span>
           <span class="sep">·</span>
-          <span>📅 {{ active.startDate }} ~ {{ active.endDate }}</span>
+          <span>📅 {{ mock.startDate }} ~ {{ mock.endDate }}</span>
         </div>
       </div>
       <div class="ph-stats">
@@ -207,10 +153,10 @@ function onAiAction(cmd: string) {
       <div class="ph-progress">
         <div class="ph-progress-label">
           <span>整体进度</span>
-          <span class="pct">{{ active.progress }}%</span>
+          <span class="pct">{{ mock.progress }}%</span>
         </div>
         <div class="ph-bar">
-          <div class="ph-fill" :style="{ width: active.progress + '%' }"></div>
+          <div class="ph-fill" :style="{ width: mock.progress + '%' }"></div>
         </div>
       </div>
       <div class="ph-actions">
@@ -251,17 +197,17 @@ function onAiAction(cmd: string) {
         </div>
         <div class="detail-section-body">
           <div class="info-grid">
-            <div class="info-row"><span class="l">项目编号</span><span class="v mono">{{ active.code }}</span></div>
-            <div class="info-row"><span class="l">项目类型</span><span class="v">{{ active.type }}</span></div>
-            <div class="info-row"><span class="l">客户名称</span><span class="v">{{ active.client }}</span></div>
-            <div class="info-row"><span class="l">项目经理</span><span class="v">{{ active.manager }}</span></div>
-            <div class="info-row"><span class="l">开始日期</span><span class="v">{{ active.startDate }}</span></div>
-            <div class="info-row"><span class="l">截止日期</span><span class="v">{{ active.endDate }}</span></div>
-            <div class="info-row"><span class="l">预算总额</span><span class="v amount">¥ {{ active.budget }}</span></div>
-            <div class="info-row"><span class="l">工期</span><span class="v">{{ active.period }}</span></div>
+            <div class="info-row"><span class="l">项目编号</span><span class="v mono">{{ mock.code }}</span></div>
+            <div class="info-row"><span class="l">项目类型</span><span class="v">{{ mock.type }}</span></div>
+            <div class="info-row"><span class="l">客户名称</span><span class="v">{{ mock.client }}</span></div>
+            <div class="info-row"><span class="l">项目经理</span><span class="v">{{ mock.manager }}</span></div>
+            <div class="info-row"><span class="l">开始日期</span><span class="v">{{ mock.startDate }}</span></div>
+            <div class="info-row"><span class="l">截止日期</span><span class="v">{{ mock.endDate }}</span></div>
+            <div class="info-row"><span class="l">预算总额</span><span class="v amount">¥ {{ mock.budget }}</span></div>
+            <div class="info-row"><span class="l">工期</span><span class="v">{{ mock.period }}</span></div>
             <div class="info-row full">
               <span class="l">项目描述</span>
-              <div class="notes-block">{{ active.description }}</div>
+              <div class="notes-block">{{ mock.description }}</div>
             </div>
           </div>
         </div>
@@ -362,7 +308,7 @@ function onAiAction(cmd: string) {
     <div v-show="activeTab === 'ai'" class="detail-section fade-up">
       <AiRiskScanPanel
         object-type="project"
-        :object-id="active.id"
+        :object-id="mock.id"
         @loaded="onAiLoaded"
         @error="onAiError"
         @accept-suggestion="onAiAccept"

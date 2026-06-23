@@ -18,6 +18,9 @@ const router = useRouter()
 const fileInput = ref<HTMLInputElement>()
 const fileName = ref('')
 const previewUrl = ref<string>('')
+const fileExt = ref<string>('')
+const uploadedFileId = ref<string>('')
+const uploadedFileUrl = ref<string>('')
 const submitting = ref(false)
 const progress = ref(0)
 const status = ref('idle')
@@ -62,22 +65,61 @@ function handleFile(e: Event) {
   const f = (e.target as HTMLInputElement).files?.[0]
   if (!f) return
   fileName.value = f.name
+  // 后缀判断
+  const ext = (f.name.split('.').pop() || '').toLowerCase()
+  fileExt.value = ext
+  // 释放旧的
+  if (previewUrl.value && previewUrl.value.startsWith('blob:')) URL.revokeObjectURL(previewUrl.value)
   previewUrl.value = URL.createObjectURL(f)
+  // 重置上传/抽取状态
+  uploadedFileId.value = ''
+  uploadedFileUrl.value = ''
+  result.value = null
+  fields.value = []
+  status.value = 'idle'
+  progress.value = 0
+  summary.value = { total: 0, high: 0, mid: 0, low: 0, cost: 0, model: '', elapsed: '' }
+}
+
+const isImage = computed(() => /^(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileExt.value))
+const isPdf = computed(() => fileExt.value === 'pdf')
+
+async function uploadToServer(file: File): Promise<{ fileId: string; url: string }> {
+  const fd = new FormData()
+  fd.append('file', file)
+  const { http } = await import('@/utils/request')
+  const data = await http.post('/common/upload', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  } as any)
+  return { fileId: data.fileId, url: data.url }
 }
 
 async function handleExtract() {
   if (!fileName.value) return ElMessage.warning('请先选择文件')
+  const inputEl = fileInput.value
+  const file = inputEl?.files?.[0]
+  if (!file) return ElMessage.warning('请重新选择文件')
+
   submitting.value = true
   status.value = 'uploading'
-  progress.value = 0
+  progress.value = 5
   result.value = null
   fields.value = []
   summary.value = { total: 0, high: 0, mid: 0, low: 0, cost: 0, model: '', elapsed: '' }
 
   try {
+    // 1) 先把文件传到后端拿到 fileId/url（blob: URL 后端读不到）
+    progress.value = 15
+    const up = await uploadToServer(file)
+    uploadedFileId.value = up.fileId
+    uploadedFileUrl.value = up.url
+    progress.value = 40
+    status.value = 'extracting'
+
+    // 2) 调 AI 抽取
     const r = await aiApi.extractInvoice({
-      fileId: 'demo-' + Date.now(),
-      fileUrl: previewUrl.value || `https://placeholder/${fileName.value}`,
+      fileId: up.fileId,
+      fileUrl: up.url,
       type: 'invoice',
     })
     taskId.value = r.taskId || r.meta?.traceId || ''
@@ -98,14 +140,21 @@ async function handleExtract() {
         amount: '金额（不含税）', taxAmount: '税额', totalAmount: '价税合计（小写）', totalAmountCn: '价税合计（大写）',
         taxRate: '税率', remark: '备注',
       }
+      // 后端 confidence 是 0-100 百分制，内部统一转 0-1 小数
       for (const [key, info] of Object.entries(r.fields)) {
+        const rawConf = Number(info.confidence ?? 0)
+        const conf = rawConf > 1 ? rawConf / 100 : rawConf
         ext.push({
           key,
           label: labelMap[key] || key,
           value: String(info.value),
-          confidence: info.confidence,
+          confidence: conf,
           group: groupMap[key] || '其他',
           required: ['invoiceCode', 'invoiceNo', 'issueDate', 'buyerName', 'totalAmountCn'].includes(key),
+          type: key === 'issueDate' ? 'date' : key === 'invoiceType' ? 'select' : key === 'taxRate' ? 'select' : 'text',
+          mono: ['invoiceNo', 'buyerTaxId', 'amount', 'taxAmount', 'totalAmount'].includes(key),
+          options: key === 'invoiceType' ? ['增值税电子专用发票', '增值税专用发票', '增值税普通发票'] : key === 'taxRate' ? ['3%', '6%', '9%', '13%'] : undefined,
+          highlight: key === 'totalAmountCn' || key === 'totalAmount' ? 'success' : key === 'taxRate' && conf < 0.9 ? 'warning' : undefined,
         })
       }
       result.value = r
@@ -115,13 +164,26 @@ async function handleExtract() {
         high: ext.filter(f => f.confidence >= 0.9).length,
         mid: ext.filter(f => f.confidence >= 0.7 && f.confidence < 0.9).length,
         low: ext.filter(f => f.confidence < 0.7).length,
-        cost: r.meta.costCents,
-        model: r.meta.model,
-        elapsed: `${r.meta.durationMs}ms`,
+        cost: (r.meta.costCents || 0) / 100,
+        model: r.meta.model || '',
+        elapsed: `${r.meta.durationMs || 0}ms`,
       }
       ElMessage.success(`AI 抽取完成 · 耗时 ${r.meta.durationMs}ms`)
     } else {
-      fillDemoFields()
+      // 后端没返回 fields（一般是 fileUrl 不可达 / OCR 失败 / 文件非票据）
+      status.value = 'done'
+      // 把后端原始返回展开，方便排查
+      fields.value = [{
+        key: 'debug',
+        label: '后端返回（调试）',
+        value: JSON.stringify(r, null, 2),
+        confidence: 0,
+        group: '调试',
+        type: 'text',
+      }] as any
+      result.value = r
+      console.warn('[AiExtract] 后端未返回 fields，原始响应:', r)
+      ElMessage.warning('AI 未识别到字段，请检查文件是否清晰或选择其他文件')
     }
   } catch (e: any) {
     console.error(e)
@@ -254,7 +316,8 @@ function fieldsOfGroup(group: string) {
             </div>
           </div>
           <div v-else class="source-preview">
-            <img v-if="previewUrl.startsWith('blob:') || previewUrl.startsWith('data:') || previewUrl.startsWith('http')" :src="previewUrl" alt="原始材料" />
+            <img v-if="isImage && previewUrl" :src="previewUrl" :alt="fileName" />
+            <iframe v-else-if="isPdf && previewUrl" :src="previewUrl" :title="fileName" frameborder="0" />
             <div v-else class="fake-invoice">
               <div class="fi-title">增值税电子专用发票</div>
               <div class="fi-row"><span class="fi-label">发票代码：</span><span class="fi-value">011002000000</span></div>
@@ -405,6 +468,16 @@ function fieldsOfGroup(group: string) {
               <div class="field-input">
                 <textarea class="form-textarea" rows="2" readonly>{{ fieldsOfGroup('其他')[0].value }}</textarea>
                 <span class="ai-tooltip">AI <span class="ai-conf-mini">{{ confLabel(fieldsOfGroup('其他')[0].confidence) }}</span></span>
+              </div>
+            </div>
+
+            <!-- 调试：后端原始响应（仅当 fields 为空时显示） -->
+            <div v-if="fieldsOfGroup('调试').length" class="field-row ai-filled mt8" style="border: 1px dashed #F59E0B; background: #FFFBEB;">
+              <div class="field-label">
+                <span class="label-left">⚠️ AI 未识别到字段（调试）<span class="ai-badge" style="background:#F59E0B">DEBUG</span></span>
+              </div>
+              <div class="field-input">
+                <textarea class="form-textarea" rows="8" readonly style="font-family: monospace; font-size: 11.5px;">{{ fieldsOfGroup('调试')[0].value }}</textarea>
               </div>
             </div>
 
