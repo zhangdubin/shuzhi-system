@@ -118,11 +118,10 @@ function scoreColor(s: number) {
 }
 
 // 拉所有 4 类对象列表（取 ID 和 code/name）
-// 兼容 422：过滤掉没有 id 的项（必须在模块顶层，所有函数都能访问）
-const isValidId = (x: any) => x !== null && x !== undefined && Number(x) > 0
-
 async function fetchAllObjectList() {
   const tasks: Array<{ type: RiskItem['objectType']; id: number; code: string; name: string; amount?: number }> = []
+  // 兼容 422：过滤掉没有 id 的项
+  const isValidId = (x: any) => x !== null && x !== undefined && Number(x) > 0
   try {
     const c = await http.post<{ list: any[] }>('/contracts/list', { page: 1, pageSize: 30 })
     ;(c.list || []).slice(0, 10).forEach((it: any) => tasks.push({ type: 'contract', id: it.contractId || it.id, code: it.code || '', name: it.name || it.code || '', amount: it.amount }))

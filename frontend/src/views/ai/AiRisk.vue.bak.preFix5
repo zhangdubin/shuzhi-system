@@ -118,9 +118,6 @@ function scoreColor(s: number) {
 }
 
 // 拉所有 4 类对象列表（取 ID 和 code/name）
-// 兼容 422：过滤掉没有 id 的项（必须在模块顶层，所有函数都能访问）
-const isValidId = (x: any) => x !== null && x !== undefined && Number(x) > 0
-
 async function fetchAllObjectList() {
   const tasks: Array<{ type: RiskItem['objectType']; id: number; code: string; name: string; amount?: number }> = []
   try {
@@ -133,7 +130,7 @@ async function fetchAllObjectList() {
   } catch {}
   try {
     const e = await http.post<{ list: any[] }>('/expenses/list', { page: 1, pageSize: 30 })
-    ;(e.list || []).slice(0, 10).forEach((it: any) => tasks.push({ type: 'expense', id: it.expenseId || it.id, code: it.code || '', name: it.title || it.code || '', amount: it.amount }))
+    ;(e.list || []).slice(0, 10).forEach((it: any) => tasks.push({ type: 'expense', id: it.id, code: it.code || '', name: it.title || it.code || '', amount: it.amount }))
   } catch {}
   return tasks
 }
@@ -173,13 +170,6 @@ async function runWithProgress(objs: Array<{ type: RiskItem['objectType']; id: n
       const idx = cursor++
       const o = objs[idx]
       scanCurrent.value = `${o.code} ${o.name}`
-      if (!isValidId(o.id)) {
-        // 没有 id 跳过后端请求，避免 422
-        scanProgress.value.failed += 1
-        scanProgress.value.done += 1
-        console.warn(`[ai-risk] skip ${o.type} (no id):`, o)
-        continue
-      }
       try {
         const r: any = await aiApi.riskScan({ objectType: o.type as any, objectId: o.id, deepScan: false })
         const item = toRiskItem(o, r)
@@ -238,11 +228,6 @@ async function selectRisk(r: RiskItem) {
   selectedWarnings.value = []
   detailLoading.value = true
   try {
-    if (!r.objectId || !Number(r.objectId)) {
-      // 兜底：用 scan 返回的 warnings
-      selectedWarnings.value = r.warnings || []
-      return
-    }
     const resp: any = await aiApi.riskWarnings({ objectType: r.objectType, objectId: r.objectId, onlyActive: true })
     selectedWarnings.value = resp.warnings || []
   } catch {

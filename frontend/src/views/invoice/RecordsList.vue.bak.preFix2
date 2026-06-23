@@ -81,8 +81,6 @@ function _syncStatusCounts(r: any) {
 // ============================================================
 // 高级筛选（design: .filter-panel）
 // ============================================================
-const filterOpen = ref(true)  // 默认展开
-function toggleFilter() { filterOpen.value = !filterOpen.value }
 const filters = ref({
   keyword: '',
   type: '',
@@ -572,9 +570,9 @@ watch(() => [activeStatus.value, currentPage.value, pageSize.value, filters.valu
     <div class="page-card filter-panel fade-up">
       <div class="filter-head">
         <h3>🔍 高级筛选</h3>
-        <a class="filter-toggle" @click="toggleFilter">{{ filterOpen ? '收起 ∧' : '展开 ∨' }}</a>
+        <a class="filter-toggle">收起 ∧</a>
       </div>
-      <div v-show="filterOpen" class="filter-body">
+      <div class="filter-body">
         <div class="filter-grid">
           <div class="field">
             <label>关键词</label>

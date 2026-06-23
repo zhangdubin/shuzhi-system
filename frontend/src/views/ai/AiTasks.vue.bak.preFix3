@@ -13,11 +13,6 @@ import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { aiApi } from '@/api/ai'
 import dayjs from 'dayjs'
-import utc from 'dayjs/plugin/utc'
-import timezone from 'dayjs/plugin/timezone'
-
-dayjs.extend(utc)
-dayjs.extend(timezone)
 
 const router = useRouter()
 
@@ -38,7 +33,6 @@ const tasks = ref<Task[]>([])
 const total = ref(0)
 const loading = ref(false)
 const activeTab = ref<'all' | 'running' | 'done' | 'failed'>('all')
-const typeFilter = ref<string>('all')  // all | extract | ask | risk | ...
 const selectedTask = ref<Task | null>(null)
 const detail = ref<any>(null)
 const detailLoading = ref(false)
@@ -75,17 +69,9 @@ function typeMeta(t: string) {
 function statusLabel(s: string) {
   return s === 'running' ? '进行中' : s === 'done' ? '已完成' : s === 'failed' ? '失败' : s === 'cancelled' ? '已取消' : s === 'pending' ? '排队中' : s
 }
-// 后端返回 naive datetime（无时区后缀），实际是 UTC
-function parseBackendTime(iso?: string) {
-  if (!iso) return null
-  // 有时区后缀就直接 parse；没就把 UTC 标志加上
-  const hasTz = /Z$|[+-]\d{2}:?\d{2}$/.test(iso)
-  return hasTz ? dayjs(iso) : dayjs.utc(iso).local()
-}
 function timeShort(iso?: string) {
   if (!iso) return '-'
-  const d = parseBackendTime(iso)
-  if (!d || !d.isValid()) return '-'
+  const d = dayjs(iso)
   const now = dayjs()
   if (d.isSame(now, 'day')) return d.format('HH:mm')
   if (d.isSame(now.subtract(1, 'day'), 'day')) return '昨天'
@@ -111,30 +97,18 @@ const kpi = computed(() => {
   }
 })
 
-// 类型计数（前端基于已加载列表算）
-const typeCounts = computed(() => {
-  const m: Record<string, number> = { all: tasks.value.length }
-  tasks.value.forEach((t) => { m[t.type] = (m[t.type] || 0) + 1 })
-  return m
-})
-// 展示列表：先按 type 筛，再按 status 筛
+// 过滤后任务列表
 const filteredTasks = computed(() => {
-  let out = tasks.value
-  if (typeFilter.value !== 'all') out = out.filter((t) => t.type === typeFilter.value)
-  if (activeTab.value !== 'all') out = out.filter((t) => t.status === activeTab.value)
-  return out
-})
-// 当前可见任务里出现过的 type（用于 chip）
-const visibleTypes = computed(() => {
-  const set = new Set(tasks.value.map((t) => t.type).filter(Boolean))
-  return Array.from(set)
+  if (activeTab.value === 'all') return tasks.value
+  if (activeTab.value === 'failed') return tasks.value.filter((t) => t.status === 'failed' || t.status === 'cancelled')
+  return tasks.value.filter((t) => t.status === activeTab.value)
 })
 
 // 加载列表
 async function loadTasks(silent = false) {
   if (!silent) loading.value = true
   try {
-    const resp = await aiApi.tasks({ page: 1, pageSize: 100 })
+    const resp = await aiApi.tasks({ page: 1, pageSize: 50 })
     tasks.value = resp.list || []
     total.value = resp.total || 0
   } catch (e: any) {
@@ -268,21 +242,6 @@ onBeforeUnmount(() => stopPolling())
       <div :class="['tab', { active: activeTab === 'failed' }]" @click="activeTab = 'failed'">失败 <span class="cnt">{{ kpi.failed }}</span></div>
     </div>
 
-    <!-- 类型筛选：按 task.type 筛（后端可能还有 extract.batch/ocr/...） -->
-    <div v-if="visibleTypes.length > 1" class="type-filter">
-      <span class="tf-label">类型：</span>
-      <a :class="['tf-chip', { active: typeFilter === 'all' }]" @click="typeFilter = 'all'">全部 ({{ typeCounts.all }})</a>
-      <a
-        v-for="t in visibleTypes"
-        :key="t"
-        :class="['tf-chip', { active: typeFilter === t }]"
-        @click="typeFilter = t"
-      >
-        <span :style="{ color: typeMeta(t).color }">{{ typeMeta(t).icon }}</span>
-        {{ typeMeta(t).label }} ({{ typeCounts[t] || 0 }})
-      </a>
-    </div>
-
     <!-- 任务表格 -->
     <div class="task-card">
       <table class="tpl-table">
@@ -344,7 +303,7 @@ onBeforeUnmount(() => stopPolling())
       <div v-if="loading" class="empty"><span class="spinner"></span>加载中...</div>
       <div v-else-if="!filteredTasks.length" class="empty">
         <div class="empty-icon">📋</div>
-        <div class="empty-text">{{ activeTab === 'all' ? '该类型下没有任务' : '该状态下没有任务' }}</div>
+        <div class="empty-text">{{ activeTab === 'all' ? '暂无任务记录' : '该状态下没有任务' }}</div>
         <div class="empty-hint">到 <a @click="router.push('/ai/center')">AI 中心</a> 体验 AI 抽取/问答/风险扫描后会自动出现在这里</div>
       </div>
     </div>
@@ -387,8 +346,8 @@ onBeforeUnmount(() => stopPolling())
               <div class="param"><span>状态</span><span>{{ statusLabel(selectedTask.status) }}</span></div>
               <div class="param"><span>进度</span><span>{{ displayProgress(selectedTask) }}%</span></div>
               <div v-if="selectedTask.totalCount" class="param"><span>计数</span><span>{{ selectedTask.doneCount }} / {{ selectedTask.totalCount }}</span></div>
-              <div v-if="selectedTask.startedAt" class="param"><span>开始时间</span><span class="mono">{{ parseBackendTime(selectedTask.startedAt) ? parseBackendTime(selectedTask.startedAt)!.format('YYYY-MM-DD HH:mm:ss') : '-' }}</span></div>
-              <div v-if="selectedTask.finishedAt" class="param"><span>结束时间</span><span class="mono">{{ parseBackendTime(selectedTask.finishedAt) ? parseBackendTime(selectedTask.finishedAt)!.format('YYYY-MM-DD HH:mm:ss') : '-' }}</span></div>
+              <div v-if="selectedTask.startedAt" class="param"><span>开始时间</span><span class="mono">{{ dayjs(selectedTask.startedAt).format('YYYY-MM-DD HH:mm:ss') }}</span></div>
+              <div v-if="selectedTask.finishedAt" class="param"><span>结束时间</span><span class="mono">{{ dayjs(selectedTask.finishedAt).format('YYYY-MM-DD HH:mm:ss') }}</span></div>
               <div v-if="detail?.error" class="param"><span>错误</span><span class="err-text">{{ detail.error }}</span></div>
               <div v-if="detail?.result" class="param"><span>结果</span><span class="mono">已生成</span></div>
             </div>
@@ -433,10 +392,7 @@ $color-ai-border: rgba(124, 58, 237, 0.25);
 .kpi-label { font-size: 12.5px; color: $color-text-secondary; margin-top: 4px; }
 
 // status tabs
-.status-tabs { display: flex; gap: 4px; background: #fff; border: 1px solid $color-border; border-radius: $radius-md; padding: 4px; margin-bottom: 12px; overflow-x: auto; }
-.type-filter { display: flex; align-items: center; gap: 6px; margin-bottom: 16px; flex-wrap: wrap; }
-.type-filter .tf-label { font-size: 12.5px; color: $color-text-tertiary; }
-.tf-chip { padding: 4px 10px; border-radius: 9999px; font-size: 12px; color: $color-text-secondary; background: #fff; border: 1px solid $color-border; cursor: pointer; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px; &:hover { border-color: $color-ai; color: $color-ai; } &.active { background: $color-ai-bg; color: $color-ai; border-color: $color-ai; font-weight: 600; } }
+.status-tabs { display: flex; gap: 4px; background: #fff; border: 1px solid $color-border; border-radius: $radius-md; padding: 4px; margin-bottom: 16px; overflow-x: auto; }
 .tab { padding: 6px 14px; border-radius: $radius-sm; font-size: 12.5px; color: $color-text-secondary; cursor: pointer; transition: all 0.15s; white-space: nowrap; .cnt { color: $color-text-tertiary; font-size: 11px; margin-left: 4px; } &:hover { background: $color-bg; } &.active { background: $gradient-ai; color: #fff; .cnt { color: rgba(255, 255, 255, 0.85); } } }
 
 // task table
