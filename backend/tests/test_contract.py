@@ -82,7 +82,10 @@ async def contract_admin_headers(contract_admin_token):
 
 @pytest_asyncio.fixture
 async def finance_user(db, contract_admin):
-    """财务用户（用于审批流中作为 'finance' 节点）"""
+    """财务用户（用于审批流中作为 'finance' 节点）
+
+    复用 contract_admin 已创建的 contract:approve 权限（避免重复）
+    """
     dept = Department(name="财务部", code="FIN")
     db.add(dept)
     await db.flush()
@@ -90,10 +93,13 @@ async def finance_user(db, contract_admin):
     role = Role(name="财务", code="finance", is_builtin=False)
     db.add(role)
     await db.flush()
-    p = Permission(name="contract:approve", code="contract:approve",
-                   resource="contract", action="approve")
-    db.add(p)
-    await db.flush()
+
+    # 复用 contract_admin 已建的 contract:approve permission
+    from sqlalchemy import select
+    p_result = await db.execute(
+        select(Permission).where(Permission.code == "contract:approve")
+    )
+    p = p_result.scalar_one()
     from app.modules.auth.models import RolePermission, UserRole
     db.add(RolePermission(role_id=role.id, permission_id=p.id))
     await db.flush()
@@ -102,7 +108,7 @@ async def finance_user(db, contract_admin):
         username="finance_user", name="财务员",
         email="finance@example.com", phone="13800002000",
         password_hash=hash_password("test123"),
-        is_active=True, is_admin=False, data_scope="all",
+        is_active=True, is_admin=False,
         department_id=dept.id,
     )
     db.add(user)

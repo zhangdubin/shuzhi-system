@@ -1,18 +1,26 @@
 """
-测试公用 fixtures — R17-A 重构（真实 PG 容器版）
+测试公用 fixtures — R17-A（真实 PG 容器 + 完整修复版）
 
 策略：用项目自带的 shuzhi-postgres 容器（已起），不复用生产 schema。
-每个 pytest session 启动时：
+pytest session 启动时：
   1. 创建临时测试 DB `shuzhi_test_<pid>`（隔离）
   2. 用 Base.metadata.create_all 建完整 schema
-  3. 每个测试函数用事务回滚隔离（不破坏 schema）
+  3. 每个测试函数前用 _clean_tables TRUNCATE 所有表（隔离）
   4. session 结束 DROP DATABASE
 
 为什么不用 SQLite：asyncpg + SQLAlchemy 2.0 在 SQLite 下 lazy-load 触发 MissingGreenlet，
 且 JSONB/ARRAY 在 SQLite 需要补丁，不如用真实 PG 简单稳定。
+
+R17-A 关键修复（按重要性排）：
+1. **Redis pool disable**：sse._redis_pool 单例在 test 间累积，aioredis 关闭时
+   调 loop.call_soon 但 loop 已 close → RuntimeError。client fixture 重置为 None。
+2. **NullPool engine**：避免 SQLAlchemy 维护 connection pool 在 loop 关闭时残留。
+3. **ASGITransport + AsyncSessionLocal 重写**：让 audit middleware 写到测试 DB。
+4. **RolePermission/UserRole 中间表**：避免 relationship lazy load 触发 MissingGreenlet。
 """
 import os
 
+# ============== 必须在 import app 之前设置环境变量 ==============
 os.environ["ENV"] = "testing"
 # 走项目本地 shuzhi-postgres 容器（用 localhost 而非容器名，因为 pytest 跑在 host 上）
 os.environ["DATABASE_URL"] = "postgresql+asyncpg://shuzhi:shuzhi@localhost:5432/shuzhi"
@@ -29,17 +37,14 @@ import pytest
 import pytest_asyncio
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+from sqlalchemy.pool import NullPool
 
 
-# ============== Per-function-scope: 准备测试 DB ==============
-# 注：原计划 session-scope 减少建表开销，但 pytest-asyncio 0.23 + session-scope
-# 异步 fixture + function-scope test 时会触发 "Event loop is closed"。
-# 改 function-scope：每个 test 一个新 DB（慢但稳，约 +1s/test）。
-# 未来若性能问题，可升级 pytest-asyncio 到 0.23+ + 用 anyio 模式。
+# ============== Session-scope: 准备测试 DB ==============
 
-@pytest_asyncio.fixture(scope="function")
+@pytest_asyncio.fixture(scope="session")
 async def _test_db_setup():
-    """function 级 setup/teardown：创建测试 DB + 建表 + 用完 DROP"""
+    """session 级 setup/teardown：创建测试 DB + 建表 + 用完 DROP"""
     # 1. 创建测试 DB
     conn = await asyncpg.connect(PG_ADMIN_URL)
     try:
@@ -94,12 +99,11 @@ async def _test_db_setup():
 
 @pytest_asyncio.fixture(scope="function")
 async def engine(_test_db_setup):
-    """每个测试一个连接池（共享 DB schema）
+    """每个测试一个连接池
 
-    用 NullPool 让每个 connection 用完即关（避免 asyncpg 在 event loop 关闭时
-    残留 call_soon 触发 RuntimeError）
+    NullPool：每个 connection 用完即关，避免 asyncpg 关闭时调 call_soon 触发
+    "Event loop is closed"
     """
-    from sqlalchemy.pool import NullPool
     eng = create_async_engine(
         _test_db_setup, echo=False, pool_pre_ping=False, poolclass=NullPool,
     )
@@ -114,25 +118,16 @@ async def session_factory(engine) -> async_sessionmaker[AsyncSession]:
 
 @pytest_asyncio.fixture(scope="function")
 async def db(session_factory) -> AsyncGenerator[AsyncSession, None]:
-    """每个测试一个 session
-
-    R17-A: 不在 fixture 套外层事务——很多 service 自己 commit，且外层 begin 会和
-    savepoint/NestedTransaction 冲突。改为 session 关闭时回滚（如果没 commit）。
-    简化：依赖每个测试自己 cleanup，或用 TRUNCATE 重置（见 test_db_reset fixture）。
-    """
+    """每个测试一个 session（不加外层事务，让 service 自己 commit）"""
     async with session_factory() as session:
         yield session
 
 
 @pytest_asyncio.fixture(scope="function", autouse=True)
 async def _clean_tables(engine):
-    """每个测试函数前清空所有表（保证测试间隔离）
-
-    不用 TRUNCATE 会导致序列 + FK 关联出错
-    """
+    """每个测试函数前清空所有表（保证测试间隔离）"""
     from sqlalchemy import text
     async with engine.begin() as conn:
-        # 拿到所有表名
         result = await conn.execute(text("""
             SELECT tablename FROM pg_tables
             WHERE schemaname = 'public' AND tablename NOT LIKE 'pg_%'
@@ -152,8 +147,11 @@ async def _clean_tables(engine):
 async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
     """FastAPI 测试客户端
 
-    用 ASGITransport（httpx 0.27+ 弃用 app=app）以避免 503 假阳性
-    并重写 audit middleware 的 session 注入，让 audit log 写到测试 DB
+    关键修复：
+    1. ASGITransport（httpx 0.27+ 弃用 app=app）
+    2. 重写 database.AsyncSessionLocal 指向测试 session（audit middleware 写到测试 DB）
+    3. 重置 sse._redis_pool = None（避免 aioredis singleton 在 test 间累积
+       关闭时触发 "Event loop is closed"）
     """
     from app.main import app
     from app.core.database import get_db
@@ -165,20 +163,24 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _get_db
 
-    # 重写 audit middleware 让它用测试 session（关键修复：避免 audit log
-    # 写到生产 DB 残留 stale connection → event loop close 时崩）
-    # 注意：audit module 用 `from app.core.database import AsyncSessionLocal`，
-    # 改 audit_module.AsyncSessionLocal 不生效；要直接改 database 模块的属性
+    # 1) 让 audit middleware 写到测试 DB
     from app.core import database
     orig_AsyncSessionLocal = database.AsyncSessionLocal
-    database.AsyncSessionLocal = session_factory  # 让 middleware 用测试 session
+    database.AsyncSessionLocal = session_factory
+
+    # 2) 重置 Redis pool（最关键的 Event loop 修复）
+    from app.core import sse as sse_module
+    orig_redis_pool = sse_module._redis_pool
+    sse_module._redis_pool = None
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac
+
+    # 恢复
     app.dependency_overrides.clear()
-    # 恢复原 AsyncSessionLocal
     database.AsyncSessionLocal = orig_AsyncSessionLocal
+    sse_module._redis_pool = orig_redis_pool
 
 
 # ============== 种子数据 ==============
