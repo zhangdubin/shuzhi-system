@@ -197,10 +197,11 @@ async def auth_headers(auth_token) -> dict:
 async def sample_client(db) -> Client:
     """示例客户"""
     c = Client(
+        code="CLIENT-2026-0001",
         name="示例客户有限公司",
         short_name="示例客户",
         industry="制造业",
-        contact_person="李四",
+        contact_name="李四",
         contact_phone="13900000001",
     )
     db.add(c)
