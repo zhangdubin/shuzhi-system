@@ -91,6 +91,31 @@ async def recognize(
 
 
 # ============================================================
+# URL 重写：公网 URL → 容器内可达的内部 URL
+# ============================================================
+def _to_internal_url(file_url: str) -> str:
+    """把公网 fileUrl 重写为容器内 OCR service 可达的 URL。
+    - localhost:9000 (MinIO) → minio:9000 (Docker 网络名)
+    - localhost:8000 (后端) → shuzhi-backend:8000 (Docker 网络名)
+    - 其他 host 不动（生产环境可能用真实域名）"""
+    if not file_url:
+        return file_url
+    import re
+    # MinIO
+    if settings.STORAGE_BACKEND == "minio":
+        # 提取公网 endpoint 的 port
+        public = settings.MINIO_PUBLIC_URL or ""
+        m = re.match(r"https?://[^:/]+(?::(\d+))?", public)
+        if m:
+            port = m.group(1) or "9000"
+            file_url = re.sub(rf"http://localhost:{port}", f"http://minio:{port}", file_url)
+            file_url = re.sub(rf"https://localhost:{port}", f"https://minio:{port}", file_url)
+    # 后端静态文件
+    file_url = re.sub(r"http://localhost:8000/static/uploads", "http://shuzhi-backend:8000/static/uploads", file_url)
+    return file_url
+
+
+# ============================================================
 # 真实 HTTP 调用（BACKEND.md §7.2 协议）
 # ============================================================
 
@@ -103,6 +128,9 @@ async def _real_recognize(
     请求：{file_url, file_id, fields, language, options}
     响应：{code: 0, fields, items, confidence, model, version, elapsedMs}
     """
+    # R27 修复：OCR service 跑在容器内，访问公网 URL（localhost:9000/shuzhi-files/...）会失败
+    # 把公网 host 替换为容器内可达的 host（MinIO 容器名为 'minio'，或 BACKEND_URL）
+    file_url = _to_internal_url(file_url)
     req_body = {
         "file_url": file_url,
         "file_id": file_id,
@@ -193,6 +221,10 @@ def _normalize_real_response(data: dict, file_id: str, file_url: str, type: str)
         "model": data.get("model", "paddleocr-v3"),
         "version": data.get("version", "1.2.0"),
         "elapsedMs": data.get("elapsedMs", 0),
+        # 原始 OCR 文本（行 + 位置），用于调试/错误分析
+        "rawText": data.get("rawText") or data.get("raw_text") or [],
+        # 标题（用于上"行程单 / 火车票 / 增值税发票"类型识别）
+        "invoiceTypeHint": data.get("invoiceTypeHint") or data.get("invoice_type_hint") or "",
     }
     # R17 修复：递归清掉 NUL 字节（Postgres text/jsonb 不接受 0x00）
     return _sanitize_recursive(result)

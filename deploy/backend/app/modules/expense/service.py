@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional
 
-from sqlalchemy import and_, or_, select, func
+from sqlalchemy import and_, or_, select, func, not_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -17,6 +17,7 @@ from app.modules.expense.schemas import (
 )
 from app.modules.auth.models import User, Department
 from app.modules.common.approvals import create_flow, act as act_flow, get_flow, serialize_flow
+import re
 
 
 def _gen_expense_code() -> str:
@@ -49,6 +50,22 @@ async def list_expenses(
         query = query.where(Expense.applicant_id == int(filters["applicantId"]))
     if filters.get("departmentId"):
         query = query.where(Expense.department_id == int(filters["departmentId"]))
+    if filters.get("linkedInvoiceId"):
+        # 触点 #24：按 invoiceId 查关联到此发票的费用（description 形如 [关联发票 INV-xxx]）
+        _lid = str(filters["linkedInvoiceId"]).strip()
+        if _lid:
+            # 兼容 invoiceId 数字 和 发票号 字符串
+            query = query.where(Expense.description.ilike(f"%[关联发票 INV-{_lid}]%"))
+    if filters.get("unreimbursed"):
+        # 触点 #47：报销创建页只显示未被任何非作废报销单关联的费用
+        # 通过 reimbursement_details.expense_id 反向过滤；报销单状态 cancelled 视为未关联
+        from app.modules.reimbursement.models import ReimbursementDetail, ReimbursementForm
+        linked_subq = (
+            select(ReimbursementDetail.expense_id)
+            .join(ReimbursementForm, ReimbursementDetail.form_id == ReimbursementForm.id)
+            .where(ReimbursementForm.status != "cancelled")
+        )
+        query = query.where(not_(Expense.id.in_(linked_subq)))
     dr = filters.get("dateRange")
     if dr and isinstance(dr, list) and len(dr) == 2:
         try:
@@ -123,6 +140,7 @@ async def list_expenses(
 
         items.append({
             "expenseId": e.id, "code": e.code, "category": e.category, "title": e.title,
+            "description": e.description,
             "amount": amount_yuan, "currency": e.currency,
             "expenseDate": e.expense_date,
             "applicantId": e.applicant_id, "applicantName": e.applicant.name if e.applicant else "",
@@ -166,7 +184,65 @@ async def get_expense(db: AsyncSession, expense_id: int) -> dict:
         "attachments": [],
         "approvalFlow": approval,
         "status": e.status, "createdAt": e.created_at, "updatedAt": e.updated_at,
+        "relatedInvoice": _add_match_audit(await _parse_related_invoice(db, e.invoice_id, e.description), float(Decimal(e.amount or 0) / 100)),
     }
+
+
+def _add_match_audit(ri: Optional[dict], expense_amount: float) -> Optional[dict]:
+    if not ri:
+        return None
+    ri["matchAudit"] = _audit_expense_vs_invoice(expense_amount, ri.get("totalAmount") or 0)
+    return ri
+
+
+async def _parse_related_invoice(db: AsyncSession, invoice_id, description: Optional[str]) -> Optional[dict]:
+    """优先用 invoice_id 字段查发票，fallback 到 description 解析 [关联发票 INV-xxx] 标记"""
+    from app.modules.invoice_ocr.models import Invoice
+    from sqlalchemy import select as _sel
+    inv = None
+    if invoice_id:
+        inv = (await db.execute(_sel(Invoice).where(Invoice.id == int(invoice_id)))).scalar_one_or_none()
+    if inv is None and description:
+        m = re.search(r"\[关联发票 INV-([^\]]+)\]", description)
+        if m:
+            inv_no = m.group(1).strip()
+            if inv_no:
+                inv = (await db.execute(_sel(Invoice).where(Invoice.invoice_no == inv_no))).scalar_one_or_none()
+    if not inv:
+        return None
+    return {
+        "invoiceId": inv.id,
+        "invoiceNo": inv.invoice_no,
+        "invoiceType": inv.invoice_type,
+        "sellerName": inv.seller_name,
+        "totalAmount": float(Decimal(inv.total_amount or 0) / 100),
+        "issueDate": inv.issue_date.isoformat() if inv.issue_date else None,
+        "status": inv.status,
+        "verifyStatus": inv.verify_status,
+    }
+
+
+def _audit_expense_vs_invoice(expense_amount_yuan: float, invoice_amount_yuan: float) -> dict:
+    """AI 审核：比对报销金额 vs 发票金额
+    - match: 完全一致（误差 < 0.01）
+    - partial: 报销 < 发票（合理拆分/部分报销）
+    - over: 报销 > 发票（异常，可能重复报销或填错）
+    - mismatch: 其他异常
+    """
+    if expense_amount_yuan is None or invoice_amount_yuan is None:
+        return {"status": "unknown", "diff": 0, "reason": "金额信息不完整"}
+    diff = round(invoice_amount_yuan - expense_amount_yuan, 2)
+    abs_diff = abs(diff)
+    if abs_diff < 0.01:
+        return {"status": "match", "diff": 0, "reason": "金额完全匹配 ✓"}
+    if diff > 0:
+        if abs_diff / max(invoice_amount_yuan, 0.01) < 0.05:
+            return {"status": "partial", "diff": diff, "reason": f"报销金额小于发票金额 ¥{abs_diff:.2f}，属部分报销"}
+        return {"status": "partial", "diff": diff, "reason": f"报销 ¥{expense_amount_yuan:.2f}，发票 ¥{invoice_amount_yuan:.2f}，差额 ¥{abs_diff:.2f}（{abs_diff / invoice_amount_yuan * 100:.1f}%）"}
+    # diff < 0：报销 > 发票
+    if abs_diff / max(invoice_amount_yuan, 0.01) < 0.05:
+        return {"status": "over", "diff": diff, "reason": f"报销金额超过发票 ¥{abs_diff:.2f}，请核实是否填错"}
+    return {"status": "over", "diff": diff, "reason": f"报销 ¥{expense_amount_yuan:.2f} 远超发票 ¥{invoice_amount_yuan:.2f}（多 ¥{abs_diff:.2f}），⚠️ 疑似异常"}
 
 
 # ===== 创建 =====
@@ -188,8 +264,8 @@ async def create_expense(db: AsyncSession, req: ExpenseCreate, applicant_id: int
     await db.flush()
 
     for b in req.breakdown:
-        # amount 是分
-        cents = int((Decimal(b.amount) * 100).quantize(Decimal("1"))) if isinstance(b.amount, (int, float, Decimal)) else int(b.amount)
+        # schema field 单位是元 → *100 转 分 入库
+        cents = int(round(float(b.amount) * 100))
         db.add(ExpenseBreakdown(
             expense_id=e.id, label=b.label, amount=cents, remark=b.remark,
         ))
@@ -199,16 +275,87 @@ async def create_expense(db: AsyncSession, req: ExpenseCreate, applicant_id: int
 
 
 # ===== 提交审批 =====
+async def _pick_flow_template(db: AsyncSession, business_type: str, amount: int) -> list[str]:
+    """按业务类型 + 金额，从 approval_templates 选合适的审批流规则
+    - 优先匹配 amount_min 条件（取满足条件中最高的门槛）
+    - 没有任何匹配时，兜底用 is_default=True 的
+    - 完全没有模板时，兜底硬编码（保持向后兼容）
+    """
+    from app.modules.common.models import ApprovalTemplate
+    # 取所有 is_active=True 的同业务类型模板
+    rows = (await db.execute(
+        select(ApprovalTemplate).where(
+            ApprovalTemplate.business_type == business_type,
+            ApprovalTemplate.is_active == True,  # noqa: E712
+        ).order_by(ApprovalTemplate.sort_order.asc(), ApprovalTemplate.id.asc())
+    )).scalars().all()
+    if not rows:
+        # 兜底硬编码（与最初版本一致）
+        rules = ["submitter", "direct_leader", "finance"]
+        if amount >= 500000:
+            rules.append("gm_if_over_5000")
+        return rules
+    # 优先匹配 amount_min
+    matched = None
+    for t in rows:
+        cond = t.condition or {}
+        amin = cond.get("amount_min")
+        if amin is not None and amount >= int(amin):
+            if matched is None or (matched.condition or {}).get("amount_min", 0) < int(amin):
+                matched = t
+    if not matched:
+        # 用 is_default
+        for t in rows:
+            if t.is_default:
+                matched = t
+                break
+    if not matched:
+        matched = rows[0]  # 实在没有默认就用第一个
+    return list(matched.rules or [])
+
+
 async def submit_expense(db: AsyncSession, expense_id: int, user_id: int) -> dict:
     e = (await db.execute(select(Expense).where(Expense.id == expense_id))).scalar_one_or_none()
     if not e:
         raise NotFoundException(f"费用不存在：{expense_id}")
     if e.status != "draft":
         raise ConflictException(f"只有 draft 状态可提交，当前 {e.status}")
-    rules = ["submitter", "direct_leader", "finance"]
-    if e.amount >= 500000:  # 5 千元
-        rules.append("gm_if_over_5000")
-    await create_flow(db, "expense", e.id, rules, user_id, e.amount)
+    # 1) 选审批流模板（超管可配置；无模板时硬编码兜底）
+    rules = await _pick_flow_template(db, "expense", e.amount)
+    # 2) 创建审批流
+    flow = await create_flow(db, "expense", e.id, rules, user_id, e.amount)
+    # 3) 回填 template_id（便于追溯）
+    try:
+        from app.modules.common.models import ApprovalFlow as _AF
+        f = (await db.execute(select(_AF).where(_AF.id == flow.id))).scalar_one_or_none()
+        if f:
+            # 反查：拿选中的模板 id
+            from app.modules.common.models import ApprovalTemplate as _AT
+            from sqlalchemy import select as _sel
+            crow = (await db.execute(_sel(_AT).where(
+                _AT.business_type == "expense",
+                _AT.is_active == True,  # noqa: E712
+            ).order_by(_AT.sort_order.asc(), _AT.id.asc()))).scalars().all()
+            chosen = None
+            for t in crow:
+                cond = t.condition or {}
+                amin = cond.get("amount_min")
+                if amin is not None and e.amount >= int(amin):
+                    if chosen is None or (chosen.condition or {}).get("amount_min", 0) < int(amin):
+                        chosen = t
+            if not chosen:
+                for t in crow:
+                    if t.is_default:
+                        chosen = t
+                        break
+            if not chosen and crow:
+                chosen = crow[0]
+            if chosen:
+                f.template_id = chosen.id
+                await db.commit()
+    except Exception as _e:
+        # 记录但不影响主流程
+        print(f"[submit_expense] template_id backfill skipped: {_e}", flush=True)
     e.status = "pending"
     e.submit_at = datetime.utcnow()
     await db.commit()
@@ -299,10 +446,36 @@ async def update_expense(db: AsyncSession, expense_id: int, req, operator_id: in
         raise ConflictException(f"费用状态为「{e.status}」不允许编辑")
     data = req.model_dump(exclude_unset=True)
     if "amount" in data and data["amount"] is not None:
-        e.amount = data["amount"] * 100  # 元 → 分
+        e.amount = int(round(float(data["amount"]) * 100))  # 元 → 分（保留 2 位小数）
     for k in ("category", "title", "description", "expenseDate", "contractId", "projectId"):
         if k in data and data[k] is not None:
             setattr(e, k, data[k])
+    # 关联/解除关联发票（invoiceId=null 表示解除）
+    if "invoiceId" in data:
+        new_inv_id = data["invoiceId"]
+        if new_inv_id is not None:
+            from app.modules.invoice_ocr.models import Invoice
+            inv = (await db.execute(select(Invoice).where(Invoice.id == int(new_inv_id)))).scalar_one_or_none()
+            if not inv:
+                raise NotFoundException(f"发票不存在：{new_inv_id}")
+        e.invoice_id = new_inv_id  # None 也允许（解除关联）
+    # 费用明细：全量替换（前端传完整 list → 后端删除旧的 + 插入新的）
+    if "breakdown" in data and data["breakdown"] is not None:
+        from app.modules.expense.models import ExpenseBreakdown
+        # 1) 删旧
+        await db.execute(
+            ExpenseBreakdown.__table__.delete().where(ExpenseBreakdown.expense_id == e.id)
+        )
+        # 2) 插新
+        #   schema ExpenseBreakdownItem.amount: int (单位：分)，前端按 元 输入后 *100 转 分
+        for item in data["breakdown"]:
+            cents = int(round(float(item["amount"]) * 100))
+            db.add(ExpenseBreakdown(
+                expense_id=e.id,
+                label=item["label"],
+                amount=cents,
+                remark=item.get("remark"),
+            ))
     await db.commit()
     await db.refresh(e)
     return await get_expense(db, e.id)
@@ -315,11 +488,32 @@ async def delete_expense(db: AsyncSession, expense_id: int, operator_id: int) ->
     if not e:
         from app.core.exceptions import NotFoundException
         raise NotFoundException(f"费用不存在：{expense_id}")
-    # 业务护：approved/paid 不可删
-    if e.status in ("approved", "paid"):
-        from app.core.exceptions import ConflictException
-        raise ConflictException(f"费用状态为「{e.status}」不允许删除")
+    # 业务护：已通过/已报销的费用删除权限由 expense:delete 控制（不限状态，便于数据清洗）
     await db.delete(e)
     await db.commit()
     return {"deleted": True}
+
+
+async def batch_delete_expenses(db: AsyncSession, expense_ids: list[int], operator_id: int) -> dict:
+    """批量删除费用。权限：expense:delete（router 层 require_permission 控制）。"""
+    from app.modules.expense.models import Expense
+    if not expense_ids:
+        return {"deleted": 0, "skipped": [], "deletedIds": []}
+    rows = (await db.execute(select(Expense).where(Expense.id.in_(expense_ids)))).scalars().all()
+    # 状态不再限制：超管/有 expense:delete 权限可清理任意状态。
+    # 但需忠守数据库 FK：被 reimbursement_details 引用的不能删。
+    from app.modules.reimbursement.models import ReimbursementDetail
+    referenced = set((await db.execute(
+        select(ReimbursementDetail.expense_id).where(ReimbursementDetail.expense_id.in_([e.id for e in rows]))
+    )).scalars().all())
+    deletable = [e for e in rows if e.id not in referenced]
+    skipped = [{"id": e.id, "reason": "被报销单引用，不能删除"} for e in rows if e.id in referenced]
+    for e in deletable:
+        await db.delete(e)
+    await db.commit()
+    return {
+        "deleted": len(deletable),
+        "skipped": skipped,
+        "deletedIds": [e.id for e in deletable],
+    }
 

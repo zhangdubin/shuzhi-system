@@ -9,6 +9,7 @@ from typing import Optional
 from fastapi import Body, APIRouter, Depends, Form, Query, UploadFile, File
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from app.core.database import get_db
 from app.core.security import get_current_user, require_permission, CurrentUser
@@ -27,13 +28,32 @@ router = APIRouter()
 @router.post("/upload", summary="上传 + 单张识别")
 async def upload(
     file: UploadFile = File(...),
+    templateId: Optional[str] = Form(None),
     db: AsyncSession = Depends(get_db),
     current_user: CurrentUser = Depends(require_permission("invoice:upload")),
 ):
+    from app.modules.common.models import File as _File
     # 1. 保存文件
     file_info = await common_service.save_upload_file(db, current_user.id, file)
-    # 2. OCR
-    result = await service.recognize_one(db, file_info.fileId, file_info.url, current_user.id)
+    # 2. OCR（带上用户选中的识别模板；自动识别时 templateId 为空）
+    _tpl_id = int(templateId) if (templateId and str(templateId).strip()) else None
+    result = await service.recognize_one(
+        db, file_info.fileId, file_info.url, current_user.id, file_info.size,
+        template_id=_tpl_id,
+    )
+    # 3. 回填 files.biz_type='invoice' biz_id=invoice.id（专门数据库管理非结构化数据）
+    inv_id = result.get("invoiceId")
+    if inv_id:
+        f = (await db.execute(select(_File).where(_File.id == file_info.fileId))).scalar_one_or_none()
+        if f:
+            f.biz_type = "invoice"
+            f.biz_id = inv_id
+            # 同时把 file_id 写回 Invoice.file_id（如果没填）
+            inv = (await db.execute(select(Invoice).where(Invoice.id == inv_id))).scalar_one_or_none()
+            if inv and not inv.file_id:
+                inv.file_id = file_info.fileId
+                inv.file_size = file_info.size
+            await db.commit()
     return {"code": 0, "data": result}
 
 
@@ -166,6 +186,20 @@ class UpdateInvoiceRequest(BaseModel):
     verifySource: Optional[str] = None
 
 
+@router.post("/unlinked", summary="可关联的发票（未关联任何费用）")
+async def list_unlinked(
+    body: dict | None = Body(default=None),
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """返回可被费用关联的发票列表（已核验 + 未被任何费用关联过）"""
+    keyword = (body or {}).get("keyword", "")
+    page = int((body or {}).get("page", 1))
+    page_size = int((body or {}).get("pageSize", 20))
+    data = await service.list_unlinked_invoices(db, keyword=keyword, page=page, page_size=page_size)
+    return {"code": 0, "data": data}
+
+
 @router.post("/update", summary="编辑/核验发票")
 async def update(
     invoiceId: int = Query(...),
@@ -187,10 +221,11 @@ async def update(
 @router.post("/submit", summary="提交入账")
 async def submit(
     invoiceId: int = Query(...),
+    reason: Optional[str] = Query(None, description="入账事由（写入关联费用描述）"),
     db: AsyncSession = Depends(get_db),
     _user: CurrentUser = Depends(require_permission("invoice:submit")),
 ):
-    data = await service.submit_invoice(db, invoiceId)
+    data = await service.submit_invoice(db, invoiceId, reason)
     return {"code": 0, "data": data, "message": "已入账"}
 
 
@@ -246,6 +281,7 @@ async def batch_status(
 # ===== 批量提交入账 =====
 class BatchSubmitRequest(BaseModel):
     invoiceIds: list[int]
+    reason: Optional[str] = None
 
 
 @router.post("/batch/submit", summary="批量提交入账")
@@ -254,7 +290,7 @@ async def batch_submit(
     db: AsyncSession = Depends(get_db),
     _user: CurrentUser = Depends(require_permission("invoice:submit")),
 ):
-    data = await service.submit_batch(db, req.invoiceIds)
+    data = await service.submit_batch(db, req.invoiceIds, req.reason)
     return {"code": 0, "data": data, "message": f"已入账 {data['updated']} 张"}
 
 

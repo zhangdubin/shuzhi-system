@@ -345,3 +345,185 @@ async def audit_logs_list(
         db, req.page, req.pageSize, req.keyword, req.filters,
     )
     return {"code": 0, "data": {"list": items, "total": total, "page": req.page, "pageSize": req.pageSize}}
+
+
+
+# ============================================================
+# 审批流模板（超管配置）
+# ============================================================
+
+@router.get("/approval-templates/list", summary="审批流模板列表")
+async def approval_templates_list(
+    business_type: Optional[str] = None,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("admin:approval:read")),
+):
+    """列出所有审批流模板（按 business_type 可过滤）"""
+    from app.modules.common.models import ApprovalTemplate
+    from sqlalchemy import select
+    q = select(ApprovalTemplate).order_by(ApprovalTemplate.business_type.asc(), ApprovalTemplate.sort_order.asc(), ApprovalTemplate.id.asc())
+    if business_type:
+        q = q.where(ApprovalTemplate.business_type == business_type)
+    rows = (await db.execute(q)).scalars().all()
+    return {
+        "code": 0,
+        "data": [
+            {
+                "id": t.id,
+                "name": t.name,
+                "businessType": t.business_type,
+                "rules": t.rules or [],
+                "condition": t.condition or {},
+                "isDefault": t.is_default,
+                "isActive": t.is_active,
+                "sortOrder": t.sort_order,
+                "remark": t.remark or "",
+                "createdAt": t.created_at.isoformat() if t.created_at else None,
+                "updatedAt": t.updated_at.isoformat() if t.updated_at else None,
+            }
+            for t in rows
+        ],
+    }
+
+
+@router.post("/approval-templates/create", summary="新建审批流模板")
+async def approval_templates_create(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("admin:approval:write")),
+):
+    from app.modules.common.models import ApprovalTemplate
+    from sqlalchemy import select
+    name = (payload.get("name") or "").strip()
+    business_type = (payload.get("businessType") or "expense").strip()
+    rules = payload.get("rules") or []
+    if not name:
+        from app.core.exceptions import ParamErrorException
+        raise ParamErrorException("模板名称不能为空")
+    if not isinstance(rules, list) or len(rules) == 0:
+        from app.core.exceptions import ParamErrorException
+        raise ParamErrorException("至少需要 1 个审批步骤")
+    is_default = bool(payload.get("isDefault"))
+    # 如果设为默认，先把同 business_type 其他默认取消
+    if is_default:
+        existing = (await db.execute(select(ApprovalTemplate).where(
+            ApprovalTemplate.business_type == business_type,
+            ApprovalTemplate.is_default == True  # noqa: E712
+        ))).scalars().all()
+        for t in existing:
+            t.is_default = False
+    t = ApprovalTemplate(
+        name=name,
+        business_type=business_type,
+        rules=rules,
+        condition=payload.get("condition") or None,
+        is_default=is_default,
+        is_active=bool(payload.get("isActive", True)),
+        sort_order=int(payload.get("sortOrder") or 0),
+        remark=payload.get("remark") or None,
+    )
+    db.add(t)
+    await db.commit()
+    await db.refresh(t)
+    return {"code": 0, "data": {"id": t.id}}
+
+
+@router.post("/approval-templates/update", summary="更新审批流模板")
+async def approval_templates_update(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("admin:approval:write")),
+):
+    from app.modules.common.models import ApprovalTemplate
+    from sqlalchemy import select
+    tid = int(payload.get("id") or 0)
+    if not tid:
+        from app.core.exceptions import ParamErrorException
+        raise ParamErrorException("缺少 id")
+    t = (await db.execute(select(ApprovalTemplate).where(ApprovalTemplate.id == tid))).scalar_one_or_none()
+    if not t:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException(f"模板不存在：{tid}")
+    if "name" in payload: t.name = (payload.get("name") or "").strip()
+    if "rules" in payload:
+        rules = payload.get("rules") or []
+        if not isinstance(rules, list) or len(rules) == 0:
+            from app.core.exceptions import ParamErrorException
+            raise ParamErrorException("至少需要 1 个审批步骤")
+        t.rules = rules
+    if "condition" in payload: t.condition = payload.get("condition") or None
+    if "isActive" in payload: t.is_active = bool(payload.get("isActive"))
+    if "sortOrder" in payload: t.sort_order = int(payload.get("sortOrder") or 0)
+    if "remark" in payload: t.remark = payload.get("remark") or None
+    if "isDefault" in payload:
+        new_default = bool(payload.get("isDefault"))
+        if new_default:
+            # 把同 business_type 其他默认取消
+            existing = (await db.execute(select(ApprovalTemplate).where(
+                ApprovalTemplate.business_type == t.business_type,
+                ApprovalTemplate.is_default == True,  # noqa: E712
+                ApprovalTemplate.id != t.id,
+            ))).scalars().all()
+            for x in existing:
+                x.is_default = False
+        t.is_default = new_default
+    await db.commit()
+    return {"code": 0, "data": {"id": t.id}}
+
+
+@router.post("/approval-templates/delete", summary="删除审批流模板")
+async def approval_templates_delete(
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("admin:approval:write")),
+):
+    from app.modules.common.models import ApprovalTemplate
+    from sqlalchemy import select
+    tid = int(payload.get("id") or 0)
+    if not tid:
+        from app.core.exceptions import ParamErrorException
+        raise ParamErrorException("缺少 id")
+    t = (await db.execute(select(ApprovalTemplate).where(ApprovalTemplate.id == tid))).scalar_one_or_none()
+    if not t:
+        from app.core.exceptions import NotFoundException
+        raise NotFoundException(f"模板不存在：{tid}")
+    await db.delete(t)
+    await db.commit()
+    return {"code": 0, "data": {"id": tid}}
+
+
+@router.post("/approval-templates/seed-defaults", summary="一键初始化默认模板（业务类型 → 3 步标准流）")
+async def approval_templates_seed_defaults(
+    db: AsyncSession = Depends(get_db),
+    _user: CurrentUser = Depends(require_permission("admin:approval:write")),
+):
+    """给常用业务类型插入默认模板（如果还没有任何模板的话）"""
+    from app.modules.common.models import ApprovalTemplate
+    from sqlalchemy import select, func
+    defaults = [
+        {"name": "标准审批流", "business_type": "expense",   "rules": ["submitter", "direct_leader", "finance"], "condition": None,            "is_default": True},
+        {"name": "大额审批流", "business_type": "expense",   "rules": ["submitter", "direct_leader", "finance", "gm_if_over_5000"], "condition": {"amount_min": 500000}, "is_default": False},
+    ]
+    inserted = []
+    for d in defaults:
+        # 已存在同名模板则跳过
+        exist = (await db.execute(select(func.count(ApprovalTemplate.id)).where(
+            ApprovalTemplate.business_type == d["business_type"],
+            ApprovalTemplate.name == d["name"],
+        ))).scalar()
+        if exist:
+            continue
+        t = ApprovalTemplate(
+            name=d["name"],
+            business_type=d["business_type"],
+            rules=d["rules"],
+            condition=d["condition"],
+            is_default=d["is_default"],
+            is_active=True,
+            sort_order=0,
+            remark="系统初始化",
+        )
+        db.add(t)
+        inserted.append(d["name"])
+    await db.commit()
+    return {"code": 0, "data": {"inserted": inserted}}

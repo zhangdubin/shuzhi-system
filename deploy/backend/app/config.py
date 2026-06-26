@@ -17,7 +17,14 @@ class Settings(BaseSettings):
 
     # ===== 应用 =====
     APP_NAME: str = "数智化管理系统"
+    APP_VERSION: str = "1.0.0"  # 触点 #53：版本号（建议在构建镜像时通过环境变量注入）
     ENV: str = Field(default="development", description="development/staging/production")
+
+    # ===== GitHub Release（系统更新检查）=====
+    GITHUB_REPO_OWNER: str = "trisome"                       # GitHub 用户/组织名
+    GITHUB_REPO_NAME: str = "shuzhi-system"                  # 仓库名
+    GITHUB_API_BASE: str = "https://api.github.com"          # GitHub API 地址
+    GITHUB_TOKEN: str = ""                                    # 可选：Private 仓库需提供 PAT（无 scopes 即可），提升限额 60→5000/h
     LOG_LEVEL: str = "INFO"
     DEBUG: bool = True
 
@@ -85,6 +92,19 @@ class Settings(BaseSettings):
     AI_COST_LIMIT_PER_TENANT_PER_DAY_CENTS: int = 50000  # 500 元
     AI_ALERT_SCAN_CRON: str = "0 9 * * *"
     AI_ALERT_MAX_PER_USER_PER_DAY: int = 10
+
+    # ===== 对象存储（MinIO S3 兼容）=====
+    # 触点 #26：专门管理非结构化数据（发票 PDF/图片/合同/凭证）
+    # 切到 MinIO/S3/OSS 时只改这几个字段
+    STORAGE_BACKEND: str = "local"  # local | minio（未来可扩展 oss/cos/s3）
+    MINIO_ENDPOINT: str = "minio:9000"  # host:port（容器内用 minio:9000，host 用 localhost:9000）
+    MINIO_ACCESS_KEY: str = "minioadmin"
+    MINIO_SECRET_KEY: str = "minioadmin"
+    MINIO_BUCKET: str = "shuzhi-files"
+    MINIO_SECURE: bool = False  # True = https, False = http
+    MINIO_REGION: str = "us-east-1"  # MinIO 默认 region
+    # 文件访问 URL 模板（前端用）
+    MINIO_PUBLIC_URL: str = ""  # 留空 = 用 MINIO_ENDPOINT；填 CDN 域名可加速
 
     # ===== Sentry =====
     SENTRY_DSN: str = ""

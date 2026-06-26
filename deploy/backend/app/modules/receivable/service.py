@@ -79,6 +79,15 @@ async def list_receivables(
         query = query.where(Receivable.client_id == int(filters["clientId"]))
     if filters.get("managerId"):
         query = query.where(Receivable.manager_id == int(filters["managerId"]))
+    if filters.get("type"):
+        query = query.where(Receivable.type == filters["type"])
+    # 金额区间（计划金额单位为分）
+    if filters.get("amountMin") is not None:
+        try: query = query.where(Receivable.plan_amount >= int(float(filters["amountMin"]) * 100))
+        except: pass
+    if filters.get("amountMax") is not None:
+        try: query = query.where(Receivable.plan_amount <= int(float(filters["amountMax"]) * 100))
+        except: pass
     dr = filters.get("dateRange")
     if dr and isinstance(dr, list) and len(dr) == 2:
         try:

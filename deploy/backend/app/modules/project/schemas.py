@@ -4,7 +4,7 @@
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 
 
 # ===== 列表筛选 =====
@@ -66,13 +66,19 @@ class ProjectCreate(BaseModel):
     progress: Decimal = Decimal("0")        # 0-100
     description: Optional[str] = None
 
-    @field_validator("endDate")
+    @field_validator("startDate", "endDate", mode="before")
     @classmethod
-    def check_dates(cls, v, info):
-        start = info.data.get("startDate")
-        if start and v and v < start:
-            raise ValueError("截止日期必须晚于开始日期")
+    def _empty_str_to_none(cls, v):
+        # 接受空字符串 / 无效值 → None，避免 Pydantic 报 422
+        if v is None or v == "":
+            return None
         return v
+
+    @model_validator(mode="after")
+    def check_dates(self):
+        if self.startDate and self.endDate and self.endDate < self.startDate:
+            raise ValueError("截止日期必须晚于开始日期")
+        return self
 
 
 class ProjectUpdate(BaseModel):
@@ -88,6 +94,13 @@ class ProjectUpdate(BaseModel):
     progress: Optional[Decimal] = None
     description: Optional[str] = None
     remark: Optional[str] = None
+
+    @field_validator("startDate", "endDate", mode="before")
+    @classmethod
+    def _empty_str_to_none(cls, v):
+        if v is None or v == "":
+            return None
+        return v
 
 
 # ===== 里程碑 =====

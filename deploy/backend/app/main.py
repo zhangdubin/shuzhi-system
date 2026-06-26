@@ -27,6 +27,7 @@ from app.modules.admin.router import router as admin_router
 from app.modules.system_settings.router import router as system_settings_router
 from app.modules.cron.router import router as cron_router
 from app.modules.ai.router import router as ai_router
+from app.modules.reimbursement.router import router as reimbursement_router
 
 
 # 静态文件目录（uploads）
@@ -95,6 +96,7 @@ app.include_router(cron_router, prefix="/api/v1/cron", tags=["定时任务"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["管理后台"])
 app.include_router(system_settings_router, prefix="/api/v1/admin/settings", tags=["系统设置"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI 平台"])
+app.include_router(reimbursement_router, prefix="/api/v1/reimbursements", tags=["报销中心"])
 app.include_router(sse_router, prefix="/sse", tags=["SSE"])
 
 

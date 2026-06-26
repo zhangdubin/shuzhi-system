@@ -48,8 +48,27 @@ def _detect_format(head: bytes) -> str:
     return "unknown"
 
 
+def _to_internal_url(url: str) -> str:
+    """公网 URL → 后端容器内可达的内部 URL（minio:9000 / shuzhi-backend:8000）"""
+    if not url:
+        return url
+    from app.config import settings
+    import re
+    if settings.STORAGE_BACKEND == "minio":
+        public = settings.MINIO_PUBLIC_URL or ""
+        m = re.match(r"https?://[^:/]+(?::(\d+))?", public)
+        if m:
+            port = m.group(1) or "9000"
+            url = re.sub(rf"http://localhost:{port}", f"http://minio:{port}", url)
+            url = re.sub(rf"https://localhost:{port}", f"https://minio:{port}", url)
+    url = re.sub(r"http://localhost:8000/static/uploads", "http://shuzhi-backend:8000/static/uploads", url)
+    return url
+
+
 async def _download(url: str, timeout: float = 30.0) -> bytes:
     """下载远端文件到内存"""
+    # 容器内重写：localhost:9000 (公网 MinIO) → minio:9000 (容器内网络)
+    url = _to_internal_url(url)
     try:
         async with httpx.AsyncClient(timeout=timeout) as client:
             r = await client.get(url)

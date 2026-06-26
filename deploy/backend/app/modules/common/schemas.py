@@ -45,12 +45,28 @@ class UserListResponse(BaseModel):
 # ===== 客户（引用下拉） =====
 
 class ClientBrief(BaseModel):
+    """客户档案（管理列表用，对齐 Client 表全部字段 + 合同聚合）"""
+    id: int
     clientId: int
     code: str
     name: str
     shortName: Optional[str] = None
     taxNo: Optional[str] = None
+    legalPerson: Optional[str] = None
+    contactName: Optional[str] = None
+    contactPhone: Optional[str] = None
+    contactEmail: Optional[str] = None
+    address: Optional[str] = None
+    bankName: Optional[str] = None
+    bankAccount: Optional[str] = None
+    industry: Optional[str] = None
     level: Optional[str] = "C"
+    isActive: bool = True
+    remark: Optional[str] = None
+    createdAt: Optional[str] = None
+    # 合同聚合（实时统计）
+    contractCount: int = 0
+    totalAmount: float = 0.0  # 元
 
 
 class ClientListRequest(BaseModel):

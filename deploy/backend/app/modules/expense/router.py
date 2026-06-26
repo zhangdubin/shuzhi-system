@@ -3,6 +3,7 @@
 - /api/v1/expenses/*
 """
 from fastapi import APIRouter, Depends, Query
+from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.database import get_db
@@ -72,7 +73,7 @@ async def update_expense(
 async def delete_expense(
     expenseId: int = Query(...),
     db: AsyncSession = Depends(get_db),
-    current_user: CurrentUser = Depends(require_permission("expense:write")),
+    current_user: CurrentUser = Depends(require_permission("expense:delete")),
 ):
     data = await service.delete_expense(db, expenseId, current_user.id)
     await publish_event("sse:dashboard", "activity", {
@@ -80,6 +81,27 @@ async def delete_expense(
         "title": f"{current_user.name} 删除费用 #{expenseId}",
     })
     return {"code": 0, "data": data, "message": "已删除"}
+
+
+class BatchDeleteRequest(BaseModel):
+    expenseIds: list[int]
+
+
+@router.post("/batch/delete", summary="批量删除费用（仅超管）")
+async def batch_delete_expenses(
+    req: BatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission("expense:delete")),
+):
+    data = await service.batch_delete_expenses(db, req.expenseIds, current_user.id)
+    await publish_event("sse:dashboard", "activity", {
+        "type": "费用", "action": "批量删除", "operator": current_user.name,
+        "title": f"{current_user.name} 批量删除费用 {data['deleted']} 条",
+    })
+    msg = f"已删除 {data['deleted']} 条"
+    if data.get("skipped"):
+        msg += f"，跳过 {len(data['skipped'])} 条（被报销单引用，不能删除）"
+    return {"code": 0, "data": data, "message": msg}
 
 
 @router.post("/submit", summary="提交审批（draft → pending）")

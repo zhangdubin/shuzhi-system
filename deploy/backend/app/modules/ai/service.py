@@ -17,7 +17,8 @@ from sqlalchemy.orm import selectinload
 
 from app.core.exceptions import NotFoundException
 from app.core.sse import publish_event
-from app.core.cache import cache, invalidate
+from app.core import cache as cache_mod
+from app.core.cache import invalidate
 from app.config import settings
 from app.modules.ai import ai_client
 from app.modules.ai.models import AITask, AIFeedback, AIAlert
@@ -494,66 +495,279 @@ async def task_cancel(db: AsyncSession, req) -> dict:
 # ============================================================
 
 async def model_list(db: AsyncSession) -> dict:
-    """模型列表（mock 静态配置）"""
-    # 查用量
-    usage = {}
-    rows = (await db.execute(
+    """模型列表：5 个核心 AI 模型 + 各自配置/用量/状态"""
+    # 并行查所有需要异步查的项
+    llm_cfg_task = _get_llm_config(db)
+    llm_ver_task = _get_llm_version(db)
+    # 查每个模型的月用量
+    usage_rows = (await db.execute(
         select(AITask.model, func.count(AITask.id))
         .where(AITask.model.isnot(None))
         .group_by(AITask.model)
     )).all()
-    for m, c in rows:
-        usage[m] = c
+    usage = {m: c for m, c in usage_rows}
+    llm_config_dict, llm_version = await asyncio.gather(llm_cfg_task, llm_ver_task)
 
+    # 读各模型 Redis 配置（如果有用户改过）
+    def _cfg_or_env(model_id: str, env_default: dict) -> dict:
+        """从 Redis 读 user override，没有就返回 env default"""
+        return env_default  # 简化：先都返回 env default；下方按需补
+
+    # 5 个模型：内置 3 个 + 外部 2 个
     models = [
         {
-            "id": settings.AI_OCR_MODEL,
+            "id": "paddleocr-v3",
             "name": "PaddleOCR 发票识别",
             "type": "ocr",
+            "category": "内置自研",
+            "description": "自建 PaddleOCR 微服务，识别发票字段（金额/税率/销方）。延迟低、无外部费用。",
             "status": "healthy",
             "version": "1.2.0",
             "metrics": {"latencyMs": 400, "accuracy": 0.962, "qps": 5},
-            "config": {"confidenceThreshold": 0.7, "enableLineItems": True},
+            "config": await _get_ocr_config(db),
+            "configurable": ["confidenceThreshold", "enableLineItems", "maxFileSizeMB"],
             "costPerCallCents": 0,
-            "monthlyUsage": usage.get(settings.AI_OCR_MODEL, 0),
+            "monthlyUsage": usage.get("paddleocr-v3", 0),
         },
         {
-            "id": settings.AI_LLM_MODEL,
-            "name": "通义千问 2.5",
+            "id": "llm",
+            "name": "通用大模型 (LLM)",
             "type": "llm",
+            "category": "外部 SaaS / 自建",
+            "description": "AI 起草/抽取/问答的底层 LLM。支持 12 家国内外大模型服务商（OpenAI/通义千问/DeepSeek/MiniMax/智谱/百度/腾讯/Moonshot/豆包/Stepfun/Ollama/自定义）。",
             "status": "healthy",
-            "version": "7b-instruct",
+            "version": llm_version,
             "metrics": {"latencyMs": 1200, "tokensPerSec": 80, "qps": 10},
-            "config": {"temperature": 0.7, "maxTokens": 2048, "systemPrompt": "你是数智化系统 AI 助手"},
+            "config": llm_config_dict,
+            "configurable": ["provider", "baseUrl", "apiKey", "model", "contextLimit", "temperature", "maxTokens", "streaming"],
+            "providers": [
+                {"value": "openai", "label": "OpenAI 兼容（含 GPT-4o/o1/o3）", "defaultUrl": "https://api.openai.com/v1", "defaultModel": "gpt-4o"},
+                {"value": "qwen", "label": "阿里通义 Qwen", "defaultUrl": "https://dashscope.aliyuncs.com/compatible-mode/v1", "defaultModel": "qwen-max"},
+                {"value": "deepseek", "label": "DeepSeek", "defaultUrl": "https://api.deepseek.com/v1", "defaultModel": "deepseek-chat"},
+                {"value": "minimax", "label": "MiniMax", "defaultUrl": "https://api.minimaxi.com/v1", "defaultModel": "MiniMax-Text-01"},
+                {"value": "zhipu", "label": "智谱 GLM", "defaultUrl": "https://open.bigmodel.cn/api/paas/v4", "defaultModel": "glm-4-plus"},
+                {"value": "baidu", "label": "百度 ERNIE", "defaultUrl": "https://qianfan.baidubce.com/v2", "defaultModel": "ernie-4.0-8k"},
+                {"value": "tencent", "label": "腾讯混元", "defaultUrl": "https://hunyuan.cloud.tencent.com/v1", "defaultModel": "hunyuan-pro"},
+                {"value": "moonshot", "label": "月之暗面 Moonshot", "defaultUrl": "https://api.moonshot.cn/v1", "defaultModel": "moonshot-v1-128k"},
+                {"value": "doubao", "label": "字节豆包", "defaultUrl": "https://ark.cn-beijing.volces.com/api/v3", "defaultModel": "doubao-pro-128k"},
+                {"value": "stepfun", "label": "阶跃星辰 Step", "defaultUrl": "https://api.stepfun.com/v1", "defaultModel": "step-1-128k"},
+                {"value": "ollama", "label": "Ollama 本地（llama3.1 等）", "defaultUrl": "http://localhost:11434/v1", "defaultModel": "llama3.1"},
+                {"value": "custom", "label": "自定义 OpenAI 兼容端点", "defaultUrl": "", "defaultModel": ""},
+            ],
             "costPerCallCents": 2,
-            "monthlyUsage": usage.get(settings.AI_LLM_MODEL, 0),
+            "monthlyUsage": usage.get(llm_version, 0),
         },
         {
-            "id": settings.AI_RISK_MODEL,
+            "id": "risk-v2.3",
             "name": "RiskScan 风险扫描",
             "type": "risk",
+            "category": "内置自研",
+            "description": "合同/项目/凭证异常实时标红。基于规则 + 行业历史风险库。",
             "status": "healthy",
             "version": "2.3.1",
             "metrics": {"latencyMs": 300, "accuracy": 0.85, "qps": 20},
-            "config": {"thresholds": {"high": 60, "medium": 75, "low": 90}},
+            "config": await _get_risk_config(db),
+            "configurable": ["thresholds.high", "thresholds.medium", "thresholds.low", "enableAutoScan"],
             "costPerCallCents": 1,
-            "monthlyUsage": usage.get(settings.AI_RISK_MODEL, 0),
+            "monthlyUsage": usage.get("risk-v2.3", 0),
+        },
+        {
+            "id": "guoshui-verify",
+            "name": "国税查验接口",
+            "type": "verify",
+            "category": "外部 SaaS",
+            "description": "对接国税总局发票查验平台，验证发票真伪。仅需 AppCode，无需 API Key。",
+            "status": "healthy",
+            "version": "v3",
+            "metrics": {"latencyMs": 1500, "successRate": 0.98, "qps": 3},
+            "config": await _get_verify_config(db),
+            "configurable": ["appCode", "useSandbox", "timeoutSec"],
+            "costPerCallCents": 5,
+            "monthlyUsage": usage.get("guoshui-verify", 0),
+        },
+        {
+            "id": "nuonuo-fallback",
+            "name": "诺诺发票兜底",
+            "type": "ocr_fallback",
+            "category": "外部 SaaS",
+            "description": "PaddleOCR 失败时的兜底识别服务（诺诺电子发票 API）。按调用计费。",
+            "status": "down",
+            "version": "v2",
+            "metrics": {"latencyMs": 2200, "accuracy": 0.93, "qps": 2},
+            "config": await _get_nuonuo_config(db),
+            "configurable": ["appKey", "appSecret", "enabled", "fallbackThreshold"],
+            "costPerCallCents": 8,
+            "monthlyUsage": usage.get("nuonuo-fallback", 0),
         },
     ]
     return {"models": models}
 
 
 async def model_config(db: AsyncSession, req) -> dict:
-    """更新模型配置（mock：写 ai_feedback 表当 audit 用途）"""
-    # 真实部署：写到 settings 表 / Redis
-    # mock：返回 OK
+    """更新模型配置（持久化到 Redis，按 modelId 区分）"""
+    cfg = dict(req.config or {})
+    # 敏感字段脱敏后再返回
+    masked_cfg = dict(cfg)
+    for secret_key in ("apiKey", "appCode", "appKey", "appSecret"):
+        v = masked_cfg.get(secret_key, "")
+        if isinstance(v, str) and len(v) > 8:
+            masked_cfg[f"_{secret_key}Masked"] = v[:4] + "***" + v[-4:]
+            masked_cfg[secret_key] = "***"  # 不回显
+    # 存 Redis：key = ai:model:{modelId}
+    key = f"ai:model:{req.modelId}"
+    await cache_mod.set_(key, {
+        "config": cfg,  # Redis 里存明文（用于真调用）
+        "enabled": req.enabled,
+        "updatedAt": datetime.utcnow().isoformat(),
+    }, ttl=86400 * 30)
     return {
         "modelId": req.modelId,
-        "config": req.config,
+        "config": masked_cfg,
         "enabled": req.enabled,
         "updated": True,
-        "note": "（mock：真实部署会持久化到 settings 表）",
     }
+
+
+async def _get_ocr_config(db: AsyncSession) -> dict:
+    cached = await cache_mod.get("ai:model:paddleocr-v3")
+    if cached and isinstance(cached, dict):
+        return cached.get("config") or {}
+    return {
+        "confidenceThreshold": 0.7,
+        "enableLineItems": True,
+        "maxFileSizeMB": 20,
+        "endpoint": settings.AI_OCR_ENDPOINT if hasattr(settings, "AI_OCR_ENDPOINT") else "http://localhost:8001",
+    }
+
+
+async def _get_risk_config(db: AsyncSession) -> dict:
+    cached = await cache_mod.get("ai:model:risk-v2.3")
+    if cached and isinstance(cached, dict):
+        return cached.get("config") or {}
+    return {
+        "thresholds": {"high": 60, "medium": 75, "low": 90},
+        "enableAutoScan": True,
+    }
+
+
+async def _get_verify_config(db: AsyncSession) -> dict:
+    cached = await cache_mod.get("ai:model:guoshui-verify")
+    if cached and isinstance(cached, dict):
+        return cached.get("config") or {}
+    return {
+        "appCode": "",
+        "useSandbox": True,
+        "timeoutSec": 10,
+        "apiUrl": "http://127.0.0.1:8002/open/v1/services",
+    }
+
+
+async def _get_nuonuo_config(db: AsyncSession) -> dict:
+    cached = await cache_mod.get("ai:model:nuonuo-fallback")
+    if cached and isinstance(cached, dict):
+        return cached.get("config") or {}
+    return {
+        "appKey": "",
+        "appSecret": "",
+        "enabled": False,
+        "fallbackThreshold": 0.5,
+    }
+
+
+async def _get_llm_config(db: AsyncSession) -> dict:
+    """从 Redis 读 LLM 配置；没有则 fallback 到 settings.AI_LLM_* 环境变量"""
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        cfg = cached.get("config") or {}
+        # 不返回完整 apiKey（前端列表也不该看到）
+        masked = dict(cfg)
+        if masked.get("apiKey"):
+            k = str(masked["apiKey"])
+            masked["apiKey"] = k[:4] + "***" + k[-4:] if len(k) > 8 else "***"
+        masked.setdefault("temperature", 0.7)
+        masked.setdefault("maxTokens", 2048)
+        masked.setdefault("systemPrompt", "你是数智化系统 AI 助手")
+        return masked
+    return {
+        "provider": "qwen",
+        "baseUrl": settings.AI_LLM_ENDPOINT if hasattr(settings, "AI_LLM_ENDPOINT") else "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": (settings.AI_LLM_API_KEY[:4] + "***" + settings.AI_LLM_API_KEY[-4:]) if (hasattr(settings, "AI_LLM_API_KEY") and len(settings.AI_LLM_API_KEY) > 8) else "",
+        "model": settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct",
+        "contextLimit": 131072,
+        "temperature": 0.7,
+        "maxTokens": 2048,
+        "systemPrompt": "你是数智化系统 AI 助手",
+    }
+
+
+async def _get_llm_version(db: AsyncSession) -> str:
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        model = (cached.get("config") or {}).get("model")
+        if model:
+            return str(model)
+    return settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct"
+
+
+async def get_active_llm_config(db: AsyncSession) -> dict:
+    """给 ai_client.py 用：返回完整配置（含明文 API Key），无 fallback"""
+    cached = await cache_mod.get("ai:model:llm")
+    if cached and isinstance(cached, dict):
+        cfg = cached.get("config") or {}
+        if cfg.get("baseUrl") and cfg.get("model"):
+            return cfg
+    # fallback: 用环境变量
+    return {
+        "provider": "qwen",
+        "baseUrl": settings.AI_LLM_ENDPOINT if hasattr(settings, "AI_LLM_ENDPOINT") else "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": settings.AI_LLM_API_KEY if hasattr(settings, "AI_LLM_API_KEY") else "",
+        "model": settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct",
+        "contextLimit": 131072,
+        "temperature": 0.7,
+        "maxTokens": 2048,
+    }
+
+
+async def model_test_connection(base_url: str, api_key: str, model: str) -> dict:
+    """测试 LLM 连通性：发一个最小 /chat/completions 请求"""
+    import httpx
+    import time
+    if not base_url:
+        return {"ok": False, "message": "Base URL 不能为空"}
+    base_url = base_url.rstrip("/")
+    url = f"{base_url}/chat/completions"
+    headers = {"Content-Type": "application/json"}
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    payload = {
+        "model": model or "gpt-4o-mini",
+        "messages": [{"role": "user", "content": "ping"}],
+        "max_tokens": 8,
+        "temperature": 0,
+    }
+    t0 = time.time()
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            r = await client.post(url, json=payload, headers=headers)
+        latency = int((time.time() - t0) * 1000)
+        if r.status_code == 200:
+            return {"ok": True, "message": f"连接成功（HTTP 200）", "latencyMs": latency}
+        # 401/403 通常意味着 key 错；其他是服务/网络问题
+        try:
+            err = r.json()
+            err_msg = err.get("error", {}).get("message") or err.get("message") or str(err)[:200]
+        except Exception:
+            err_msg = r.text[:200]
+        return {
+            "ok": False,
+            "message": f"HTTP {r.status_code}：{err_msg}",
+            "latencyMs": latency,
+        }
+    except httpx.TimeoutException:
+        return {"ok": False, "message": f"连接超时（10s）", "latencyMs": int((time.time() - t0) * 1000)}
+    except Exception as e:
+        return {"ok": False, "message": f"请求失败：{type(e).__name__}: {str(e)[:200]}"}
+
 
 
 # ============================================================

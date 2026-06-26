@@ -8,7 +8,7 @@ import random
 import string
 import uuid
 import re
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -16,7 +16,7 @@ from sqlalchemy import and_, or_, select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.exceptions import NotFoundException, ParamErrorException, ConflictException
+from app.core.exceptions import NotFoundException, ParamErrorException, ConflictException, OCRFailedException
 from app.core.sse import (
     publish_batch_progress, publish_batch_item_done,
     publish_batch_summary, publish_batch_completed,
@@ -36,6 +36,20 @@ def _gen_invoice_code() -> str:
 
 def _gen_batch_code() -> str:
     return f"BATCH-{datetime.now().strftime('%Y-%m-%d')}-{uuid.uuid4().hex[:3].upper()}"
+
+
+def _parse_issue_date(s):
+    """把 YYYY-MM-DD / YYYY/MM/DD / YYYYMMDD / datetime 解析为 date"""
+    if not s:
+        return None
+    txt = str(s)[:10]
+    for fmt in ("%Y-%m-%d", "%Y/%m/%d", "%Y.%m.%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(txt, fmt).date()
+        except Exception:
+            pass
+    return None
+
 
 
 async def _save_file(filename: str, content: bytes) -> dict:
@@ -100,6 +114,8 @@ async def recognize_one(
     file_id: str,
     file_url: str,
     uploader_id: int,
+    file_size: Optional[int] = None,
+    template_id: Optional[int] = None,
 ) -> dict:
     """OCR 识别一张发票 + 入库"""
     # R18.1: 非标准格式（PDF/HEIC/WEBP/...）转码为 JPEG 再 OCR
@@ -194,6 +210,8 @@ async def recognize_one(
         status=ocr.get("status", "verified"),
         file_url=file_url,
         file_id=file_id,
+        file_size=file_size,
+        template_id=template_id,
         items=_clean_items(ocr.get("items", [])),
         raw_ocr=ocr,
         uploader_id=uploader_id,
@@ -222,6 +240,9 @@ async def recognize_one(
             "taxAmount": float(Decimal(tax_amount_cents) / 100),
             "amountExclTax": float(Decimal(amount_excl_tax_cents) / 100),
             "items": ocr.get("items", []),
+            # AI 启发式归类（销售方名/发票类型 → 费用类型），前端可一键带入报销单
+            # 仅前端入账时使用，DB 不持久化（与 Expense.category 解耦）
+            "expenseType": _classify_expense_category(seller_name, invoice_type) if seller_name else "",
         },
         "fileUrl": file_url,
         # 预览图：转码后的 jpg URL（PDF/HEIC/WEBP 等被转码过；JPEG/PNG 直接用原 URL）
@@ -309,6 +330,7 @@ async def list_invoices(
             "uploaderName": uploader_map.get(inv.uploader_id, "—"),
             "uploadedAt": inv.uploaded_at.isoformat() if inv.uploaded_at else None,
             "relations": relations_map.get(inv.id, []),
+            "templateId": inv.template_id,
         })
     # items 后处理：去重 + 修正金额错位
     for it in items:
@@ -344,8 +366,12 @@ async def delete_invoices(db: AsyncSession, invoice_ids: list[int]) -> int:
     """
     if not invoice_ids:
         return 0
-    from app.modules.invoice_ocr.models import Invoice, InvoiceRelation
-    # 先删关联
+    from app.modules.invoice_ocr.models import Invoice, InvoiceRelation, InvoiceVerifyRecord
+    # 先删发票查验记录（FK invoice_id → invoices.id，nullable=True）
+    await db.execute(
+        InvoiceVerifyRecord.__table__.delete().where(InvoiceVerifyRecord.invoice_id.in_(invoice_ids))
+    )
+    # 再删关联关系（FK invoice_id → invoices.id）
     await db.execute(
         InvoiceRelation.__table__.delete().where(InvoiceRelation.invoice_id.in_(invoice_ids))
     )
@@ -458,6 +484,67 @@ def _clean_items(raw_items: list) -> list:
     return out
 
 
+
+
+async def list_unlinked_invoices(
+    db: AsyncSession, keyword: str = "", page: int = 1, page_size: int = 20
+) -> dict:
+    """列出可关联的发票（未关联任何 expense、已核验、未入账）
+    - 排除 expenses.invoice_id != NULL 的发票
+    - 排除 description 含 [关联发票 INV-xxx] 的费用对应的发票
+    - 排除 status=submitted/archived 的发票
+    - 仅返回 verifyStatus=verified 的发票
+    """
+    from app.modules.expense.models import Expense
+    from sqlalchemy import func as _func, or_ as _or
+
+    # 1) 收集所有"已被占用"的发票 id
+    # 1a) expenses.invoice_id IS NOT NULL
+    q_linked = select(Expense.invoice_id).where(Expense.invoice_id.isnot(None))
+    linked_ids = set(r for r in (await db.execute(q_linked)).scalars().all() if r)
+
+    # 1b) description 含 [关联发票 INV-xxx] 的（兼容老数据）
+    desc_rows = (await db.execute(
+        select(Expense.description).where(Expense.description.ilike("%[关联发票 INV-%"))
+    )).scalars().all()
+    import re as _re
+    for d in desc_rows:
+        for m in _re.finditer(r"\[关联发票 INV-([^\]]+)\]", d or ""):
+            inv_no = m.group(1).strip()
+            if not inv_no:
+                continue
+            inv = (await db.execute(select(Invoice).where(Invoice.invoice_no == inv_no))).scalar_one_or_none()
+            if inv:
+                linked_ids.add(inv.id)
+
+    # 2) 查未在 linked_ids 里的、verifyStatus=verified、status != submitted/archived
+    filters = [
+        Invoice.verify_status == "verified",
+        Invoice.status.notin_(["submitted", "archived", "rejected"]),
+    ]
+    if linked_ids:
+        filters.append(~Invoice.id.in_(linked_ids))
+    q = select(Invoice).where(*filters)
+    if keyword:
+        kw = f"%{keyword}%"
+        q = q.where(_or(Invoice.invoice_no.ilike(kw), Invoice.seller_name.ilike(kw)))
+    total = (await db.execute(select(_func.count()).select_from(q.subquery()))).scalar() or 0
+    q = q.order_by(Invoice.id.desc()).offset((page - 1) * page_size).limit(page_size)
+    rows = (await db.execute(q)).scalars().all()
+    items = [
+        {
+            "invoiceId": inv.id,
+            "invoiceNo": inv.invoice_no,
+            "invoiceType": inv.invoice_type,
+            "sellerName": inv.seller_name,
+            "totalAmount": float(Decimal(inv.total_amount or 0) / 100),
+            "issueDate": inv.issue_date.isoformat() if inv.issue_date else None,
+            "status": inv.status,
+            "verifyStatus": inv.verify_status,
+        }
+        for inv in rows
+    ]
+    return {"list": items, "total": total}
 async def get_invoice(db: AsyncSession, invoice_id: int) -> dict:
     inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
     if not inv:
@@ -467,6 +554,12 @@ async def get_invoice(db: AsyncSession, invoice_id: int) -> dict:
         select(InvoiceRelation).where(InvoiceRelation.invoice_id == invoice_id)
     )).scalars().all()
     relations = [{"type": r.relation_type, "id": r.relation_id} for r in rels]
+    # 上传人：单独查（Invoice 没有 relationship 属性），回退到 JOIN
+    uploader_name = None
+    if inv.uploader_id:
+        u = (await db.execute(select(User).where(User.id == inv.uploader_id))).scalar_one_or_none()
+        if u:
+            uploader_name = u.name or u.username
     return {
         "invoiceId": inv.id, "code": inv.code,
         "invoiceType": inv.invoice_type, "invoiceCode": inv.invoice_code, "invoiceNo": inv.invoice_no,
@@ -487,11 +580,15 @@ async def get_invoice(db: AsyncSession, invoice_id: int) -> dict:
         "status": inv.status,
         "isLinkedContract": inv.is_linked_contract, "isLinkedProject": inv.is_linked_project,
         "fileUrl": inv.file_url, "previewUrl": inv.file_url, "fileId": inv.file_id, "fileSize": inv.file_size,
-        "uploaderId": inv.uploader_id, "uploadedAt": inv.uploaded_at.isoformat() if inv.uploaded_at else None,
+        "uploaderId": inv.uploader_id, "uploaderName": uploader_name, "uploadedAt": inv.uploaded_at.isoformat() if inv.uploaded_at else None,
         "createdAt": inv.created_at.isoformat() if inv.created_at else None,
         "updatedAt": inv.updated_at.isoformat() if inv.updated_at else None,
         "relations": relations,
         "items": _clean_items(inv.items or []),
+        # 原始 OCR（含火车票扩展字段：fromStation/toStation/trainNo/carriageNo/seatNo/seatClass/buyerIdMasked/eTicketNo/rideDate/rideTime）
+        "rawOcr": inv.raw_ocr or {},
+        # 启发式归类（前端"费用类型"下拉一键带入）
+        "expenseType": _classify_expense_category(inv.seller_name, inv.invoice_type) if inv.seller_name else "",
     }
 
 
@@ -525,6 +622,14 @@ async def update_invoice(
             v = Decimal(str(v))
         if k == "issueDate" and isinstance(v, str):
             v = date.fromisoformat(v)
+        if k == "verifyAt" and isinstance(v, str):
+            # ISO 字符串 → datetime（DB 列是 naive，统一转 UTC 后去掉 tzinfo）
+            try:
+                v = datetime.fromisoformat(v.replace("Z", "+00:00"))
+                if v.tzinfo is not None:
+                    v = v.astimezone(timezone.utc).replace(tzinfo=None)
+            except ValueError:
+                v = datetime.fromisoformat(v)
         setattr(inv, attr, v)
 
     # 核验通过自动写入核验时间
@@ -550,10 +655,42 @@ async def update_invoice(
     return await get_invoice(db, inv.id)
 
 
-async def _link_invoice_to_expense(db, inv) -> None:
+def _classify_expense_category(seller_name: Optional[str], invoice_type: Optional[str] = None) -> str:
+    """根据销售方名/发票类型启发式归类。Expense.category 标准值：
+    差旅 / 招待 / 办公 / 推广 / 培训 / 其他
+    """
+    name = (seller_name or "").strip()
+    itype = (invoice_type or "").strip()
+    # 0. 票种级判定（最优先）
+    if "铁路" in itype or "火车" in itype or "航空" in itype or "机票" in itype:
+        return "差旅"
+    if name in ("中国铁路", "中国国家铁路集团", "12306", "国航", "东航", "南航", "海航") or "铁路" in name or "航空" in name or "12306" in name:
+        return "差旅"
+    # 关键词 → 类别
+    rules: list[tuple[list[str], str]] = [
+        (["酒店", "宾馆", "招待所", "客栈", "民宿", "度假村", "客房"], "差旅"),
+        (["旅游", "旅行社", "票务", "机票", "航空", "高铁"], "差旅"),
+        (["出租", "网约车", "出行", "打车", "滴滴"], "差旅"),
+        (["餐饮", "饭店", "小菜园", "餐厅", "食堂", "酒店餐饮", "咖啡", "奶茶", "茶馆", "茶艺", "茶舍", "酒吧", "会所"], "招待"),
+        (["印刷", "打印", "图文", "复印"], "办公"),
+        (["科技", "网络", "软件", "SaaS", "云服务", "云科技"], "软件服务费"),
+        (["办公用品", "文具", "耗材"], "办公"),
+        (["培训", "教育", "学校", "学院"], "培训"),
+        (["广告", "传媒", "推广", "营销"], "推广"),
+    ]
+    for kws, cat in rules:
+        for kw in kws:
+            if kw in name:
+                return cat
+    # 兜底
+    return "其他"
+
+
+async def _link_invoice_to_expense(db, inv, reason: Optional[str] = None) -> None:
     """核验通过后，与销售费用模块联动：upsert 一条 expenses 记录。
     关联标识写到 description（Expense 模型暂未加 invoice_id 列）。
     重复触发幂等：按 title 查重，不覆盖已审批通过的 status。
+    reason: 入账事由（前端弹框输入），追加到 description 后便于审计
     """
     from sqlalchemy import select
     from app.modules.expense.models import Expense
@@ -561,22 +698,42 @@ async def _link_invoice_to_expense(db, inv) -> None:
 
     inv_no = inv.invoice_no or inv.code or f"id={inv.id}"
     link_tag = f"[关联发票 INV-{inv_no}]"
-    title = f"发票报销·{inv.seller_name or '未知销售方'}·{inv_no}"
+    reason_text = (reason or "").strip()
+    reason_suffix = f"\n入账事由：{reason_text}" if reason_text else ""
+    # title 优先带事由（用户能在销售费用"事由"列一眼看到）
+    if reason_text:
+        title = f"发票报销·{reason_text}·{inv.seller_name or '未知销售方'}·{inv_no}"
+    else:
+        title = f"发票报销·{inv.seller_name or '未知销售方'}·{inv_no}"
 
     existing = (await db.execute(
         select(Expense).where(Expense.title == title).limit(1)
     )).scalar_one_or_none()
 
+    # 启发式归类
+    cat = _classify_expense_category(inv.seller_name, inv.invoice_type)
     if existing:
         existing.amount = int(inv.total_amount or 0)
-        if not (existing.description or "").startswith("[关联发票"):
+        # 已分类错误（比如老 expense 是"其他"）时按销售方重新归类
+        if existing.category in (None, "", "其他") and cat != "其他":
+            existing.category = cat
+        # 已有关联 expense：总是把入账事由追加到 description，便于审计
+        # 同时如果新 title 包含事由前缀，刷新 title 让列表能直接看到事由
+        if reason_text:
+            if reason_text not in (existing.title or ""):
+                existing.title = title
+            if (existing.description or "") and not existing.description.endswith(reason_suffix):
+                existing.description = (existing.description or "") + reason_suffix
+            elif not existing.description:
+                existing.description = link_tag + reason_suffix
+        elif not (existing.description or "").startswith("[关联发票"):
             existing.description = link_tag + (existing.description or "")
     else:
         exp = Expense(
             code=f"EXP-INV-{inv.id}-{int(datetime.utcnow().timestamp())}",
-            category="其他",
+            category=cat,
             title=title,
-            description=link_tag + "由发票识别自动生成（核验即关联）",
+            description=link_tag + "由发票识别自动生成（入账即关联）" + reason_suffix,
             amount=int(inv.total_amount or 0),
             currency="CNY",
             expense_date=inv.issue_date or _date.today(),
@@ -584,10 +741,25 @@ async def _link_invoice_to_expense(db, inv) -> None:
             status="draft",
         )
         db.add(exp)
+        await db.flush()  # 拿到 exp.id 才能挂 breakdown
+        # 入账时默认带一条费用明细：费用类别 + 销售方 + 发票总额（分）
+        from app.modules.expense.models import ExpenseBreakdown
+        _cat_zh = {
+            "差旅": "差旅费", "招待": "业务招待", "办公": "办公用品",
+            "推广": "推广费", "培训": "培训费", "软件服务费": "软件服务费",
+            "咨询服务费": "咨询服务费", "其他": "其他费用",
+        }
+        _label = f"{_cat_zh.get(cat, cat)}·{inv.seller_name or '销售方'}" if cat != '其他' else f"{inv.seller_name or '销售方'}"
+        db.add(ExpenseBreakdown(
+            expense_id=exp.id,
+            label=_label,
+            amount=int(inv.total_amount or 0),  # 存分（与 Expense.amount 单位一致）
+            remark=f"入账自动生成（发票 {inv.invoice_no or inv.code or inv.id}）",
+        ))
 
 
 # ===== 提交入账 =====
-async def submit_invoice(db: AsyncSession, invoice_id: int) -> dict:
+async def submit_invoice(db: AsyncSession, invoice_id: int, reason: Optional[str] = None) -> dict:
     inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
     if not inv:
         raise NotFoundException(f"发票不存在：{invoice_id}")
@@ -596,7 +768,7 @@ async def submit_invoice(db: AsyncSession, invoice_id: int) -> dict:
     inv.status = "submitted"
     # 提交入账时自动创建关联费用占位（用于后续报销审批）
     try:
-        await _link_invoice_to_expense(db, inv)
+        await _link_invoice_to_expense(db, inv, reason)
     except Exception as e:
         print(f"[link-expense] invoice_id={inv.id} failed: {e}", flush=True)
     await db.commit()
@@ -608,7 +780,24 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
     inv = (await db.execute(select(Invoice).where(Invoice.id == invoice_id))).scalar_one_or_none()
     if not inv:
         raise NotFoundException(f"发票不存在：{invoice_id}")
-    new_ocr = await ocr_client.recognize(inv.file_id or f"INV-{inv.id}", inv.file_url or "")
+
+    # R18.1: 非标准格式（PDF/HEIC/WEBP）必须先转 JPEG 再 OCR
+    # 否则 ocr-service 收到 PDF 会 LoadImageError → 上层回退 mock → 用户看到假数据
+    try:
+        normalized_url, normalized_name, _ = await image_converter.normalize_to_jpeg(
+            file_url=inv.file_url or "",
+            file_id=inv.file_id or f"INV-{inv.id}",
+            save_callback=_save_file,
+        )
+        ocr_url = normalized_url
+        if normalized_url != (inv.file_url or ""):
+            from loguru import logger
+            logger.info(f"[recheck OCR 转码] {inv.file_url} → {normalized_name} → {normalized_url}")
+    except OCRFailedException as e:
+        # 转码失败：直接报错，不回退 mock
+        raise OCRFailedException(f"重新识别失败（转码错误）：{e}")
+
+    new_ocr = await ocr_client.recognize(inv.file_id or f"INV-{inv.id}", ocr_url)
     from app.integrations.ocr_client import _cn_capital
     # 不管 OCR 成败，都确保 3 个字段已填（OCR 不返时用兜底逻辑）
     try:
@@ -630,6 +819,12 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
         inv.total_amount_cn = flat.get("totalAmountCn") or _cn_capital(_amount_yuan)
         inv.verify_code = flat.get("verifyCode") or flat.get("verify_code") or ""
         inv.remarks = flat.get("remarks") or ""
+        inv.buyer_name = flat["buyerName"]
+        inv.buyer_tax_no = flat["buyerTaxNo"]
+        inv.seller_name = flat["sellerName"]
+        inv.seller_tax_no = flat["sellerTaxNo"]
+        inv.invoice_code = flat["invoiceCode"]
+        inv.issue_date = _parse_issue_date(flat["issueDate"])
     else:
         # OCR 失败：用现有数据兜底
         inv.status = "rejected"
@@ -639,6 +834,28 @@ async def recheck_invoice(db: AsyncSession, invoice_id: int) -> dict:
             inv.verify_code = ""  # OCR 没返就留空
     inv.status = inv.status if inv.status != "failed" else "rejected"
     await db.commit()
+
+    # R-fix: 重新识别后，如果已 submit 且存在关联 expense，按新 invoice_type 修正 category
+    # 避免老 expense 因发票首次归类错误（比如火车票卖家名不匹配 → '其他'）永远错
+    if inv.status in ("submitted", "verified"):
+        try:
+            from app.modules.expense.models import Expense
+            from sqlalchemy import select as _sel
+            link_tag = f"[关联发票 INV-{inv.invoice_no or inv.id}]"
+            stmt = _sel(Expense).where(Expense.description.contains(link_tag))
+            rows = (await db.execute(stmt)).scalars().all()
+            if rows:
+                new_cat = _classify_expense_category(inv.seller_name, inv.invoice_type)
+                for r in rows:
+                    if r.category in (None, "", "其他") and new_cat != "其他":
+                        r.category = new_cat
+                    elif r.category != new_cat and new_cat != "其他":
+                        # 同步覆盖：火车票→差旅 即使已不是空也升级
+                        r.category = new_cat
+                await db.commit()
+        except Exception as _e:
+            print(f"[recheck-fix-category] invoice_id={inv.id} failed: {_e}", flush=True)
+
     return await get_invoice(db, inv.id)
 
 
@@ -862,13 +1079,17 @@ async def get_batch_status(db: AsyncSession, batch_id: str) -> dict:
 
 
 # ===== 批量提交入账 =====
-async def submit_batch(db: AsyncSession, invoice_ids: list[int]) -> dict:
-    """批量提交入账"""
+async def submit_batch(db: AsyncSession, invoice_ids: list[int], reason: Optional[str] = None) -> dict:
+    """批量提交入账。每条都创建费用占位（与单条入账行为一致）。"""
     rows = (await db.execute(
         select(Invoice).where(Invoice.id.in_(invoice_ids), Invoice.status == "verified")
     )).scalars().all()
     for inv in rows:
         inv.status = "submitted"
+        try:
+            await _link_invoice_to_expense(db, inv, reason)
+        except Exception as e:
+            print(f"[link-expense] invoice_id={inv.id} failed: {e}", flush=True)
     await db.commit()
     return {"updated": len(rows), "invoiceIds": [r.id for r in rows]}
 

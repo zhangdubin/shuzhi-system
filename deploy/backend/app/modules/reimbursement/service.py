@@ -1124,3 +1124,22 @@ def _empty_schema(title: str = "自定义报销单") -> dict:
             {"label": "财务审核",   "key": "finance"},
         ], "note": "本报销单一式两份，财务与报销人各执一份。"},
     }
+
+
+
+async def batch_delete_forms(db: AsyncSession, form_ids: list[int], operator_id: int) -> dict:
+    """批量删除报销单（仅允许草稿/已取消状态，已打印/已完成的跳过）"""
+    from app.modules.reimbursement.models import ReimbursementForm
+    rows = (await db.execute(
+        select(ReimbursementForm).where(ReimbursementForm.id.in_(form_ids))
+    )).scalars().all()
+    deleted = 0
+    skipped = []
+    for f in rows:
+        if f.status in ("done", "printed", "reimbursed"):
+            skipped.append({"formId": f.id, "formNo": f.form_no, "reason": f"状态 {f.status} 不可删除"})
+            continue
+        await db.delete(f)
+        deleted += 1
+    await db.commit()
+    return {"deleted": deleted, "skipped": skipped}

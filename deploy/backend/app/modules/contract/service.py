@@ -59,6 +59,13 @@ async def list_contracts(
         query = query.where(Contract.status == filters["status"])
     if filters.get("clientId"):
         query = query.where(Contract.client_id == int(filters["clientId"]))
+    # 金额区间（合同金额单位为分）
+    if filters.get("amountMin") is not None:
+        try: query = query.where(Contract.amount >= int(float(filters["amountMin"]) * 100))
+        except: pass
+    if filters.get("amountMax") is not None:
+        try: query = query.where(Contract.amount <= int(float(filters["amountMax"]) * 100))
+        except: pass
     # dateRange
     dr = filters.get("dateRange")
     if dr and isinstance(dr, list) and len(dr) == 2:
@@ -192,6 +199,9 @@ async def update_contract(db: AsyncSession, contract_id: int, req: ContractUpdat
     for k, v in data.items():
         if k == "type":
             setattr(c, "type", CONTRACT_TYPE_MAP.get(v, v))
+        elif k == "amount":
+            # 与 create_contract 保持一致：API 入参是元，DB 存分（×100）
+            c.amount = v * 100
         else:
             setattr(c, field_map.get(k, k), v)
     await db.commit()

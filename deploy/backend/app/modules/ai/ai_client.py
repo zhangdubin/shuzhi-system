@@ -12,10 +12,12 @@ import string
 from datetime import datetime, date, timedelta
 from decimal import Decimal
 from typing import Optional
+from urllib.parse import urlparse
 
 from app.config import settings
 from sqlalchemy import select, func
 from app.core.database import AsyncSessionLocal
+from app.core import cache as cache_mod
 from app.core.cache import cache
 
 
@@ -59,6 +61,27 @@ async def ocr_extract(
     返回 fields / suggestions / meta
     """
     options = options or {}
+
+    # 重要：fileUrl 必须是后端能访问的 URL（http/https），否则不能读图，必须返回空 fields
+    # 防止前端传 blob:http://localhost/... 这类浏览器本地 URL，导致 OCR 走 mock 写死假数据
+    if not _is_accessible_file_url(file_url):
+        await asyncio.sleep(0.1)  # 快速失败，不阻塞前端
+        return {
+            "taskId": f"task_{_gen_id()}",
+            "type": type,
+            "fields": {},
+            "suggestions": {},
+            "meta": {
+                "model": settings.AI_OCR_MODEL if hasattr(settings, "AI_OCR_MODEL") else "paddleocr-v3",
+                "version": "1.2.0",
+                "confidence": 0,
+                "durationMs": 50,
+                "costCents": 0,
+                "traceId": f"ai_{_gen_id()}",
+                "skipped": "fileUrl 不可访问（blob: 或 localhost-only）",
+            },
+        }
+
     await asyncio.sleep(random.uniform(0.8, 2.5))  # 模拟 < 3s
 
     seed = _hash_seed(file_id or "default")
@@ -223,7 +246,7 @@ async def llm_ask(
         "conversationId": (context or {}).get("conversationId", f"conv_{_gen_id()}"),
         "messageId": f"msg_{_gen_id()}",
         "meta": {
-            "model": settings.AI_LLM_MODEL if hasattr(settings, 'AI_LLM_MODEL') else "qwen2.5-7b",
+            "model": await _resolve_llm_model_name(),
             "durationMs": int(random.uniform(1000, 3000)),
             "tokensUsed": 380,
             "costCents": 3,
@@ -506,3 +529,68 @@ def _hash_seed(s: str) -> int:
 
 def _gen_id(n: int = 8) -> str:
     return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+
+def _is_accessible_file_url(file_url: Optional[str]) -> bool:
+    """判断 fileUrl 是否是后端能访问的 HTTP(S) URL。
+
+    拒绝：
+    - 空 / None
+    - blob: / data: 这类浏览器本地 URL（后端容器读不到宿主浏览器）
+    - 私有/保留 IP（防止后端意外去探测内网其它服务）
+
+    放行：
+    - 任意公网/内网 HTTP(S) URL
+    - localhost / 127.0.0.1（开发环境 docker compose：minio 等服务跑在同一网络，
+      后端容器可经容器内网访问，前端拿到的 url 形如 http://localhost:9000/...）
+    """
+    if not file_url or not isinstance(file_url, str):
+        return False
+    s = file_url.strip()
+    if s.startswith(("blob:", "data:")):
+        return False
+    try:
+        u = urlparse(s)
+    except Exception:
+        return False
+    if u.scheme not in ("http", "https"):
+        return False
+    if not (u.hostname or ""):
+        return False
+    # blob:/data: 已经在前面挡掉；这里只做最基本校验，不阻止 localhost（开发环境）
+    return True
+
+# ============================================================
+# LLM 配置解析（从 Redis 读用户在前端配置的，fallback 到 settings）
+# ============================================================
+async def _resolve_llm_model_name() -> str:
+    """从 Redis 读 LLM 配置里的 model 字段，fallback 到 settings.AI_LLM_MODEL"""
+    try:
+        cached = await cache.get("ai:model:llm")
+        if cached and isinstance(cached, dict):
+            cfg = cached.get("config") or {}
+            if cfg.get("model"):
+                return str(cfg["model"])
+    except Exception:
+        pass
+    return settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct"
+
+
+async def _resolve_llm_config() -> dict:
+    """返回完整 LLM 配置（baseUrl/apiKey/model/...），fallback settings"""
+    try:
+        cached = await cache.get("ai:model:llm")
+        if cached and isinstance(cached, dict):
+            cfg = cached.get("config") or {}
+            if cfg.get("baseUrl") and cfg.get("model"):
+                return cfg
+    except Exception:
+        pass
+    return {
+        "baseUrl": settings.AI_LLM_ENDPOINT if hasattr(settings, "AI_LLM_ENDPOINT") else "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        "apiKey": settings.AI_LLM_API_KEY if hasattr(settings, "AI_LLM_API_KEY") else "",
+        "model": settings.AI_LLM_MODEL if hasattr(settings, "AI_LLM_MODEL") else "qwen2.5-7b-instruct",
+        "temperature": 0.7,
+        "maxTokens": 2048,
+    }
+

@@ -56,6 +56,15 @@ async def list_projects(
         conditions.append(Project.manager_id == filters["managerId"])
     if filters.get("clientId"):
         conditions.append(Project.client_id == filters["clientId"])
+    if filters.get("type"):
+        conditions.append(Project.type == filters["type"])
+    # 金额区间（合同金额单位为分）
+    if filters.get("amountMin") is not None:
+        try: conditions.append(Project.contract_amount >= int(float(filters["amountMin"]) * 100))
+        except: pass
+    if filters.get("amountMax") is not None:
+        try: conditions.append(Project.contract_amount <= int(float(filters["amountMax"]) * 100))
+        except: pass
 
     if conditions:
         query = query.where(and_(*conditions))

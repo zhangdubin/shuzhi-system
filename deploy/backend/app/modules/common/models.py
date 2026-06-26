@@ -84,6 +84,30 @@ class ApprovalFlow(Base):
     finished_at: Mapped[datetime] = mapped_column(nullable=True)
 
 
+
+
+class ApprovalTemplate(Base):
+    """审批流模板（可由超管配置）
+    - business_type: 'expense' / 'contract' / ...
+    - rules: JSON 数组，按顺序定义步骤规则
+      例：["submitter", "direct_leader", "finance", "gm_if_over_5000"]
+    - condition: 可选 JSON，触发条件
+      例：{"amount_min": 500000} 表示金额 >= 5000 元才用此模板
+    - is_default: 同一 business_type 下唯一默认模板（无匹配时兜底）
+    """
+    __tablename__ = "approval_templates"
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), nullable=False)
+    business_type: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    rules: Mapped[list] = mapped_column(JSONB, nullable=False, default=list)
+    condition: Mapped[dict] = mapped_column(JSONB, nullable=True)
+    is_default: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+    remark: Mapped[str] = mapped_column(String(256), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, onupdate=datetime.utcnow)
+
 class ApprovalStep(Base):
     """审批步骤"""
     __tablename__ = "approval_steps"

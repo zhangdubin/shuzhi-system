@@ -3,7 +3,7 @@ AI 平台路由
 - /api/v1/ai/*  (AI-API.md §5)
 - 18 个必出接口 + 1 个全局 SSE
 """
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Body
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.responses import StreamingResponse
@@ -208,6 +208,20 @@ async def model_config(
 ):
     data = await service.model_config(db, req)
     return {"code": 0, "data": data}
+
+
+@router.post("/model/test", summary="测试 LLM 连通性")
+async def model_test(
+    req: dict = Body(...),
+    _user: CurrentUser = Depends(get_current_user),
+):
+    """发一个最小 chat/completions 请求验证 baseUrl + apiKey + model 是否可用"""
+    data = await service.model_test_connection(
+        base_url=req.get("baseUrl", ""),
+        api_key=req.get("apiKey", ""),
+        model=req.get("model", ""),
+    )
+    return {"code": 0 if data.get("ok") else 1, "message": data.get("message"), "data": data}
 
 
 # ============================================================
