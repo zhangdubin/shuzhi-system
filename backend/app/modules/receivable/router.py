@@ -73,7 +73,7 @@ async def receive(
     amt_yuan = (req.receivedAmount or 0) / 100
     await publish_event("sse:dashboard", "activity", {
         "type": "回款", "action": "到账", "operator": current_user.name,
-        "title": f"{current_user.name} 登记到账 ¥{amt_yuan.toFixed(2)}",
+        "title": f"{current_user.name} 登记到账 ¥{amt_yuan:.2f}",
     })
     return {"code": 0, "data": data, "message": "已登记到账"}
 
