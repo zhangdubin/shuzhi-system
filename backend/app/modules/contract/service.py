@@ -199,6 +199,9 @@ async def update_contract(db: AsyncSession, contract_id: int, req: ContractUpdat
     for k, v in data.items():
         if k == "type":
             setattr(c, "type", CONTRACT_TYPE_MAP.get(v, v))
+        elif k == "amount":
+            # 与 create_contract 保持一致：API 入参是元，DB 存分（×100）
+            c.amount = v * 100
         else:
             setattr(c, field_map.get(k, k), v)
     await db.commit()

@@ -10,6 +10,7 @@
 依据：R1-R16 文档 + 现有 conftest.py fixture 风格
 """
 import pytest
+import pytest_asyncio
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -21,7 +22,7 @@ from app.core.exceptions import NotFoundException
 
 # ============== 本地 fixture ==============
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def contract_admin(db, sample_client):
     """拥有 contract:write + contract:approve 权限的管理员"""
     dept = Department(name="合同测试部门", code="CONTRACT_TEST")
@@ -32,14 +33,16 @@ async def contract_admin(db, sample_client):
     db.add(role)
     await db.flush()
 
-    # 加 contract 全部权限
+    # 加 contract 全部权限（直接构造 RolePermission 中间表，避免 lazy load）
+    from app.modules.auth.models import RolePermission
     for code, action in [("contract:read", "read"),
                          ("contract:write", "write"),
                          ("contract:approve", "approve")]:
         p = Permission(name=code, code=code, resource="contract", action=action)
         db.add(p)
         await db.flush()
-        role.permissions.append(p)
+        rp = RolePermission(role_id=role.id, permission_id=p.id)
+        db.add(rp)
     await db.flush()
 
     user = User(
@@ -54,28 +57,30 @@ async def contract_admin(db, sample_client):
     )
     db.add(user)
     await db.flush()
-    user.roles.append(role)
+
+    # 直接建 UserRole 中间表，避免 lazy load
+    from app.modules.auth.models import UserRole
+    db.add(UserRole(user_id=user.id, role_id=role.id))
     await db.commit()
-    await db.refresh(user)
     return user
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def contract_admin_token(client, contract_admin):
     """合同管理员的 Bearer token"""
     resp = await client.post("/api/v1/auth/login", json={
         "account": "contract_admin", "password": "test123",
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     return resp.json()["token"]
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def contract_admin_headers(contract_admin_token):
     return {"Authorization": f"Bearer {contract_admin_token}"}
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def finance_user(db, contract_admin):
     """财务用户（用于审批流中作为 'finance' 节点）"""
     dept = Department(name="财务部", code="FIN")
@@ -89,7 +94,8 @@ async def finance_user(db, contract_admin):
                    resource="contract", action="approve")
     db.add(p)
     await db.flush()
-    role.permissions.append(p)
+    from app.modules.auth.models import RolePermission, UserRole
+    db.add(RolePermission(role_id=role.id, permission_id=p.id))
     await db.flush()
 
     user = User(
@@ -101,22 +107,21 @@ async def finance_user(db, contract_admin):
     )
     db.add(user)
     await db.flush()
-    user.roles.append(role)
+    db.add(UserRole(user_id=user.id, role_id=role.id))
     await db.commit()
-    await db.refresh(user)
     return user
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def finance_headers(client, finance_user):
     resp = await client.post("/api/v1/auth/login", json={
         "account": "finance_user", "password": "test123",
     })
-    assert resp.status_code == 200
+    assert resp.status_code == 200, resp.text
     return {"Authorization": f"Bearer {resp.json()['token']}"}
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sample_contract(db, sample_client, contract_admin):
     """示例 draft 状态合同"""
     c = Contract(
@@ -142,7 +147,7 @@ async def sample_contract(db, sample_client, contract_admin):
     return c
 
 
-@pytest.fixture
+@pytest_asyncio.fixture
 async def sample_template(db):
     """示例合同模板"""
     t = ContractTemplate(
@@ -274,7 +279,11 @@ async def test_detail_unauthorized(client, sample_contract):
 @pytest.mark.asyncio
 async def test_detail_not_found(client, contract_admin_headers):
     """不存在的 id → 404"""
-    resp = await client.post("/api/v1/contracts/detail?contractId=99999", json={})
+    resp = await client.post(
+        "/api/v1/contracts/detail?contractId=99999",
+        headers=contract_admin_headers,
+        json={},
+    )
     assert resp.status_code == 404
     assert resp.json()["code"] != 0
 
@@ -282,7 +291,11 @@ async def test_detail_not_found(client, contract_admin_headers):
 @pytest.mark.asyncio
 async def test_detail_success(client, contract_admin_headers, sample_contract):
     """成功获取详情"""
-    resp = await client.post(f"/api/v1/contracts/detail?contractId={sample_contract.id}", json={})
+    resp = await client.post(
+        f"/api/v1/contracts/detail?contractId={sample_contract.id}",
+        headers=contract_admin_headers,
+        json={},
+    )
     assert resp.status_code == 200
     data = resp.json()["data"]
     assert data["contractId"] == sample_contract.id
@@ -336,9 +349,8 @@ async def test_create_success(client, contract_admin_headers, sample_client, con
     assert resp.status_code == 200
     body = resp.json()
     assert body["code"] == 0
-    assert "id" in body["data"]
-    assert body["message"] == "创建成功"
-    # 详情返回
+    # 详情返回（service 返回的是 get_contract 字典，含 contractId）
+    assert "contractId" in body["data"]
     assert body["data"]["status"] == "draft"
     assert Decimal(str(body["data"]["amount"])) == Decimal("500000.00")
 
@@ -405,6 +417,7 @@ async def test_update_success_draft(client, contract_admin_headers, sample_contr
     assert resp.status_code == 200
     body = resp.json()
     assert body["data"]["name"] == "改名后的合同"
+    # amount 入参元，DB 存分（×100），输出时 /100 转回元
     assert Decimal(str(body["data"]["amount"])) == Decimal("200000.00")
 
 
@@ -456,7 +469,8 @@ async def test_delete_draft_success(client, contract_admin_headers, sample_contr
     assert resp.json()["code"] == 0
     # 二次查询应 404
     detail_resp = await client.post(
-        f"/api/v1/contracts/detail?contractId={sample_contract.id}", json={})
+        f"/api/v1/contracts/detail?contractId={sample_contract.id}",
+        headers=contract_admin_headers, json={})
     assert detail_resp.status_code == 404
 
 

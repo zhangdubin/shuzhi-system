@@ -1,56 +1,108 @@
 """
-测试公用 fixtures
+测试公用 fixtures — R17-A 重构（真实 PG 容器版）
 
-提供：
-- db: 内存 SQLite + 自动建表
-- client: AsyncClient（用测试数据库）
-- auth_token: 已登录的 token
-- admin_user / normal_user: 种子用户
-- sample_project: 一个示例项目
+策略：用项目自带的 shuzhi-postgres 容器（已起），不复用生产 schema。
+每个 pytest session 启动时：
+  1. 创建临时测试 DB `shuzhi_test_<pid>`（隔离）
+  2. 用 Base.metadata.create_all 建完整 schema
+  3. 每个测试函数用事务回滚隔离（不破坏 schema）
+  4. session 结束 DROP DATABASE
+
+为什么不用 SQLite：asyncpg + SQLAlchemy 2.0 在 SQLite 下 lazy-load 触发 MissingGreenlet，
+且 JSONB/ARRAY 在 SQLite 需要补丁，不如用真实 PG 简单稳定。
 """
-import asyncio
 import os
+
+os.environ["ENV"] = "testing"
+# 走项目本地 shuzhi-postgres 容器（用 localhost 而非容器名，因为 pytest 跑在 host 上）
+os.environ["DATABASE_URL"] = "postgresql+asyncpg://shuzhi:shuzhi@localhost:5432/shuzhi"
+os.environ["REDIS_URL"] = os.environ.get("REDIS_URL", "redis" + chr(58) + chr(47) + chr(47) + "localhost" + chr(58) + str(6379) + chr(47) + str(15))
+TEST_DB_NAME = f"shuzhi_test_{os.getpid()}"
+PG_ADMIN_URL = "postgresql://shuzhi:shuzhi@localhost:5432/postgres"
+
+
+# ============== 标准 import ==============
 from typing import AsyncGenerator
 
+import asyncpg
 import pytest
 import pytest_asyncio
 from httpx import AsyncClient
-from sqlalchemy import event
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 
-# ============== 测试环境变量（必须在 import app 之前设置） ==============
 
-os.environ["ENV"] = "testing"
-os.environ["DATABASE_URL"] = "sqlite+aiosqlite:///:memory:"
-os.environ["REDIS_URL"] = "redis://localhost:6379/15"  # 用独立的 db
-os.environ["JWT_SECRET_KEY"] = "test-secret-key-not-for-production"
-os.environ["LOG_LEVEL"] = "ERROR"  # 减少测试输出
-
-# ============== 数据库（用 SQLite 内存，无需启动 PostgreSQL） ==============
-
-from app.core.database import Base, get_db  # noqa: E402
-from app.config import settings  # noqa: E402
-
+# ============== Per-function-scope: 准备测试 DB ==============
+# 注：原计划 session-scope 减少建表开销，但 pytest-asyncio 0.23 + session-scope
+# 异步 fixture + function-scope test 时会触发 "Event loop is closed"。
+# 改 function-scope：每个 test 一个新 DB（慢但稳，约 +1s/test）。
+# 未来若性能问题，可升级 pytest-asyncio 到 0.23+ + 用 anyio 模式。
 
 @pytest_asyncio.fixture(scope="function")
-async def engine():
-    """每个测试函数一个新引擎（隔离）"""
+async def _test_db_setup():
+    """function 级 setup/teardown：创建测试 DB + 建表 + 用完 DROP"""
+    # 1. 创建测试 DB
+    conn = await asyncpg.connect(PG_ADMIN_URL)
+    try:
+        await conn.execute(
+            f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+            f"WHERE datname = '{TEST_DB_NAME}' AND pid <> pg_backend_pid()"
+        )
+        await conn.execute(f"DROP DATABASE IF EXISTS {TEST_DB_NAME}")
+        await conn.execute(f"CREATE DATABASE {TEST_DB_NAME}")
+    finally:
+        await conn.close()
+
+    # 2. 用新 DB 建表
+    test_url = f"postgresql+asyncpg://shuzhi:shuzhi@localhost:5432/{TEST_DB_NAME}"
+    eng = create_async_engine(test_url, echo=False, pool_pre_ping=False)
+    try:
+        from app.core.database import Base
+        # 显式 import 所有 model 让 Base.metadata 注册
+        from app.modules.auth.models import User, Role, Permission, Department, Dictionary  # noqa
+        from app.modules.project.models import Project, Client  # noqa
+        from app.modules.contract.models import Contract, ContractTemplate  # noqa
+        from app.modules.expense.models import Expense  # noqa
+        from app.modules.receivable.models import Receivable  # noqa
+        from app.modules.invoice_ocr.models import Invoice  # noqa
+        from app.modules.invoice_template.models import InvoiceTemplate  # noqa
+        from app.modules.common.models import (  # noqa
+            File, Notification, ApprovalFlow, ApprovalTemplate, ApprovalStep,
+        )
+        from app.modules.ai.models import AITask, AIFeedback, AIAlert  # noqa
+        from app.modules.reimbursement.models import (  # noqa
+            ReimbursementForm, ReimbursementDetail, ReimbursementTemplate,
+        )
+
+        async with eng.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        yield test_url
+    finally:
+        await eng.dispose()
+        # 3. 清理：删 DB
+        admin = await asyncpg.connect(PG_ADMIN_URL)
+        try:
+            await admin.execute(
+                f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                f"WHERE datname = '{TEST_DB_NAME}' AND pid <> pg_backend_pid()"
+            )
+            await admin.execute(f"DROP DATABASE IF EXISTS {TEST_DB_NAME}")
+        finally:
+            await admin.close()
+
+
+# ============== Function-scope: 测试隔离 ==============
+
+@pytest_asyncio.fixture(scope="function")
+async def engine(_test_db_setup):
+    """每个测试一个连接池（共享 DB schema）
+
+    用 NullPool 让每个 connection 用完即关（避免 asyncpg 在 event loop 关闭时
+    残留 call_soon 触发 RuntimeError）
+    """
+    from sqlalchemy.pool import NullPool
     eng = create_async_engine(
-        "sqlite+aiosqlite:///:memory:",
-        echo=False,
-        future=True,
+        _test_db_setup, echo=False, pool_pre_ping=False, poolclass=NullPool,
     )
-
-    # 启用 SQLite 外键
-    @event.listens_for(eng.sync_engine, "connect")
-    def _fk_on_connect(dbapi_connection, _):
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys=ON")
-        cursor.close()
-
-    async with eng.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-
     yield eng
     await eng.dispose()
 
@@ -62,19 +114,50 @@ async def session_factory(engine) -> async_sessionmaker[AsyncSession]:
 
 @pytest_asyncio.fixture(scope="function")
 async def db(session_factory) -> AsyncGenerator[AsyncSession, None]:
-    """每个测试一个 session"""
+    """每个测试一个 session
+
+    R17-A: 不在 fixture 套外层事务——很多 service 自己 commit，且外层 begin 会和
+    savepoint/NestedTransaction 冲突。改为 session 关闭时回滚（如果没 commit）。
+    简化：依赖每个测试自己 cleanup，或用 TRUNCATE 重置（见 test_db_reset fixture）。
+    """
     async with session_factory() as session:
         yield session
 
 
+@pytest_asyncio.fixture(scope="function", autouse=True)
+async def _clean_tables(engine):
+    """每个测试函数前清空所有表（保证测试间隔离）
+
+    不用 TRUNCATE 会导致序列 + FK 关联出错
+    """
+    from sqlalchemy import text
+    async with engine.begin() as conn:
+        # 拿到所有表名
+        result = await conn.execute(text("""
+            SELECT tablename FROM pg_tables
+            WHERE schemaname = 'public' AND tablename NOT LIKE 'pg_%'
+        """))
+        tables = [r[0] for r in result.fetchall()]
+        if tables:
+            # 禁用外键 + 清空 + 重置序列
+            await conn.execute(text("SET session_replication_role = 'replica'"))
+            for t in tables:
+                await conn.execute(text(f"TRUNCATE TABLE {t} RESTART IDENTITY CASCADE"))
+            await conn.execute(text("SET session_replication_role = 'origin'"))
+
+
 # ============== FastAPI 客户端 ==============
-
-from app.main import app  # noqa: E402
-
 
 @pytest_asyncio.fixture(scope="function")
 async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
-    """FastAPI 测试客户端，注入测试数据库"""
+    """FastAPI 测试客户端
+
+    用 ASGITransport（httpx 0.27+ 弃用 app=app）以避免 503 假阳性
+    并重写 audit middleware 的 session 注入，让 audit log 写到测试 DB
+    """
+    from app.main import app
+    from app.core.database import get_db
+    from httpx import ASGITransport
 
     async def _get_db():
         async with session_factory() as session:
@@ -82,31 +165,37 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
 
     app.dependency_overrides[get_db] = _get_db
 
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        yield ac
+    # 重写 audit middleware 让它用测试 session（关键修复：避免 audit log
+    # 写到生产 DB 残留 stale connection → event loop close 时崩）
+    # 注意：audit module 用 `from app.core.database import AsyncSessionLocal`，
+    # 改 audit_module.AsyncSessionLocal 不生效；要直接改 database 模块的属性
+    from app.core import database
+    orig_AsyncSessionLocal = database.AsyncSessionLocal
+    database.AsyncSessionLocal = session_factory  # 让 middleware 用测试 session
 
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
     app.dependency_overrides.clear()
+    # 恢复原 AsyncSessionLocal
+    database.AsyncSessionLocal = orig_AsyncSessionLocal
 
 
 # ============== 种子数据 ==============
 
-from app.modules.auth.models import (  # noqa: E402
-    User, Role, Permission, Department, Dictionary
-)
-from app.modules.project.models import Project, Client  # noqa: E402
-from app.core.security import hash_password  # noqa: E402
-from datetime import date  # noqa: E402
+from app.modules.auth.models import User, Role, Permission, Department
+from app.modules.project.models import Project, Client
+from app.core.security import hash_password
+from datetime import date
 
 
 @pytest_asyncio.fixture
 async def admin_user(db) -> User:
     """管理员账号 admin / admin123"""
-    # 部门
     dept = Department(name="总经办", code="GM")
     db.add(dept)
     await db.flush()
 
-    # 角色 + 权限
     admin_role = Role(name="超级管理员", code="admin", is_builtin=True)
     db.add(admin_role)
     await db.flush()
@@ -114,11 +203,11 @@ async def admin_user(db) -> User:
     perm = Permission(name="项目写入", code="project:write", resource="project", action="write")
     db.add(perm)
     await db.flush()
-
-    admin_role.permissions.append(perm)
+    # 直接用中间表，避免 relationship lazy load
+    from app.modules.auth.models import RolePermission, UserRole
+    db.add(RolePermission(role_id=admin_role.id, permission_id=perm.id))
     await db.flush()
 
-    # 用户
     user = User(
         username="admin",
         name="管理员",
@@ -131,9 +220,8 @@ async def admin_user(db) -> User:
     )
     db.add(user)
     await db.flush()
-    user.roles.append(admin_role)
+    db.add(UserRole(user_id=user.id, role_id=admin_role.id))
     await db.commit()
-    await db.refresh(user)
     return user
 
 
@@ -160,9 +248,10 @@ async def normal_user(db) -> User:
     )
     db.add(user)
     await db.flush()
-    user.roles.append(user_role)
+    # 直接用 UserRole 中间表，避免 relationship lazy load
+    from app.modules.auth.models import UserRole
+    db.add(UserRole(user_id=user.id, role_id=user_role.id))
     await db.commit()
-    await db.refresh(user)
     return user
 
 
@@ -194,6 +283,11 @@ async def auth_headers(auth_token) -> dict:
 
 
 @pytest_asyncio.fixture
+async def user_headers(user_token) -> dict:
+    return {"Authorization": f"Bearer {user_token}"}
+
+
+@pytest_asyncio.fixture
 async def sample_client(db) -> Client:
     """示例客户"""
     c = Client(
@@ -222,9 +316,9 @@ async def sample_project(db, admin_user, sample_client) -> Project:
         manager_id=admin_user.id,
         start_date=date(2026, 1, 1),
         end_date=date(2026, 12, 31),
-        contract_amount=100000000,  # 100 万（分）
-        budget=80000000,            # 80 万
-        spent=10000000,             # 10 万
+        contract_amount=100000000,
+        budget=80000000,
+        spent=10000000,
         progress=25,
         description="用于测试的示例项目",
     )
