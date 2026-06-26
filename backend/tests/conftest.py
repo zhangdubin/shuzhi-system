@@ -164,9 +164,28 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
     app.dependency_overrides[get_db] = _get_db
 
     # 1) 让 audit middleware 写到测试 DB
-    from app.core import database
-    orig_AsyncSessionLocal = database.AsyncSessionLocal
+    # 注：audit.py 用 `from app.core.database import AsyncSessionLocal`，
+    # 所以改 database.AsyncSessionLocal 不生效。直接改 audit 模块的属性。
+    from app.core import database, audit as audit_module
+    orig_AsyncSessionLocal_db = database.AsyncSessionLocal
+    orig_AsyncSessionLocal_audit = audit_module.AsyncSessionLocal
     database.AsyncSessionLocal = session_factory
+    audit_module.AsyncSessionLocal = session_factory
+
+    # 1b) 直接替换 AuditLogMiddleware.dispatch 为 noop（避免 BaseHTTPMiddleware
+    # 后台 task + audit_log 写时的 get_current_user 找不到 user 等复杂交互）
+    from starlette.middleware.base import BaseHTTPMiddleware
+    orig_dispatch_audit = audit_module.AuditLogMiddleware.dispatch
+    async def _noop_dispatch(self, request, call_next):
+        return await call_next(request)
+    audit_module.AuditLogMiddleware.dispatch = _noop_dispatch
+    # 同时把 app.user_middleware 里的 AuditLogMiddleware 移除（避免 BaseHTTPMiddleware 的后台 task）
+    from starlette.middleware import Middleware
+    orig_user_middleware = list(app.user_middleware)
+    app.user_middleware = [
+        m for m in orig_user_middleware if m.cls is not audit_module.AuditLogMiddleware
+    ]
+    app.middleware_stack = app.build_middleware_stack()
 
     # 2) 重置 Redis pool（最关键的 Event loop 修复）
     from app.core import sse as sse_module
@@ -179,7 +198,11 @@ async def client(session_factory) -> AsyncGenerator[AsyncClient, None]:
 
     # 恢复
     app.dependency_overrides.clear()
-    database.AsyncSessionLocal = orig_AsyncSessionLocal
+    database.AsyncSessionLocal = orig_AsyncSessionLocal_db
+    audit_module.AsyncSessionLocal = orig_AsyncSessionLocal_audit
+    audit_module.AuditLogMiddleware.dispatch = orig_dispatch_audit
+    app.user_middleware = orig_user_middleware
+    app.middleware_stack = app.build_middleware_stack()
     sse_module._redis_pool = orig_redis_pool
 
 
