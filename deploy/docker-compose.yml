@@ -59,6 +59,10 @@ services:
     image: shuzhi-backend:latest
     container_name: shuzhi-backend
     restart: unless-stopped
+    # R17-A: 用 backend/ 作为 build context（治本：消除 deploy/backend/ 与 backend/ 双份维护）
+    build:
+      context: ../backend
+      dockerfile: Dockerfile
     environment:
       # 数据库
       SHUZHI_DATABASE_URL: postgresql+asyncpg://shuzhi:shuzhi@postgres:5432/shuzhi

@@ -1,15 +1,7 @@
 # ============================================================
-# 后端 - FastAPI
-# ============================================================
-# ⚠️ R17-A DEPRECATED ⚠️
-# 这个 Dockerfile 在 deploy/backend/ 是 R 阶段早期创建的，构建时用 deploy/backend/
-# 作为 context，需要手动 rsync 同步 backend/ 的代码和 alembic 迁移。
-#
-# 治本：使用 ../../backend/Dockerfile（context = backend/），告别双份维护。
-# compose.yml 已切换到新路径。如果你手动 docker build，请用：
-#   cd backend && docker build -t shuzhi-backend:latest .
-#
-# 本文件保留仅作"旧习惯兼容"——下次大版本清理时删除 deploy/backend/ 整目录。
+# 后端 - FastAPI (R17-A 治本版)
+# Build context: backend/ (与源码同目录，告别双份维护)
+# 旧路径 deploy/backend/Dockerfile 保留作为兼容，未来删除
 # ============================================================
 FROM python:3.11-slim AS base
 
@@ -45,7 +37,7 @@ RUN pip install --upgrade pip && \
     # 对象存储 MinIO S3 兼容客户端
     pip install 'minio>=7.2.0'
 
-# 代码
+# 代码（context = backend/）
 COPY ./app ./app
 COPY ./alembic ./alembic
 COPY ./alembic.ini .
