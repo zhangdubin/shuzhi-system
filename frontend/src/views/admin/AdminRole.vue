@@ -94,12 +94,62 @@ function selectRole(r: any) {
   loadPermissions(r)
 }
 
+// 后端 Permission.code 格式："<resource>:<action>"，与前端矩阵 "<moduleKey>.<op>" 不一致
+// 双向映射：后端 -> 前端（用于读取渲染），前端 -> 后端（用于保存）
+// action 集合：read/write/delete/approve/upload/submit/verify/export/extract/ask/risk_scan/model_manage
+const BACK_TO_FRONT_OP: Record<string, string[]> = {
+  read:        ['查'],
+  write:       ['增', '改', '配置'],
+  delete:      ['删'],
+  approve:     ['审批'],
+  upload:      ['导入'],
+  submit:      ['导入'],
+  verify:      ['配置'],
+  export:      ['导出'],
+  extract:     ['配置'],
+  ask:         ['配置'],
+  risk_scan:   ['配置'],
+  model_manage:['配置'],
+}
+// 资源名 (后端 resource) -> 前端模块 key。两者基本一致，只对 admin 做个映射（admin 资源不存在）
+const RESOURCE_TO_MODULE: Record<string, string> = {
+  dashboard:  'dashboard',
+  project:    'project',
+  contract:   'contract',
+  expense:    'expense',
+  receivable: 'receivable',
+  invoice:    'invoice',
+  template:   'invoice',   // 发票模板归到发票模块
+  milestone:  'project',   // 里程碑归到项目
+  ai:         'ai',
+  user:       'admin',     // 用户管理归到系统管理
+  audit:      'admin',     // 审计日志归到系统管理
+}
+
+function backendPermsToFrontIds(perms: string[]): string[] {
+  const out: string[] = []
+  for (const code of perms) {
+    const idx = code.indexOf(':')
+    if (idx < 0) continue
+    const resource = code.slice(0, idx)
+    const action = code.slice(idx + 1)
+    const moduleKey = RESOURCE_TO_MODULE[resource]
+    const ops = BACK_TO_FRONT_OP[action]
+    if (!moduleKey || !ops) continue
+    for (const op of ops) {
+      const id = `${moduleKey}.${op}`
+      if (!out.includes(id)) out.push(id)
+    }
+  }
+  return out
+}
+
 function loadPermissions(role: any) {
   // 优先从后端返回的 permissions 字段取
   if (role.permissions && Array.isArray(role.permissions) && role.permissions.length) {
-    checkedIds.value = [...role.permissions]
+    checkedIds.value = backendPermsToFrontIds(role.permissions)
   } else {
-    // 从 mockPerms 取
+    // 从 mockPerms 取（仅在后端未返回时兜底，mock 格式保持前端原始形态）
     const key = role.code || ''
     checkedIds.value = mockPerms[key] || ['dashboard.查']
   }
@@ -110,12 +160,16 @@ async function onSave() {
   const role = selectedRole.value
   const codes = new Set<string>()
   codes.add('dashboard:read')
+  // 前端 op -> 后端 action（与 BACK_TO_FRONT_OP 严格对应）
+  const FRONT_TO_BACK: Record<string, string> = {
+    '增': 'write', '删': 'delete', '改': 'write', '查': 'read',
+    '审批': 'approve', '导入': 'upload', '导出': 'export', '配置': 'write',
+  }
   for (const id of checkedIds.value) {
     const [moduleKey, op] = id.split('.')
     if (!moduleKey) continue
-    if (op === '查') codes.add(`${moduleKey}:read`)
-    else if (op === '增' || op === '删' || op === '改') codes.add(`${moduleKey}:write`)
-    else if (op === '审批') codes.add(`${moduleKey}:approve`)
+    const action = FRONT_TO_BACK[op]
+    if (action) codes.add(`${moduleKey}:${action}`)
   }
   const r: any = await adminApi.roleUpdate(role.id, {
     name: role.name, description: role.desc, dataScope: role.dataScope || 'self',

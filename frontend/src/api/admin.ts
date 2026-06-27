@@ -166,7 +166,7 @@ export const adminApi = {
   approvalTemplateUpdate: (id: number, data: any) =>
     http.post<{ id: number }>('/admin/approval-templates/update', { id, ...data }),
   approvalTemplateDelete: (id: number) =>
-    http.post<{ id: number }>('/admin/approval-templates/delete', {}, { params: { id } }),
+    http.post<{ id: number }>('/admin/approval-templates/delete', { id }),
   approvalTemplateSeedDefaults: () =>
     http.post<{ inserted: string[] }>('/admin/approval-templates/seed-defaults', {}),
 }
