@@ -100,9 +100,29 @@ export const contractApi = {
   create: (data: Partial<Contract>) => http.post<Contract>('/contracts/create', data),
   update: (id: number, data: Partial<Contract>) => http.post<Contract>('/contracts/update', data, { params: { contractId: id } }),
   delete: (id: number) => http.post(`/contracts/delete`, undefined, { params: { contractId: id } }),
+  batchDelete: (ids: number[]) => http.post<{deleted: number; skipped: any[]; deletedIds: number[]}>(`/contracts/batch/delete`, { contractIds: ids }),
   submit: (id: number) => http.post(`/contracts/submit`, undefined, { params: { contractId: id } }),
   approve: (id: number, data: { action: 'approve' | 'reject' | 'transfer'; comment?: string; transferTo?: number }) =>
     http.post(`/contracts/approve`, { contractId: id, ...data }),
+  /** 催办（仅审批中状态） */
+  urge: (id: number, data?: { message?: string; targetUserIds?: number[] }) =>
+    http.post<{ contractId: number; notifiedUserIds: number[]; message: string }>(
+      '/contracts/urge', { contractId: id, ...(data || {}) },
+    ),
+  /** 下载合同（PDF 摘要）— 返回 blob 与后端给的文件名 */
+  download: async (id: number) => {
+    const axios = (await import('axios')).default
+    const userStore = (await import('@/stores/user')).useUserStore()
+    const base = (import.meta.env?.VITE_API_BASE as string | undefined) || '/api/v1'
+    const resp = await axios.get(`${base}/contracts/${id}/download`, {
+      responseType: 'blob',
+      headers: userStore.token ? { Authorization: `Bearer ${userStore.token}` } : {},
+    })
+    const cd = resp.headers['content-disposition'] || ''
+    const m = cd.match(/filename\*=UTF-8''([^;]+)|filename="([^"]+)"/)
+    const filename = m ? decodeURIComponent(m[1] || m[2]) : `合同_${id}.pdf`
+    return { blob: resp.data as Blob, filename }
+  },
   stats: () => http.post<any>('/contracts/stats', {}),
 }
 

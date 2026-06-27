@@ -11,6 +11,7 @@ from app.core.sse import publish_event
 from app.modules.contract import service
 from app.modules.contract.schemas import (
     ContractListRequest, ContractCreate, ContractUpdate, ContractApproveRequest,
+    ContractBatchDeleteRequest, ContractUrgeRequest,
 )
 
 
@@ -74,7 +75,7 @@ async def update_contract(
     return {"code": 0, "data": data, "message": "更新成功"}
 
 
-@router.post("/delete", summary="删除合同（仅 draft）")
+@router.post("/delete", summary="删除合同（仅 draft/expired/archived 等状态）")
 async def delete_contract(
     contractId: int = Query(...),
     db: AsyncSession = Depends(get_db),
@@ -83,6 +84,20 @@ async def delete_contract(
     await service.delete_contract(db, contractId)
     await _notify_dashboard("删除", "合同", _user.name, contractId=contractId)
     return {"code": 0, "message": "删除成功"}
+
+
+@router.post("/batch/delete", summary="批量删除合同")
+async def batch_delete_contracts(
+    req: ContractBatchDeleteRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(require_permission("contract:write")),
+):
+    data = await service.batch_delete_contracts(db, req.contractIds)
+    await _notify_dashboard("批量删除", "合同", current_user.name, deleted=data["deleted"])
+    msg = f"已删除 {data['deleted']} 条"
+    if data.get("skipped"):
+        msg += f"，跳过 {len(data['skipped'])} 条（状态不允许删除）"
+    return {"code": 0, "data": data, "message": msg}
 
 
 @router.post("/submit", summary="提交审批（draft → approving）")
@@ -126,3 +141,39 @@ async def list_templates(
 ):
     items = await service.list_contract_templates(db)
     return {"code": 0, "data": {"templates": items}}
+
+
+@router.post("/urge", summary="催办合同（仅审批中状态）")
+async def urge_contract(
+    req: ContractUrgeRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    data = await service.urge_contract(
+        db, req.contractId, current_user.id, current_user.name,
+        message=req.message, target_user_ids=req.targetUserIds,
+    )
+    await _notify_dashboard(
+        "催办", "合同", current_user.name,
+        contractId=req.contractId, targets=data["notifiedUserIds"],
+    )
+    return {"code": 0, "data": data, "message": f"已催办 {len(data['notifiedUserIds'])} 位审批人"}
+
+
+@router.get("/{contract_id}/download", summary="下载合同（PDF 摘要）")
+async def download_contract(
+    contract_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    from fastapi.responses import Response
+    pdf, fname, content_type = await service.download_contract(db, contract_id)
+    await _notify_dashboard("下载", "合同", current_user.name, contractId=contract_id)
+    return Response(
+        content=pdf,
+        media_type=content_type,
+        headers={
+            "Content-Disposition": f'attachment; filename="{fname}"; filename*=UTF-8\'\'{fname}',
+            "Content-Length": str(len(pdf)),
+        },
+    )

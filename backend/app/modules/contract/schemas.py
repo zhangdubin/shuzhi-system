@@ -112,6 +112,10 @@ class ContractApproveRequest(BaseModel):
     transferTo: Optional[int] = None
 
 
+class ContractBatchDeleteRequest(BaseModel):
+    contractIds: list[int]
+
+
 class ContractStatsResponse(BaseModel):
     total: int
     executed: int
@@ -124,3 +128,10 @@ class ContractTemplateItem(BaseModel):
     id: int
     name: str
     type: str
+
+
+class ContractUrgeRequest(BaseModel):
+    """合同催办请求"""
+    contractId: int
+    message: Optional[str] = Field(default=None, max_length=500, description="催办留言（可选）")
+    targetUserIds: Optional[list[int]] = Field(default=None, description="指定催办对象；不传则取当前审批流 current step 的 approver")

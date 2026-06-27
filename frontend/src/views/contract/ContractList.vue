@@ -13,9 +13,19 @@ import AiFilterDialog from '@/components/ai/AiFilterDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { contractApi } from '@/api/modules'
+import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
 const route = useRoute()
+const userStore = useUserStore()
+
+// 权限软判断（不再用 v-permission 隐藏，改为点击提示）
+function canWrite(): boolean {
+  return userStore.hasPerm('contract:write')
+}
+function permTip() {
+  ElMessage.warning('暂无「合同写权限」(contract:write)，如需操作请联系管理员')
+}
 
 // 触点 #22：AI 智能筛选
 const aiFilterVisible = ref(false)
@@ -39,6 +49,40 @@ const loading = ref(false)
 const list = ref<any[]>([])
 const total = ref(0)
 const activeType = ref<'all' | 'sales' | 'purchase' | 'service' | 'framework' | 'other'>('all')
+
+// 催办/下载行级 busy
+const urgeBusyId = ref<number | null>(null)
+const downloadBusyId = ref<number | null>(null)
+// 催办弹窗
+const urgeDialogVisible = ref(false)
+const urgeTarget = ref<any>(null)
+const urgeMessage = ref('')
+
+// 选中行（批量删除用）
+const selectedIds = ref<Set<number>>(new Set())
+function onRowToggle(row: any, checked: boolean) {
+  if (checked) selectedIds.value.add(row.id)
+  else selectedIds.value.delete(row.id)
+  selectedIds.value = new Set(selectedIds.value)
+}
+function onToggleAll(checked: boolean) {
+  if (checked) {
+    filteredRows.value.forEach((r: any) => selectedIds.value.add(r.id))
+  } else {
+    filteredRows.value.forEach((r: any) => selectedIds.value.delete(r.id))
+  }
+  selectedIds.value = new Set(selectedIds.value)
+}
+const isAllSelected = computed(() =>
+  filteredRows.value.length > 0 && filteredRows.value.every((r: any) => selectedIds.value.has(r.id))
+)
+const isIndeterminate = computed(() => {
+  const n = filteredRows.value.filter((r: any) => selectedIds.value.has(r.id)).length
+  return n > 0 && n < filteredRows.value.length
+})
+function clearSelection() {
+  selectedIds.value = new Set()
+}
 
 // 5 类计数（前端基于真实数据动态算）
 const typeCounts = ref({ all: 0, sales: 0, purchase: 0, service: 0, framework: 0, other: 0 })
@@ -191,9 +235,118 @@ function fmtAmount(n: number) {
   return '¥ ' + Number(n || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
-function gotoDetail(row: any) { ElMessage.info(`查看合同: ${row.code}`) }
+function gotoDetail(row: any) { router.push(`/contract/${row.id}`) }
 function gotoCreate() { router.push('/contract/create') }
 function gotoAiPanel() { router.push('/ai/risk') }
+
+// ===== 催办 =====
+function openUrgeDialog(row: any) {
+  if (!row || !row.id) return
+  urgeTarget.value = row
+  urgeMessage.value = `请尽快审批合同 ${row.code} ${row.name}`
+  urgeDialogVisible.value = true
+}
+async function submitUrge() {
+  const row = urgeTarget.value
+  if (!row) return
+  urgeBusyId.value = row.id
+  try {
+    const resp: any = await contractApi.urge(row.id, { message: urgeMessage.value.trim() || undefined })
+    const notified = (resp?.data?.notifiedUserIds?.length) ?? (resp?.notifiedUserIds?.length) ?? 0
+    ElMessage.success(`已催办 ${notified} 位审批人`)
+    urgeDialogVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.message || '催办失败')
+  } finally {
+    urgeBusyId.value = null
+  }
+}
+function urgeOne(row: any) {
+  // 兼容旧模板的 @click 入口
+  openUrgeDialog(row)
+}
+
+// ===== 下载 =====
+async function downloadOne(row: any) {
+  if (!row || !row.id) return
+  downloadBusyId.value = row.id
+  try {
+    const { blob, filename } = await contractApi.download(row.id)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    setTimeout(() => URL.revokeObjectURL(url), 1000)
+    ElMessage.success(`已下载 ${filename}`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '下载失败')
+  } finally {
+    downloadBusyId.value = null
+  }
+}
+
+// ===== 删除 =====
+function canDelete(r: any): boolean {
+  const s = (r.status || '').toString().toLowerCase()
+  const forbidden = ['approving', 'approved', 'signed']
+  return !forbidden.includes(s)
+}
+async function deleteOne(row: any) {
+  if (!canWrite()) { permTip(); return }
+  if (!canDelete(row)) {
+    ElMessage.warning('该合同处于「审批中/已审批/已签订」状态，不允许删除。请先处理状态后再试。')
+    return
+  }
+  const ok = await ElMessageBox.confirm(
+    `确定删除合同「${row.code} ${row.name}」？\n\n此操作不可撤销。`,
+    '删除确认',
+    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+  ).then(() => true).catch(() => false)
+  if (!ok) return
+  try {
+    await contractApi.delete(row.id)
+    ElMessage.success('删除成功')
+    clearSelection()
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除失败')
+  }
+}
+async function deleteBatch() {
+  if (!canWrite()) { permTip(); return }
+  const ids = Array.from(selectedIds.value)
+  if (!ids.length) {
+    ElMessage.warning('请先选择要删除的合同')
+    return
+  }
+  const rows = filteredRows.value.filter((r: any) => selectedIds.value.has(r.id))
+  const forbiddenCount = rows.filter((r: any) => !canDelete(r)).length
+  const tip = forbiddenCount > 0
+    ? `已选 ${ids.length} 条，其中 ${forbiddenCount} 条因处于「审批中/已审批/已签订」状态将被跳过。\n\n`
+    : `已选 ${ids.length} 条合同，确定删除？\n\n`
+  const ok = await ElMessageBox.confirm(
+    `${tip}此操作不可撤销。`,
+    '批量删除确认',
+    { confirmButtonText: '确定删除', cancelButtonText: '取消', type: 'warning' },
+  ).then(() => true).catch(() => false)
+  if (!ok) return
+  try {
+    const res: any = await contractApi.batchDelete(ids)
+    const d = (res?.data ?? res) as any
+    const deleted = Number(d?.deleted ?? 0)
+    const skipped = (d?.skipped?.length) || 0
+    let msg = `已删除 ${deleted} 条`
+    if (skipped > 0) msg += `，跳过 ${skipped} 条（状态不允许删除）`
+    ElMessage.success(msg)
+    clearSelection()
+    await loadData()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '批量删除失败')
+  }
+}
 
 // 导出 CSV（按当前筛选结果）
 function exportCsv() {
@@ -424,7 +577,18 @@ onMounted(async () => {
           <button class="btn btn-ai-outline" @click="aiFilterVisible = true">🤖 AI 智能筛选</button>
           <button v-if="aiFilter" class="btn btn-ghost btn-sm" @click="clearAiFilter">✕ 清筛选</button>
           <button class="btn btn-outline btn-sm" @click="exportCsv">⇩ 导出 CSV</button>
-          <button v-permission="'contract:write'" class="btn btn-primary btn-sm" @click="gotoCreate">+ 新建合同</button>
+          <button
+            class="btn btn-outline btn-sm danger"
+            :class="{ disabled: selectedIds.size === 0 }"
+            :disabled="selectedIds.size === 0"
+            @click="deleteBatch"
+          >
+            🗑 批量删除{{ selectedIds.size > 0 ? ` (${selectedIds.size})` : '' }}
+          </button>
+          <button
+            class="btn btn-primary btn-sm"
+            @click="canWrite() ? gotoCreate() : permTip()"
+          >+ 新建合同</button>
         </div>
       </div>
 
@@ -438,6 +602,15 @@ onMounted(async () => {
       <table v-else class="ct-table">
         <thead>
           <tr>
+            <th style="width: 40px;">
+              <input
+                type="checkbox"
+                :checked="isAllSelected"
+                :indeterminate.prop="isIndeterminate"
+                @change="(e: any) => onToggleAll(e.target.checked)"
+                class="row-check"
+              />
+            </th>
             <th>合同编号</th>
             <th>合同名称</th>
             <th>客户</th>
@@ -452,7 +625,15 @@ onMounted(async () => {
           </tr>
         </thead>
         <tbody>
-          <tr v-for="r in filteredRows" :key="r.id">
+          <tr v-for="r in filteredRows" :key="r.id" :class="{ 'row-selected': selectedIds.has(r.id) }">
+            <td>
+              <input
+                type="checkbox"
+                :checked="selectedIds.has(r.id)"
+                @change="(e: any) => onRowToggle(r, e.target.checked)"
+                class="row-check"
+              />
+            </td>
             <td><span class="cell-mono">{{ r.code }}</span></td>
             <td>{{ r.name }}</td>
             <td>{{ r.client }}</td>
@@ -473,11 +654,17 @@ onMounted(async () => {
               </span>
             </td>
             <td class="cell-actions">
-              <a v-permission="'contract:read'" @click="gotoDetail(r)">查看</a>
-              <a v-permission="'contract:read'" v-if="['审批中','approving','pending'].includes(r.status) || r.statusLabel === '审批中'" @click="ElMessage.info('催办：' + r.code)">催办</a>
-              <a v-permission="'contract:read'" v-if="r.status === 'signed' || r.status === 'active' || r.statusLabel === '执行中' || r.statusLabel === '已签订'" @click="ElMessage.info('下载：' + r.code)">下载</a>
-              <a v-permission="'contract:write'" v-if="r.status === 'expiring' || r.statusLabel === '即将到期' || r.status === 'expired' || r.statusLabel === '已到期'" @click="ElMessage.info('续签：' + r.code)">续签</a>
-              <a v-permission="'contract:write'" v-if="r.status === 'expired' || r.statusLabel === '已到期'" @click="ElMessage.info('归档：' + r.code)">归档</a>
+              <a @click="gotoDetail(r)">查看</a>
+              <a v-if="r.status === 'approving' || r.statusLabel === '审批中'" :class="{ 'is-busy': urgeBusyId === r.id }" @click="openUrgeDialog(r)">催办</a>
+              <a v-if="['signed','executed','active','approved'].includes(r.status) || ['已签订','执行中','已审批'].includes(r.statusLabel)" :class="{ 'is-busy': downloadBusyId === r.id }" @click="downloadOne(r)">下载</a>
+              <a v-if="r.status === 'expiring' || r.statusLabel === '即将到期' || r.status === 'expired' || r.statusLabel === '已到期'"
+                 @click="canWrite() ? ElMessage.info('续签：' + r.code) : permTip()">续签</a>
+              <a v-if="r.status === 'expired' || r.statusLabel === '已到期'"
+                 @click="canWrite() ? ElMessage.info('归档：' + r.code) : permTip()">归档</a>
+              <a
+                class="link-danger"
+                @click="deleteOne(r)"
+              >删除</a>
             </td>
           </tr>
         </tbody>
@@ -485,12 +672,56 @@ onMounted(async () => {
 
       <div class="rec-foot">
         <span class="rec-count">共 {{ filteredRows.length }} 份 · 显示 1-{{ filteredRows.length }}</span>
+        <span v-if="selectedIds.size > 0" class="rec-selected">
+          已选 {{ selectedIds.size }} 条 ·
+          <a class="link-primary" @click="clearSelection">清空选择</a>
+        </span>
       </div>
     </div>
   </div>
 
   <!-- 触点 #22：AI 智能筛选 Drawer -->
   <AiFilterDialog v-model:visible="aiFilterVisible" scope="contract" @apply="onAiFilterApply" />
+
+  <!-- 催办弹窗 -->
+  <el-dialog
+    v-model="urgeDialogVisible"
+    title="催办合同"
+    width="480px"
+    :close-on-click-modal="false"
+    @close="urgeTarget = null"
+  >
+    <div v-if="urgeTarget" class="urge-target">
+      <div class="urge-row">
+        <span class="urge-label">合同</span>
+        <span class="cell-mono">{{ urgeTarget.code }}</span>
+        <span class="urge-name">{{ urgeTarget.name }}</span>
+      </div>
+      <div class="urge-row">
+        <span class="urge-label">状态</span>
+        <span class="tag tag-warning">{{ urgeTarget.statusLabel || '审批中' }}</span>
+      </div>
+      <div class="urge-field">
+        <label>催办留言（可选，会作为通知内容发给审批人）</label>
+        <el-input
+          v-model="urgeMessage"
+          type="textarea"
+          :rows="3"
+          :maxlength="500"
+          show-word-limit
+          placeholder="例如：请优先审批，本周内需签约…"
+        />
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="urgeDialogVisible = false">取消</el-button>
+      <el-button
+        type="primary"
+        :loading="urgeBusyId === urgeTarget?.id"
+        @click="submitUrge"
+      >发送催办</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style lang="scss" scoped>
@@ -767,11 +998,50 @@ onMounted(async () => {
   &.none { color: $color-text-tertiary; }
 }
 
+.urge-target { display: flex; flex-direction: column; gap: 10px; }
+.urge-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+.urge-label { color: var(--text-tertiary, #94a3b8); min-width: 32px; }
+.urge-name { color: var(--text-primary, #1f2937); font-weight: 500; }
+.urge-field { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.urge-field label { font-size: 12px; color: var(--text-secondary, #6b7280); }
+.cell-actions a.is-busy { opacity: 0.5; pointer-events: none; }
+
 .rec-foot {
   display: flex;
   justify-content: space-between;
   align-items: center;
   padding: 16px 0 4px;
   .rec-count { font-size: 12.5px; color: $color-text-tertiary; }
+  .rec-selected { font-size: 12.5px; color: $color-primary; }
+}
+
+/* checkbox 样式 */
+.row-check {
+  width: 16px; height: 16px;
+  cursor: pointer;
+  accent-color: $color-primary;
+  &:disabled { cursor: not-allowed; opacity: 0.4; }
+}
+tr.row-selected {
+  background: rgba(79, 107, 255, 0.04) !important;
+}
+
+/* 危险按钮 & 链接 */
+.btn.danger {
+  color: $color-danger;
+  border-color: rgba(239, 68, 68, 0.3);
+  &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.06);
+    border-color: $color-danger;
+    color: $color-danger;
+  }
+  &:disabled, &.disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+}
+.link-danger {
+  color: $color-danger !important;
+  &:hover { color: #B91C1C !important; }
 }
 </style>
