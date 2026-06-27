@@ -134,8 +134,11 @@ services:
     ports:
       - "80:80"
     volumes:
+      # dist 静态文件（前端构建产物）
       - /Users/trisome/Desktop/开发/数智化系统new/frontend/dist:/usr/share/nginx/html:ro
-      - /tmp/nginx.conf:/etc/nginx/nginx.conf:ro
+      # nginx server 配置：必须挂到 conf.d/，由 alpine 默认 main nginx.conf 的 http{} 包含
+      # （之前错挂到 /etc/nginx/nginx.conf 会因缺少 http{} 包装而启动失败）
+      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       - backend
     networks:
