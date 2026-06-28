@@ -106,6 +106,8 @@ export const menuGroups: MenuGroup[] = [
           { index: '/admin/dict', title: '数据字典', icon: 'Collection', permission: 'user:read' },
           { index: '/admin/approval-template', title: '审批流模板', icon: 'SetUp', permission: 'admin' },
           { index: '/admin/audit-log', title: '审计日志', icon: 'Document', permission: 'audit:read' },
+          { index: '/admin/print-template', title: '打印模板', icon: 'Printer', permission: 'print:template:read' },
+          { index: '/admin/print-log', title: '打印日志', icon: 'Tickets', permission: 'print:document:read' },
         ],
       },
     ],

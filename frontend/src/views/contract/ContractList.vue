@@ -13,6 +13,7 @@ import AiFilterDialog from '@/components/ai/AiFilterDialog.vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { contractApi } from '@/api/modules'
+import { printApi } from '@/api/print'
 import { useUserStore } from '@/stores/user'
 
 const router = useRouter()
@@ -82,6 +83,34 @@ const isIndeterminate = computed(() => {
 })
 function clearSelection() {
   selectedIds.value = new Set()
+}
+
+// 批量打印 (UDPE M2 阶段 9) — 合并 PDF 下载
+const batchPrinting = ref(false)
+async function batchPrint() {
+  if (selectedIds.value.size === 0) {
+    ElMessage.warning('请先勾选要打印的合同')
+    return
+  }
+  if (selectedIds.value.size > 100) {
+    ElMessage.warning('单次最多 100 条, 当前已选 ' + selectedIds.value.size)
+    return
+  }
+  batchPrinting.value = true
+  try {
+    const ids = Array.from(selectedIds.value)
+    const stats = await printApi.batchPdf({
+      templateCode: 'contract_v1',
+      items: ids,
+      options: { sourceModule: 'contract' },
+    })
+    ElMessage.success(`批量打印完成: ${stats.success}/${stats.total} 条`)
+    clearSelection()
+  } catch (e: any) {
+    ElMessage.error('批量打印失败: ' + (e?.message || ''))
+  } finally {
+    batchPrinting.value = false
+  }
 }
 
 // 5 类计数（前端基于真实数据动态算）
@@ -577,6 +606,15 @@ onMounted(async () => {
           <button class="btn btn-ai-outline" @click="aiFilterVisible = true">🤖 AI 智能筛选</button>
           <button v-if="aiFilter" class="btn btn-ghost btn-sm" @click="clearAiFilter">✕ 清筛选</button>
           <button class="btn btn-outline btn-sm" @click="exportCsv">⇩ 导出 CSV</button>
+          <button
+            class="btn btn-outline btn-sm"
+            :class="{ disabled: selectedIds.size === 0 || batchPrinting }"
+            :disabled="selectedIds.size === 0 || batchPrinting"
+            @click="batchPrint"
+            v-permission="'print:document:export'"
+          >
+            🖨 批量打印{{ selectedIds.size > 0 ? ` (${selectedIds.size})` : '' }}
+          </button>
           <button
             class="btn btn-outline btn-sm danger"
             :class="{ disabled: selectedIds.size === 0 }"

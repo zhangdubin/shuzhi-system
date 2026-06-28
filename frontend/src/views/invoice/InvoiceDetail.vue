@@ -8,16 +8,18 @@
  * - 报销信息 / 当前状态 / 上传信息 / 查验真伪
  * - 快捷操作
  */
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, onMounted, computed } from 'vue'
 import { fmtConfidence, confToPct } from '@/utils/format'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { invoiceOcrApi, expenseApi, fileApi } from '@/api/modules'
+import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
 const router = useRouter()
 const route = useRoute()
 
 const loading = ref(false)
+const printDialogVisible = ref(false)
 
 const mock = reactive({
   id: 1,
@@ -112,6 +114,8 @@ const quickActions = ref([
   { label: '关联合同',     icon: '🔗', color: 'primary', handler: 'linkContract' },
   { label: '下载发票',     icon: '📄', color: 'outline', handler: 'downloadInvoice' },
   { label: '打印',         icon: '🖨', color: 'outline', handler: 'printInvoice' },
+  // UDPE 统一单据打印引擎：按模板打印（M1 阶段 5 第一个示范）
+  { label: '按模板打印',   icon: '🧾', color: 'primary', handler: 'openPrintDialog' },
 ])
 
 // 路由参数：/invoice/ocr/:id 或 query ?id=
@@ -128,6 +132,7 @@ function _runQuickAction(name: string) {
     case 'linkContract':      return linkContract()
     case 'downloadInvoice':   return downloadInvoice()
     case 'printInvoice':      return printInvoice()
+    case 'openPrintDialog':   return printDialogVisible.value = true
   }
 }
 
@@ -830,6 +835,17 @@ async function runAiRecheck() {
       </div>
     </div>
   </el-drawer>
+
+
+    <!-- UDPE 通用预览弹窗（M2 阶段 6） -->
+    <PrintPreviewDialog
+      v-model="printDialogVisible"
+      template-code="invoice_v1"
+      :data="{ _resolver: routeInvoiceId }"
+      source-module="invoice"
+      :source-id="routeInvoiceId"
+      title="发票打印预览"
+    />
 </template>
 
 <style lang="scss" scoped>

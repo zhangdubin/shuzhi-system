@@ -1,0 +1,32 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "expense",
+    "title": "销售费用申请单",
+    "description": "销售费用 A4 单页（标准版）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "销 售 费 用 申 请 单", "fontSize": 20, "align": "center" },
+      { "type": "text", "text": "{{ company.name }} · 编号：{{ expense.code | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "费用名称：{{ expense.title | default('—') }}", "fontSize": 12 },
+      { "type": "text", "text": "费用类型：{{ expense.category | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "申请人：{{ expense.applicant.name | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "发生日期：{{ expense.expenseDate | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "客户：{{ expense.client.name | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "项目：{{ expense.project.name | default('—') }}", "fontSize": 11 },
+      { "type": "spacer", "height": 4 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "金额：¥ {{ expense.amount | default(0) }}（大写：{{ expense.amount | chinese_money }}）", "fontSize": 14, "color": "#DC2626" },
+      { "type": "spacer", "height": 6 },
+      { "type": "text", "text": "说明：{{ expense.description | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 16 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

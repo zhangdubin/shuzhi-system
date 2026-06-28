@@ -10,6 +10,7 @@ import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { contractApi, type Contract } from '@/api/modules'
+import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
 // 触点 #8：AI 合同体检 Drawer（复用 AiRiskScanPanel）
 const aiDrawerVisible = ref(false)
@@ -41,6 +42,7 @@ const route = useRoute()
 const activeTab = ref<'basic' | 'terms' | 'flow' | 'fulfill'>('basic')
 const loading = ref(false)
 const detail = ref<Contract | null>(null)
+const printDialogVisible = ref(false)
 
 // 合同详情 mock（design 真实示例：HT-2026-031 万象科技 SaaS 2026Q2）
 const mock = reactive({
@@ -131,6 +133,7 @@ onMounted(() => {
     .catch(() => { /* 用 mock */ })
     .finally(() => { loading.value = false })
 })
+
 </script>
 
 <template>
@@ -161,6 +164,18 @@ onMounted(() => {
           <button v-permission="'contract:write'" class="btn btn-ghost btn-sm" @click="goEdit">✎ 编辑</button>
           <button v-permission="'contract:read'" class="btn btn-outline btn-sm" @click="goAiPanel">🤖 AI 体检</button>
           <button v-permission="'contract:approve'" class="btn btn-primary btn-sm" @click="goSign">✍ 发起签署</button>
+          <!-- UDPE 统一单据打印引擎（M2 阶段 5 第二个迁移点） -->
+          <PrintByTemplateButton
+            template-code="contract_v1"
+            :business-id="Number(route.params.id) || (detail as any)?.id || mock.id"
+            source-module="contract"
+            label="按模板打印"
+            icon="🧾"
+            el-type="default"
+            size="small"
+            button-class="btn btn-outline btn-sm"
+            @click="printDialogVisible = true"
+          />
         </div>
       </div>
     </div>
@@ -367,6 +382,17 @@ onMounted(() => {
       </div>
     </el-drawer>
   </div>
+
+
+    <!-- UDPE 通用预览弹窗（M2 阶段 6） -->
+    <PrintPreviewDialog
+      v-model="printDialogVisible"
+      template-code="contract_v1"
+      :data="{ _resolver: Number(route.params.id) || (detail as any)?.id || mock.id }"
+      source-module="contract"
+      :source-id="Number(route.params.id) || (detail as any)?.id || mock.id"
+      title="合同打印预览"
+    />
 </template>
 
 <style lang="scss" scoped>

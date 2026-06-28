@@ -1,0 +1,39 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "contract",
+    "title": "合同摘要",
+    "description": "合同 A4 单页摘要（标准版）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "合 同 摘 要", "fontSize": 20, "align": "center" },
+      { "type": "text", "text": "合同编号：{{ contract.code }} | 类型：{{ contract.type }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "合同名称：{{ contract.name }}", "fontSize": 12, "bold": false },
+      { "type": "text", "text": "客户：{{ contract.client.name | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "合同金额：{{ contract.amount | money }}", "fontSize": 12, "color": "#DC2626" },
+      { "type": "text", "text": "负责人：{{ contract.manager.name | default('—') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "签订日期：{{ contract.signDate | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "生效日期：{{ contract.effectiveDate | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "到期日期：{{ contract.expireDate | default('—') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "合同摘要", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "text", "text": "{{ contract.summary | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 6 },
+      { "type": "text", "text": "金额大写：{{ contract.amount | chinese_money }}", "fontSize": 10, "color": "#6B7280" },
+      { "type": "spacer", "height": 12 },
+      { "type": "line" },
+      { "type": "text", "text": "甲方（数智信息）：{{ contract.signatures.partyA.signed | default(false) }}", "fontSize": 10 },
+      { "type": "text", "text": "乙方（客户）：{{ contract.signatures.partyB.signed | default(false) }}", "fontSize": 10 },
+      { "type": "spacer", "height": 12 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

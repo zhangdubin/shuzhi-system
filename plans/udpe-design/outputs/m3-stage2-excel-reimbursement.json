@@ -1,0 +1,235 @@
+{
+  "code": "reimbursement_simple_v1",
+  "name": "费用报销单（Excel 复刻·极简版）",
+  "docType": "reimbursement",
+  "paper": "A4",
+  "orientation": "portrait",
+  "widthMm": 210,
+  "heightMm": 297,
+  "description": "复刻 Excel '报销单模板自行打印.xlsx' 的极简风格, 不含明细表, 适合单笔费用报销.",
+  "schemaJson": {
+    "body": [
+      {
+        "type": "title",
+        "text": "费 用 报 销 单",
+        "fontSize": 22,
+        "align": "center"
+      },
+      {
+        "type": "text",
+        "text": "打印日期：{{ printTime | date }}",
+        "fontSize": 10,
+        "align": "right",
+        "color": "#6B7280"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 4
+      },
+      {
+        "type": "text",
+        "text": "报销编号：{{ form.formNo | default('—') }}",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "费用摘要",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 2
+      },
+      {
+        "type": "text",
+        "text": "  {{ form.title | default('—') }}",
+        "fontSize": 14
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "金额（大写）",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 2
+      },
+      {
+        "type": "text",
+        "text": "  {{ form.totalAmount | chinese_money | default('—') }}",
+        "fontSize": 16,
+        "color": "#DC2626"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "金额（小写）",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 2
+      },
+      {
+        "type": "text",
+        "text": "  {{ form.totalAmount | money | default('—') }}",
+        "fontSize": 14,
+        "color": "#DC2626"
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "备注",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 2
+      },
+      {
+        "type": "text",
+        "text": "  {{ form.remark | default('（无）') }}",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "附单据张数",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 2
+      },
+      {
+        "type": "text",
+        "text": "  {{ form.detailCount | default(0) }} 张",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 12
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "spacer",
+        "height": 12
+      },
+      {
+        "type": "text",
+        "text": "签字栏",
+        "fontSize": 12,
+        "color": "#4F6BFF"
+      },
+      {
+        "type": "spacer",
+        "height": 6
+      },
+      {
+        "type": "text",
+        "text": "核准：____________________",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "text",
+        "text": "审批：____________________",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "text",
+        "text": "会计：____________________",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 8
+      },
+      {
+        "type": "text",
+        "text": "报销人：{{ form.applicantName | default(form.applicant.name, '____________________') }}",
+        "fontSize": 11
+      },
+      {
+        "type": "spacer",
+        "height": 16
+      },
+      {
+        "type": "line"
+      },
+      {
+        "type": "text",
+        "text": "打印时间：{{ printTime | datetime | default('—') }} | 打印人：{{ printUser | default('—') }}",
+        "fontSize": 9,
+        "align": "center",
+        "color": "#9CA3AF"
+      }
+    ]
+  }
+}

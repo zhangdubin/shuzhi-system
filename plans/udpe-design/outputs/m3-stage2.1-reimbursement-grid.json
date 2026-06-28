@@ -1,0 +1,179 @@
+{
+  "code": "reimbursement_simple_v1",
+  "name": "费用报销单（Excel 1:1 复刻·grid 版）",
+  "docType": "reimbursement",
+  "paper": "A4",
+  "orientation": "portrait",
+  "widthMm": 210,
+  "heightMm": 297,
+  "description": "1:1 复刻 Excel '报销单模板自行打印.xlsx': 4 列网格 + 全单元格边框 + 标题/日期/摘要/金额(大写+小写)/备注+附单据/4 签字栏.",
+  "schemaJson": {
+    "body": [
+      {
+        "type": "grid",
+        "border": true,
+        "borderColor": "#000000",
+        "borderWidth": 1,
+        "colCount": 4,
+        "rows": [
+          {
+            "height": 16,
+            "cells": [
+              {
+                "text": "费 用 报 销 单",
+                "span": 4,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 22
+              }
+            ]
+          },
+          {
+            "height": 10,
+            "cells": [
+              {"text": "", "span": 2},
+              {
+                "text": "____年____月____日",
+                "span": 2,
+                "align": "right",
+                "fontSize": 11,
+                "valign": "middle"
+              }
+            ]
+          },
+          {
+            "height": 16,
+            "cells": [
+              {
+                "text": "费用摘要",
+                "span": 1,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 12
+              },
+              {
+                "text": "{{ form.title | default('—') }}",
+                "span": 3,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 14,
+                "bold": true
+              }
+            ]
+          },
+          {
+            "height": 18,
+            "cells": [
+              {
+                "text": "金额（大写）",
+                "span": 1,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 12
+              },
+              {
+                "text": "{{ form.totalAmount | chinese_money | default('—') }}",
+                "span": 1,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 14,
+                "bold": true
+              },
+              {
+                "text": "金额（小写）",
+                "span": 1,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 12
+              },
+              {
+                "text": "{{ form.totalAmount | money | default('—') }}",
+                "span": 1,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 14,
+                "bold": true
+              }
+            ]
+          },
+          {
+            "height": 14,
+            "cells": [
+              {
+                "text": "备注",
+                "span": 1,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 12
+              },
+              {
+                "text": "{{ form.remark | default('（无）') }}",
+                "span": 1,
+                "align": "left",
+                "valign": "middle",
+                "fontSize": 11
+              },
+              {
+                "text": "附单据张数",
+                "span": 1,
+                "bold": true,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 12
+              },
+              {
+                "text": "{{ form.detailCount | default(0) }} 张",
+                "span": 1,
+                "align": "center",
+                "valign": "middle",
+                "fontSize": 11
+              }
+            ]
+          },
+          {
+            "height": 18,
+            "cells": [
+              {
+                "text": "核准：",
+                "span": 1,
+                "bold": true,
+                "align": "right",
+                "valign": "middle",
+                "fontSize": 11
+              },
+              {
+                "text": "审批：",
+                "span": 1,
+                "bold": true,
+                "align": "right",
+                "valign": "middle",
+                "fontSize": 11
+              },
+              {
+                "text": "会计：",
+                "span": 1,
+                "bold": true,
+                "align": "right",
+                "valign": "middle",
+                "fontSize": 11
+              },
+              {
+                "text": "报销人：{{ form.applicantName | default(form.applicant.name, '—') }}",
+                "span": 1,
+                "bold": true,
+                "align": "right",
+                "valign": "middle",
+                "fontSize": 11
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

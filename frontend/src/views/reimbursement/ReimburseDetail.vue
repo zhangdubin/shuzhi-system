@@ -13,6 +13,16 @@
       <div class="page-actions">
         <el-button @click="router.push('/reimbursement/list')">← 返回</el-button>
         <el-button @click="onPrint">🖨 打印 / 导出 PDF</el-button>
+        <!-- UDPE 统一单据打印引擎（M2 阶段 5 第三个迁移点） -->
+        <PrintByTemplateButton
+          template-code="reimbursement_v1"
+          :business-id="form?.formId || Number(route.params.id)"
+          source-module="reimbursement"
+          label="按模板打印"
+          icon="🧾"
+          el-type="default"
+          @click="printDialogVisible = true"
+        />
         <el-button v-if="form && form.status !== 'done'" type="primary" @click="fillbackVisible = true">💰 录入实际报销</el-button>
       </div>
     </div>
@@ -288,6 +298,17 @@
       </div>
     </el-dialog>
   </div>
+
+
+    <!-- UDPE 通用预览弹窗（M2 阶段 6） -->
+    <PrintPreviewDialog
+      v-model="printDialogVisible"
+      template-code="reimbursement_v1"
+      :data="{ _resolver: form?.formId || Number(route.params.id) }"
+      source-module="reimbursement"
+      :source-id="form?.formId || Number(route.params.id)"
+      title="报销单打印预览"
+    />
 </template>
 
 <script setup lang="ts">
@@ -295,6 +316,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { reimburseApi } from '@/api/modules'
+import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
 const route = useRoute()
 const router = useRouter()
@@ -305,6 +327,7 @@ const templateData = ref<any>(null)
 const templates = ref<any[]>([])
 
 const fillbackVisible = ref(false)
+const printDialogVisible = ref(false)
 const fillbackForm = reactive({
   actualAmountYuan: 0,             // 元（前端交互用）
   paymentDate: new Date().toISOString().substring(0, 10),
@@ -526,6 +549,8 @@ onMounted(() => {
   loadTemplates()
   loadData()
 })
+
+
 </script>
 
 <style lang="scss" scoped>

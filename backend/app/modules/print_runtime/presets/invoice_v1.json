@@ -1,0 +1,31 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "invoice",
+    "title": "发票详情",
+    "description": "发票 A4 单页详情（标准版）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "发 票 详 情", "fontSize": 20, "align": "center" },
+      { "type": "text", "text": "发票号：{{ invoice.invoiceNo | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "开票日期：{{ invoice.invoiceDate | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "销方：{{ invoice.sellerName | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "购方：{{ invoice.buyerName | default('—') }}", "fontSize": 11 },
+      { "type": "text", "text": "金额（含税）：¥ {{ invoice.totalAmount | default(0) }}", "fontSize": 13, "color": "#DC2626" },
+      { "type": "text", "text": "金额大写：{{ invoice.totalAmount | chinese_money }}", "fontSize": 10, "color": "#6B7280" },
+      { "type": "text", "text": "税额：¥ {{ invoice.taxAmount | default(0) }}", "fontSize": 11 },
+      { "type": "text", "text": "税率：{{ invoice.taxRate | default('—') }}", "fontSize": 11 },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "备注：{{ invoice.remark | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 12 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

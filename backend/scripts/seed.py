@@ -74,6 +74,13 @@ PERMISSIONS = [
     ("ai:risk.scan", "ai", "risk_scan", "AI 风险扫描"),
     ("ai:ask", "ai", "ask", "AI 智能问答"),
     ("ai:model.manage", "ai", "model_manage", "AI 模型管理"),
+
+    # UDPE 统一单据打印引擎（design §11.2）
+    ("print:template:read",   "print", "read",   "查看打印模板"),
+    ("print:template:write",  "print", "write",  "编辑打印模板"),
+    ("print:template:admin",  "print", "admin",  "管理打印模板（发布/删除）"),
+    ("print:document:read",   "print", "read",   "预览单据"),
+    ("print:document:export", "print", "export", "导出单据 PDF"),
 ]
 
 ROLES = [

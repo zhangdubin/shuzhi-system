@@ -93,6 +93,10 @@ const routes: RouteRecordRaw[] = [
       { path: 'admin/dict', name: 'AdminDict', component: () => import('@/views/admin/AdminDict.vue'), meta: { title: '数据字典', permission: 'dict:read' } },
       { path: 'admin/settings', name: 'SystemSettings', component: () => import('@/views/admin/SystemSettings.vue'), meta: { title: '系统设置', requireAdmin: true } },
       { path: 'admin/audit-log', name: 'AdminAuditLog', component: () => import('@/views/admin/AdminAuditLog.vue'), meta: { title: '审计日志', permission: 'audit:read' } },
+      // UDPE 统一单据打印引擎（M2 阶段 7：补前端模块入口）
+      { path: 'admin/print-template', name: 'AdminPrintTemplate', component: () => import('@/views/admin/AdminPrintTemplate.vue'), meta: { title: '打印模板', permission: 'print:template:read' } },
+      { path: 'admin/print-template/editor/:id?', name: 'AdminPrintTemplateEditor', component: () => import('@/views/admin/AdminPrintTemplateEditor.vue'), meta: { title: '模板编辑器', permission: 'print:template:write' } },
+      { path: 'admin/print-log', name: 'AdminPrintLog', component: () => import('@/views/admin/AdminPrintLog.vue'), meta: { title: '打印日志', permission: 'print:document:read' } },
     ],
   },
   // 错误页

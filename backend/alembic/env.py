@@ -29,6 +29,7 @@ from app.modules.invoice_verify.models import *  # noqa
 from app.modules.common.models import *  # noqa
 # AI 平台（Phase 1）
 from app.modules.ai.models import *  # noqa
+from app.modules.print_runtime.models import *  # noqa
 
 config = context.config
 

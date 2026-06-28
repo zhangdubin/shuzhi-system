@@ -12,6 +12,7 @@
       </div>
       <div class="page-actions">
         <el-button @click="loadData">↻ 刷新</el-button>
+        <el-button :disabled="!selectedIds.length || batchPrinting" @click="batchPrint" v-permission="'print:document:export'">🖨 批量打印 <span v-if="selectedIds.length" class="badge-count">{{ selectedIds.length }}</span></el-button>
         <el-button :disabled="!selectedIds.length" @click="batchDelete">🗑 批量删除 <span v-if="selectedIds.length" class="badge-count">{{ selectedIds.length }}</span></el-button>
         <el-button :disabled="!selectedIds.length" @click="aiReviewSelected">🤖 AI 复核 <span v-if="selectedIds.length" class="badge-count">{{ selectedIds.length }}</span></el-button>
         <el-button @click="exportCsv">📥 导出</el-button>
@@ -133,6 +134,7 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { printApi } from '@/api/print'
 import { reimburseApi } from '@/api/modules'
 
 const router = useRouter()
@@ -166,6 +168,32 @@ const stats = computed(() => {
   const totalAmount = list.value.reduce((s, x) => s + (x.actualAmount || x.totalAmount || 0), 0)
   return { total: list.value.length, draft, printed, done, totalAmount }
 })
+
+// 批量打印 (UDPE M2 阶段 9)
+const batchPrinting = ref(false)
+async function batchPrint() {
+  if (!selectedIds.value.length) {
+    ElMessage.warning('请先勾选要打印的报销单')
+    return
+  }
+  if (selectedIds.value.length > 100) {
+    ElMessage.warning('单次最多 100 条, 当前已选 ' + selectedIds.value.length)
+    return
+  }
+  batchPrinting.value = true
+  try {
+    const stats = await printApi.batchPdf({
+      templateCode: 'reimbursement_v1',
+      items: selectedIds.value,
+      options: { sourceModule: 'reimbursement' },
+    })
+    ElMessage.success(`批量打印完成: ${stats.success}/${stats.total} 条`)
+  } catch (e: any) {
+    ElMessage.error('批量打印失败: ' + (e?.message || ''))
+  } finally {
+    batchPrinting.value = false
+  }
+}
 
 function templateName(code: string) {
   return templates.value.find(t => t.code === code)?.name || code

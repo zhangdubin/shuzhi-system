@@ -24,10 +24,46 @@ from app.modules.invoice_ocr.router import router as invoice_ocr_router
 from app.modules.invoice_verify.router import router as invoice_verify_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.admin.router import router as admin_router
+from app.modules.print_runtime.router import (
+    admin_router as print_admin_router,
+    runtime_router as print_runtime_router,
+)
 from app.modules.system_settings.router import router as system_settings_router
 from app.modules.cron.router import router as cron_router
 from app.modules.ai.router import router as ai_router
 from app.modules.reimbursement.router import router as reimbursement_router
+
+
+def _register_udpe() -> None:
+    """UDPE 引擎注册：M1 阶段 3。
+
+    把 2 个 Renderer、4 个业务 Resolver、1 个 VariableProvider 注册到 core.print 注册中心。
+    业务模块以后想加 Resolver 只需在自己 router 启动时调 ResolverRegistry.register。
+    """
+    from app.core.print import (
+        ProviderRegistry, RendererRegistry, ResolverRegistry,
+    )
+    from app.modules.print_runtime.renderers import HtmlRenderer, PdfRenderer
+    from app.modules.print_runtime.resolvers import (
+        ContractResolver, ExpenseResolver, InvoiceResolver, ReimbursementResolver,
+    )
+    from app.modules.print_runtime.variables import SystemVarsProvider
+
+    RendererRegistry.register(PdfRenderer())
+    RendererRegistry.register(HtmlRenderer())
+
+    ResolverRegistry.register(ContractResolver())
+    ResolverRegistry.register(ReimbursementResolver())
+    ResolverRegistry.register(ExpenseResolver())
+    ResolverRegistry.register(InvoiceResolver())
+
+    ProviderRegistry.register(SystemVarsProvider())
+
+    logger.info(
+        f"[UDPE] 已注册 renderers={list(RendererRegistry.all().keys())} "
+        f"resolvers={list(ResolverRegistry.all().keys())} "
+        f"providers={list(ProviderRegistry.all().keys())}"
+    )
 
 
 # 静态文件目录（uploads）
@@ -43,6 +79,8 @@ async def lifespan(app: FastAPI):
     # 启动定时任务调度器
     from app.modules.cron.router import init_scheduler, shutdown_scheduler
     init_scheduler()
+    # UDPE 引擎注册（M1 阶段 3 D6）
+    _register_udpe()
     yield
     # 关闭（await 异步 shutdown）
     await shutdown_scheduler()
@@ -94,6 +132,9 @@ app.include_router(invoice_verify_router, prefix="/api/v1/invoice/verify", tags=
 app.include_router(dashboard_router, prefix="/api/v1/dashboard", tags=["Dashboard"])
 app.include_router(cron_router, prefix="/api/v1/cron", tags=["定时任务"])
 app.include_router(admin_router, prefix="/api/v1/admin", tags=["管理后台"])
+# UDPE 统一单据打印引擎（design §五）
+app.include_router(print_admin_router, prefix="/api/v1/admin", tags=["打印模板"])
+app.include_router(print_runtime_router, prefix="/api/v1", tags=["打印引擎"])
 app.include_router(system_settings_router, prefix="/api/v1/admin/settings", tags=["系统设置"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI 平台"])
 app.include_router(reimbursement_router, prefix="/api/v1/reimbursements", tags=["报销中心"])
@@ -111,50 +152,3 @@ app.mount("/static/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uplo
 CERT_DIR = Path(__file__).resolve().parent / "certificates"
 CERT_DIR.mkdir(parents=True, exist_ok=True)
 app.mount("/static/certificates", StaticFiles(directory=str(CERT_DIR)), name="certificates")
-
-
-# ===== 健康检查 =====
-@app.get("/health", tags=["系统"])
-async def health():
-    """聚合健康检查：app + OCR + 诺诺"""
-    from app.integrations import ocr_client, nuonuo
-    ocr_h = await ocr_client.health_check()
-    nuonuo_h = await nuonuo.health_check()
-    return {
-        "status": "ok",
-        "app": settings.APP_NAME,
-        "env": settings.ENV,
-        "version": "1.0.0",
-        "integrations": {
-            "ocr": ocr_h,
-            "nuonuo": nuonuo_h,
-        },
-    }
-
-
-@app.get("/", tags=["系统"])
-async def root():
-    return {
-        "message": f"Welcome to {settings.APP_NAME}",
-        "docs": "/docs",
-        "health": "/health",
-        "metrics": "/metrics",  # R7.2: Prometheus 抓取端点
-    }
-
-
-@app.get("/metrics", tags=["系统"])
-async def metrics():
-    """Prometheus 抓取端点"""
-    from app.core.metrics import metrics_endpoint
-    return metrics_endpoint()
-
-
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(
-        "app.main:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=settings.ENV == "development",
-        log_level=settings.LOG_LEVEL.lower(),
-    )

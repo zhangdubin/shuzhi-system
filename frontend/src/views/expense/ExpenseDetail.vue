@@ -9,6 +9,7 @@ import { ref, reactive, onMounted, computed, watch } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { expenseApi, invoiceOcrApi } from '@/api/modules'
+import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
 const router = useRouter()
 const route = useRoute()
@@ -17,325 +18,15 @@ const activeTab = ref<'basic' | 'flow' | 'related' | 'history'>('basic')
 
 const loading = ref(false)
 const printVisible = ref(false)
+const printDialogVisible = ref(false)
 
 function openPrint() { printVisible.value = true }
 function doPrint() {
   // 给浏览器一点时间渲染打印内容
   setTimeout(() => window.print(), 100)
 }
-const detail = reactive<any>({
-  expenseId: 0,
-  code: '',
-  category: '其他',
-  title: '',
-  description: '',
-  amount: 0,
-  currency: 'CNY',
-  expenseDate: '',
-  submitDate: null,
-  applicant: { userId: 0, name: '-', avatar: null },
-  department: null,
-  contractId: null,
-  projectId: null,
-  breakdown: [] as Array<any>,
-  attachments: [] as Array<any>,
-  approvalFlow: null as any,
-  status: 'draft',
-  createdAt: '',
-  updatedAt: '',
-})
-
-const CATEGORY_LABEL: Record<string, string> = {
-  差旅: '差旅', 招待: '招待', 办公: '办公', 推广: '推广', 培训: '培训', 其他: '其他', communication: '通讯',
-}
-const CATEGORY_COLOR: Record<string, string> = {
-  差旅: 'info', 招待: 'warning', 办公: 'primary', 推广: 'success', 培训: 'purple', 其他: 'gray', communication: 'cyan',
-}
-const STATUS_LABEL: Record<string, string> = {
-  draft: '草稿', pending: '审批中', pending_review: '审批中', submitted: '审批中',
-  approved: '已通过', rejected: '已驳回', paid: '已报销',
-}
-const STATUS_COLOR: Record<string, string> = {
-  draft: 'gray', pending: 'warning', pending_review: 'warning', submitted: 'warning',
-  approved: 'success', rejected: 'danger', paid: 'primary',
-}
-
-const typeLabel = computed(() => CATEGORY_LABEL[detail.category] || detail.category || '其他')
-const typeColor = computed(() => CATEGORY_COLOR[detail.category] || 'gray')
-const statusLabel = computed(() => STATUS_LABEL[detail.status] || detail.status || '草稿')
-const statusColor = computed(() => STATUS_COLOR[detail.status] || 'gray')
-const amountYuan = computed(() => Number(detail.amount) || 0)
-const formattedAmount = computed(() => `¥ ${amountYuan.value.toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`)
-const formattedApplyDate = computed(() => {
-  const s = detail.submitDate || detail.createdAt
-  if (!s) return '-'
-  return s.replace('T', ' ').substring(0, 16)
-})
-const formattedExpenseDate = computed(() => detail.expenseDate || '-')
-
-async function loadDetail() {
-  const id = Number(route.params.id)
-  if (!id) {
-    ElMessage.error('缺少费用 ID')
-    return
-  }
-  loading.value = true
-  try {
-    const res: any = await expenseApi.detail(id)
-    if (res) {
-      Object.assign(detail, {
-        expenseId: res.expenseId ?? id,
-        code: res.code || '',
-        category: res.category || '其他',
-        title: res.title || '',
-        description: res.description || '',
-        amount: res.amount ?? 0,
-        currency: res.currency || 'CNY',
-        expenseDate: res.expenseDate || '',
-        submitDate: res.submitDate || null,
-        applicant: res.applicant || { userId: 0, name: '-', avatar: null },
-        department: res.department || null,
-        contractId: res.contractId || null,
-        projectId: res.projectId || null,
-        breakdown: Array.isArray(res.breakdown) ? res.breakdown : [],
-        attachments: Array.isArray(res.attachments) ? res.attachments : [],
-        approvalFlow: res.approvalFlow || null,
-        status: res.status || 'draft',
-        createdAt: res.createdAt || '',
-        updatedAt: res.updatedAt || '',
-        invoiceId: res.invoiceId ?? null,
-        relatedInvoice: res.relatedInvoice || null,
-      })
-    }
-  } catch (e) {
-    console.error('加载费用详情失败', e)
-  } finally {
-    loading.value = false
-  }
-}
-
-function goBack() { router.push('/expense/list') }
-function goEdit() {
-  if (!detail.expenseId) { ElMessage.error('缺少费用 ID'); return }
-  router.push(`/expense/create?id=${detail.expenseId}`)
-}
-function copyAs() {
-  if (!detail.expenseId) { ElMessage.error('缺少费用 ID'); return }
-  ElMessage.success('已复制申请（以新草稿创建，可继续编辑）')
-  router.push('/expense/create')
-}
-
-// 费用明细编辑（弹窗）
-const breakdownDialogVisible = ref(false)
-const breakdownDraft = ref<Array<{label: string, amount: number, remark: string}>>([])
-
-// 关联单据相关
-const hasAnyRelated = computed(() => !!(detail as any)?.relatedInvoice || !!(detail as any)?.contractId || !!(detail as any)?.projectId)
-const canLinkInvoice = computed(() => detail.status === 'draft' || detail.status === 'pending' || detail.status === 'pending_review' || detail.status === 'rejected')
-function verifyStatusLabel(s?: string) {
-  return ({ pending: '待核验', verified: '已核验', rejected: '已驳回', failed: '识别失败', expired: '已过期' } as Record<string,string>)[s || ''] || s || '待核验'
-}
-function goInvoice(id?: number) {
-  if (!id) return
-  router.push(`/invoice/ocr/${id}`)
-}
-function auditLabel(s?: string) {
-  return ({ match: '金额一致', partial: '部分报销', over: '超额异常', mismatch: '金额不匹配', unknown: '无法比对' } as Record<string,string>)[s || ''] || s || '未知'
-}
-function auditIcon(s?: string) {
-  return ({ match: '✅', partial: '🟡', over: '⚠️', mismatch: '❌', unknown: '❔' } as Record<string,string>)[s || ''] || '·'
-}
-
-// 关联发票弹窗
-const linkInvoiceDialog = ref(false)
-const linkKeyword = ref('')
-const linkCandidates = ref<any[]>([])
-const linkSearching = ref(false)
-const pickedInvoiceId = ref<number | null>(null)
-const linkSubmitting = ref(false)
-let linkSearchTimer: any = null
-
-async function searchInvoices() {
-  linkSearching.value = true
-  try {
-    // 走后端 /invoice/ocr/unlinked：已核验 + 未被任何费用关联
-    const res: any = await invoiceOcrApi.unlinked({ page: 1, pageSize: 50, keyword: linkKeyword.value } as any)
-    linkCandidates.value = res?.list || res?.data?.list || []
-  } catch (e) {
-    linkCandidates.value = []
-  } finally {
-    linkSearching.value = false
-  }
-}
-function debounceSearchInvoices() {
-  clearTimeout(linkSearchTimer)
-  linkSearchTimer = setTimeout(searchInvoices, 300)
-}
-async function confirmLinkInvoice() {
-  if (!pickedInvoiceId.value) return
-  linkSubmitting.value = true
-  try {
-    await expenseApi.update(detail.expenseId, { invoiceId: pickedInvoiceId.value } as any)
-    ElMessage.success('已关联发票')
-    linkInvoiceDialog.value = false
-    pickedInvoiceId.value = null
-    linkKeyword.value = ''
-    await loadDetail()
-  } catch (e: any) {
-    ElMessage.error('关联失败：' + (e?.response?.data?.msg || e?.message || '未知错误'))
-  } finally {
-    linkSubmitting.value = false
-  }
-}
-async function unlinkInvoice() {
-  try {
-    await ElMessageBox.confirm('确认解除与该发票的关联？此操作不会删除发票。', '解除关联', { type: 'warning' })
-  } catch { return }
-  try {
-    await expenseApi.update(detail.expenseId, { invoiceId: null } as any)
-    ElMessage.success('已解除关联')
-    await loadDetail()
-  } catch (e: any) {
-    ElMessage.error('解除失败：' + (e?.response?.data?.msg || e?.message || '未知错误'))
-  }
-}
-
-// 监听弹窗打开，自动拉一次
-watch(linkInvoiceDialog, (v) => { if (v) { linkKeyword.value = ''; pickedInvoiceId.value = null; searchInvoices() } })
-// 关键字变化时去抖
-watch(linkKeyword, debounceSearchInvoices)
-const breakdownSaving = ref(false)
-
-function openBreakdownEditor() {
-  // 把现有明细深拷贝一份到草稿（amount 转元以便编辑）
-  breakdownDraft.value = (detail.breakdown || []).map((b: any) => ({
-    label: b.label || '',
-    amount: Number(b.amount || 0),
-    remark: b.remark || '',
-  }))
-  if (breakdownDraft.value.length === 0) {
-    // 至少加一行空行
-    breakdownDraft.value.push({ label: '', amount: 0, remark: '' })
-  }
-  breakdownDialogVisible.value = true
-}
-function addBreakdownRow() {
-  breakdownDraft.value.push({ label: '', amount: 0, remark: '' })
-}
-function removeBreakdownRow(idx: number) {
-  breakdownDraft.value.splice(idx, 1)
-}
-async function saveBreakdown() {
-  if (breakdownSaving.value) return
-  // 校验：去掉全空行
-  const items = breakdownDraft.value.filter((r: any) => r.label || r.amount)
-  for (const it of items) {
-    if (!it.label) { ElMessage.warning('请填写项目名称'); return }
-    if (!(Number(it.amount) > 0)) { ElMessage.warning('金额必须 > 0'); return }
-  }
-  breakdownSaving.value = true
-  try {
-    // 后端 update 接口要求 amount 是"分"，前端传"元"会再 *100
-    // 这里用 raw 后端字段名 label/amount/remark，但 amount 传"分"
-    const payload = items.map((it: any) => ({
-      label: it.label,
-      amount: Number(it.amount),  // 元 (后端 service *100 转分)
-      remark: it.remark || null,
-    }))
-    await expenseApi.update(detail.expenseId, { breakdown: payload } as any)
-    ElMessage.success(`已保存 ${items.length} 项费用明细`)
-    breakdownDialogVisible.value = false
-    await loadDetail()
-  } catch (e: any) {
-    const detail = e?.response?.data?.detail
-    const msg = Array.isArray(detail)
-      ? detail.map((d: any) => `${d.loc?.slice(-1)[0] || ''}: ${d.msg || ''}`).join('；')
-      : (detail || e?.message || '未知错误')
-    ElMessage.error('保存失败：' + msg)
-  } finally {
-    breakdownSaving.value = false
-  }
-}
-function cancelBreakdown() {
-  breakdownDialogVisible.value = false
-}
-async function approve() {
-  if (!detail.expenseId) return
-  try {
-    await expenseApi.approve(detail.expenseId, { action: 'approve', comment: '同意' })
-    ElMessage.success('已审批通过')
-    await loadDetail()
-  } catch (e: any) {
-    ElMessage.error('审批失败：' + (e?.message || '未知错误'))
-  }
-}
-async function reject() {
-  if (!detail.expenseId) return
-  try {
-    await expenseApi.approve(detail.expenseId, { action: 'reject', comment: '驳回' })
-    ElMessage.warning('已驳回')
-    await loadDetail()
-  } catch (e: any) {
-    ElMessage.error('驳回失败：' + (e?.message || '未知错误'))
-  }
-}
-async function submitApproval() {
-  if (!detail.expenseId) return
-  try {
-    await expenseApi.submit(detail.expenseId)
-    ElMessage.success('已提交审批')
-    await loadDetail()
-  } catch (e: any) {
-    ElMessage.error('提交失败：' + (e?.message || '未知错误'))
-  }
-}
-async function markPaid() {
-  if (!detail.expenseId) return
-  try {
-    await ElMessageBox.confirm('确认已向申请人打款 / 报销完成？该操作不可撤销。', '确认报销', { type: 'success', confirmButtonText: '确认报销', cancelButtonText: '再看看' })
-    await expenseApi.markPaid(detail.expenseId)
-    ElMessage.success('已确认报销')
-    await loadDetail()
-  } catch (e: any) {
-    if (e?.message && e.message !== 'cancel') ElMessage.error('报销确认失败：' + (e?.message || '未知错误'))
-  }
-}
-async function reassign() {
-  if (!detail.expenseId) return
-  try {
-    const { value: userIdStr } = await ElMessageBox.prompt('请输入转交给的用户 ID（数字）', '转交审批', {
-      inputPattern: /^\d+$/,
-      inputErrorMessage: '请输入数字用户 ID',
-      inputPlaceholder: '例如 2',
-    } as any)
-    const transferTo = Number(userIdStr)
-    if (!transferTo) { ElMessage.warning('用户 ID 无效'); return }
-    await expenseApi.approve(detail.expenseId, { action: 'transfer', comment: '转交', transferTo } as any)
-    ElMessage.success('已转交')
-    await loadDetail()
-  } catch (e: any) {
-    if (e?.message && e.message !== 'cancel') ElMessage.error('转交失败：' + (e?.message || '未知错误'))
-  }
-}
-function uploadInvoice() { ElMessage.info('上传发票（待对接）') }
-function downloadInvoice(item: any) { ElMessage.info('下载发票：' + (item?.name || item?.fileName || '附件')) }
-function _flowStatusLabel(s: string) {
-  return { in_progress: '进行中', approved: '已通过', rejected: '已驳回', transferred: '已转交' }[s] || s || '进行中'
-}
-function _stepStatusLabel(s: string) {
-  return {
-    done: '✓ 已完成', approved: '✓ 已通过', rejected: '✕ 已驳回',
-    current: '⏳ 进行中', todo: '○ 待办', transferred: '↻ 已转交',
-  }[s] || s || '○ 待办'
-}
-function _actionLabel(a: string) {
-  return { approve: '同意', reject: '驳回', transfer: '转交', submit: '提交' }[a] || a
-}
 
 
-onMounted(() => {
-  loadDetail()
-})
 </script>
 
 <template>
@@ -383,6 +74,18 @@ onMounted(() => {
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"></polyline><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"></path><rect x="6" y="14" width="12" height="8"></rect></svg>
               打印
             </button>
+            <!-- UDPE 通用按钮（M2 阶段 6） -->
+            <PrintByTemplateButton
+              template-code="expense_v1"
+              :business-id="Number(route.params.id) || detail.expenseId"
+              source-module="expense"
+              label="按模板打印"
+              icon="🧾"
+              el-type="default"
+              tag="button"
+              button-class="eh-btn eh-btn-default"
+              @click="printDialogVisible = true"
+            />
           </template>
           <span v-else class="eh-status-done">
             <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>
@@ -907,6 +610,17 @@ onMounted(() => {
       </div>
     </div>
   </el-dialog>
+
+
+    <!-- UDPE 通用预览弹窗（M2 阶段 6） -->
+    <PrintPreviewDialog
+      v-model="printDialogVisible"
+      template-code="expense_v1"
+      :data="{ _resolver: Number(route.params.id) || detail.expenseId }"
+      source-module="expense"
+      :source-id="Number(route.params.id) || detail.expenseId"
+      title="费用申请单打印预览"
+    />
 </template>
 
 <style scoped lang="scss">

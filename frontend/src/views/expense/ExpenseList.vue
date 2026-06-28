@@ -14,6 +14,7 @@ import AiFilterDialog from '@/components/ai/AiFilterDialog.vue'
 // 触点 #22：AI 智能筛选
 const aiFilterVisible = ref(false)
 import { expenseApi, reimburseApi, type Expense } from '@/api/modules'
+import { printApi } from '@/api/print'
 
 const router = useRouter()
 
@@ -233,6 +234,32 @@ const generateBusy = ref(false)
 const generateAiDesc = ref('')
 const generateAiBusy = ref(false)
 const generateAiRisk: any = ref<{ level: string; reasons: string[] }>({ level: 'none', reasons: [] })
+
+// 批量打印 (UDPE M2 阶段 9)
+const batchPrinting = ref(false)
+async function batchPrint() {
+  if (selectedExpenseIds.value.length === 0) {
+    ElMessage.warning('请先勾选要打印的费用')
+    return
+  }
+  if (selectedExpenseIds.value.length > 100) {
+    ElMessage.warning('单次最多 100 条, 当前已选 ' + selectedExpenseIds.value.length)
+    return
+  }
+  batchPrinting.value = true
+  try {
+    const stats = await printApi.batchPdf({
+      templateCode: 'expense_v1',
+      items: selectedExpenseIds.value,
+      options: { sourceModule: 'expense' },
+    })
+    ElMessage.success(`批量打印完成: ${stats.success}/${stats.total} 条`)
+  } catch (e: any) {
+    ElMessage.error('批量打印失败: ' + (e?.message || ''))
+  } finally {
+    batchPrinting.value = false
+  }
+}
 
 function openGenerate() {
   if (selectedExpenseIds.value.length === 0) {
@@ -465,6 +492,10 @@ function aiSuggestionText(s: 'approve' | 'review' | 'risk') {
           </div>
         </div>
         <div class="et-right">
+          <button class="et-btn" :disabled="selectedExpenseIds.length === 0 || batchPrinting" @click="batchPrint" v-permission="'print:document:export'">
+            <span class="et-btn-icon">🖨</span>批量打印
+            <span v-if="selectedExpenseIds.length > 0" class="et-badge">{{ selectedExpenseIds.length }}</span>
+          </button>
           <button class="et-btn et-btn-primary" :disabled="selectedExpenseIds.length === 0" @click="openGenerate">
             <span class="et-btn-icon">📑</span>生成报销单
             <span v-if="selectedExpenseIds.length > 0" class="et-badge">{{ selectedExpenseIds.length }}</span>
