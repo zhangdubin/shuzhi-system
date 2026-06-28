@@ -433,8 +433,8 @@ const amountCn = computed(() => {
         </div>
       </div>
       <div class="ocr-top-right">
-        <button class="btn btn-outline">📋 使用模板</button>
-        <button class="btn btn-primary">+ 手动新增</button>
+        <button class="btn btn-outline" @click="router.push('/invoice/template')">📋 使用模板</button>
+        <button class="btn btn-primary" @click="router.push('/invoice/create')">+ 手动新增</button>
       </div>
     </div>
 

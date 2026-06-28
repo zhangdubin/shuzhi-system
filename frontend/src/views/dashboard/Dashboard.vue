@@ -301,11 +301,9 @@ async function runAllChecks() {
   checking.value = true
   try {
     const r: any = await (await import('@/utils/request')).http.post('/cron/all', {})
-    if (r?.code === 0) {
-      ElMessage.success(r.message || '一键检查完成')
-    } else {
-      ElMessage.error(r?.message || '检查失败')
-    }
+    // 响应拦截器已解包 data，code===0 时直接返回 data 对象
+    const total = r?.total ?? 0
+    ElMessage.success(`一键检查完成：${total} 条提醒`)
   } catch (e: any) {
     ElMessage.error('检查失败：' + (e?.message || '网络错误'))
   } finally {
@@ -528,7 +526,7 @@ const aiSuggests = ref([
       <div class="page-card">
         <div class="card-head">
           <h3>待办事项</h3>
-          <a href="javascript:;" class="link-all">查看全部 →</a>
+          <a href="javascript:;" class="link-all" @click="router.push('/expense/list')">查看全部 →</a>
         </div>
         <div style="padding: 8px 22px 18px;">
           <div v-for="(t, i) in todos" :key="i" :class="['todo-item', t.type]">
@@ -548,7 +546,7 @@ const aiSuggests = ref([
       <div class="page-card">
         <div class="card-head">
           <h3>最近活动</h3>
-          <a href="javascript:;" class="link-all">全部 →</a>
+          <a href="javascript:;" class="link-all" @click="router.push('/admin/audit-log')">全部 →</a>
         </div>
         <div style="padding: 4px 22px 16px;">
           <div

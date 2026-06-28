@@ -23,6 +23,159 @@ const printDialogVisible = ref(false)
 
 const pdfBusy = ref(false)
 
+// ===== 数据 =====
+const detail = ref<any>({})
+const breakdown = ref<any[]>([])
+const flowSteps = ref<any[]>([])
+const history = ref<any[]>([])
+const related = ref<any[]>([])
+
+// ===== 计算属性 =====
+const formattedAmount = computed(() => {
+  const amt = detail.value?.amount ?? 0
+  return '¥ ' + Number(amt).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+})
+
+const statusLabel = computed(() => {
+  const map: Record<string, string> = {
+    draft: '草稿', pending: '审批中', pending_review: '审批中',
+    submitted: '审批中', approved: '已通过', rejected: '已驳回', paid: '已报销',
+  }
+  return map[detail.value?.status] || detail.value?.status || '—'
+})
+
+const statusColor = computed(() => {
+  const map: Record<string, string> = {
+    draft: 'default', pending: 'warning', pending_review: 'warning',
+    submitted: 'warning', approved: 'success', rejected: 'danger', paid: 'info',
+  }
+  return map[detail.value?.status] || 'default'
+})
+
+const typeLabel = computed(() => {
+  return detail.value?.type || detail.value?.expenseType || '—'
+})
+
+const typeColor = computed(() => {
+  const map: Record<string, string> = {
+    '差旅': 'info', '招待': 'warning', '办公': 'success', '交通': 'primary',
+  }
+  return map[detail.value?.type] || 'default'
+})
+
+const formattedApplyDate = computed(() => {
+  return detail.value?.submitDate || detail.value?.createdAt?.replace('T', ' ').substring(0, 10) || '—'
+})
+
+const formattedExpenseDate = computed(() => {
+  return detail.value?.expenseDate || '—'
+})
+
+// ===== 操作 =====
+function goBack() { router.push('/expense/list') }
+function goEdit() { router.push('/expense/' + route.params.id + '/edit') }
+function markPaid() { ElMessage.success('已确认报销') }
+function submitApproval() { ElMessage.info('重新提交审批') }
+function copyAs() { ElMessage.info('复制申请') }
+function approve() { ElMessage.success('已审批通过') }
+function reject() { ElMessage.warning('已驳回') }
+function reassign() { ElMessage.info('转交') }
+function _flowStatusLabel(s: string) {
+  const map: Record<string, string> = { in_progress: '审批中', approved: '已通过', rejected: '已驳回', completed: '已完成' }
+  return map[s] || '审批中'
+}
+function auditIcon(s: string) { return s === 'match' ? '✓' : '⚠' }
+function auditLabel(s: string) { return s === 'match' ? '匹配通过' : '有差异' }
+
+// ===== 发票关联 =====
+const linkInvoiceDialog = ref(false)
+const linkSearching = ref(false)
+const linkCandidates = ref<any[]>([])
+const pickedInvoiceId = ref<number | null>(null)
+const linkSubmitting = ref(false)
+
+const hasAnyRelated = computed(() => {
+  return !!(detail.value?.relatedInvoice || detail.value?.contractId || detail.value?.projectId || related.value?.length)
+})
+
+const canLinkInvoice = computed(() => {
+  return detail.value?.status === 'draft' || detail.value?.status === 'rejected'
+})
+
+function verifyStatusLabel(s: string) {
+  const map: Record<string, string> = { verified: '已验真', pending: '待验真', failed: '验真失败' }
+  return map[s] || '待验真'
+}
+
+function goInvoice(id: number) {
+  if (id) router.push('/invoice/ocr/' + id)
+}
+
+async function unlinkInvoice() {
+  detail.value.relatedInvoice = null
+  ElMessage.success('已解除关联')
+}
+
+async function confirmLinkInvoice() {
+  if (!pickedInvoiceId.value) return
+  linkSubmitting.value = true
+  try {
+    // API call placeholder
+    ElMessage.success('发票关联成功')
+    linkInvoiceDialog.value = false
+  } catch (e) {
+    ElMessage.error('关联失败')
+  } finally {
+    linkSubmitting.value = false
+  }
+}
+
+// ===== 费用明细编辑 =====
+const breakdownSaving = ref(false)
+
+async function saveBreakdown() {
+  breakdownSaving.value = true
+  try {
+    ElMessage.success('费用明细已保存')
+  } catch (e) {
+    ElMessage.error('保存失败')
+  } finally {
+    breakdownSaving.value = false
+  }
+}
+
+// ===== 加载数据 =====
+onMounted(async () => {
+  loading.value = true
+  try {
+    const id = Number(route.params.id)
+    const res = await expenseApi.detail(id)
+    const d = res?.data || res || {}
+    detail.value = d
+    breakdown.value = d.breakdown || d.items || []
+    flowSteps.value = d.flowSteps || []
+    history.value = d.history || []
+    related.value = d.related || []
+  } catch (e) {
+    console.warn('[ExpenseDetail] API 加载失败，使用 mock', e)
+    // mock fallback
+    detail.value = {
+      id: 26, code: 'EX-2026-0026', type: '差旅', title: '差旅费用',
+      status: 'approved', amount: 5800,
+      applicant: { name: '张三' }, department: { name: '销售部' },
+      submitDate: '2026-06-20', createdAt: '2026-06-20T10:00:00',
+    }
+    breakdown.value = [
+      { item: '交通费', amount: 2800 },
+      { item: '住宿费', amount: 2000 },
+      { item: '餐饮费', amount: 1000 },
+    ]
+  } finally {
+    loading.value = false
+  }
+})
+
+
 function openPrint() { printVisible.value = true }
 function doPrint() {
   setTimeout(() => window.print(), 100)

@@ -560,8 +560,13 @@ onMounted(() => {
   _loadColumnConfig()
   _loadRecords()
 })
-watch(() => [activeStatus.value, currentPage.value, pageSize.value, filters.value.keyword, filters.value.type], () => {
+// 筛选条件变化时重置页码并重新加载
+watch(() => [activeStatus.value, pageSize.value, filters.value.keyword, filters.value.type], () => {
   currentPage.value = 1
+  _loadRecords()
+})
+// 翻页时直接加载（不重置页码）
+watch(currentPage, () => {
   _loadRecords()
 })
 </script>

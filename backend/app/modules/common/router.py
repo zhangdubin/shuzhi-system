@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, UploadFile, File, Form, Query, Request, 
 import json
 from pydantic import BaseModel, Field
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from sqlalchemy.exc import IntegrityError
 from datetime import datetime
 import random
@@ -515,7 +515,7 @@ async def list_files(
     _user: CurrentUser = Depends(get_current_user),
 ):
     """支持 query ?bizType=&bizId=&storage=&keyword= 或 body 传"""
-    from sqlalchemy import select, func, or_
+    from sqlalchemy import select, func, update, or_
     from app.modules.common.models import File as FileModel
     biz_type = (body or {}).get("bizType") or None
     biz_id = (body or {}).get("bizId")
@@ -576,7 +576,7 @@ async def files_stats(
     _user: CurrentUser = Depends(get_current_user),
 ):
     """返回：总数 / 按 storage 分布 / 按 biz_type 分布 / 总大小 / 最近 7 天上传数"""
-    from sqlalchemy import select, func, func
+    from sqlalchemy import select, func, update, func
     from app.modules.common.models import File as FileModel
     biz_type = (body or {}).get("bizType") or None
     total = (await db.execute(select(func.count(FileModel.id)).where(FileModel.biz_type == biz_type) if biz_type else select(func.count(FileModel.id)))).scalar() or 0
@@ -607,3 +607,161 @@ async def files_stats(
             "byBizType": by_biz,
         },
     }
+
+
+# ===== 文件代理（MinIO / 本地 统一访问）=====
+from fastapi.responses import StreamingResponse
+import io
+
+
+
+def _content_disposition(filename: str) -> str:
+    """生成 Content-Disposition 头，兼容中文文件名。"""
+    from urllib.parse import quote
+    safe = filename.encode('ascii', 'ignore').decode()
+    encoded = quote(filename)
+    if safe:
+        return f'inline; filename="{safe}"'
+    return f"inline; filename*=UTF-8''{encoded}"
+
+
+@router.get("/files/proxy", summary="文件代理（统一访问 MinIO/本地文件）")
+async def proxy_file(
+    fileId: str = Query(..., description="文件 ID"),
+    db: AsyncSession = Depends(get_db),
+):
+    """通过文件 ID 获取文件内容，自动适配 MinIO / 本地存储。
+    不需要登录（公开访问），用于 PDF 预览、图片显示等场景。
+    """
+    from app.modules.common.models import File as FileModel
+    from app.config import settings
+
+    file = (await db.execute(
+        select(FileModel).where(FileModel.id == fileId)
+    )).scalar_one_or_none()
+    if not file:
+        from fastapi.responses import JSONResponse
+        return JSONResponse({"detail": "文件不存在"}, status_code=404)
+
+    storage = file.storage or "local"
+    mime = file.mime_type or "application/octet-stream"
+
+    if storage == "minio":
+        # 从 MinIO 获取文件
+        try:
+            from app.integrations.storage import _get_minio_client
+            client = _get_minio_client()
+            # 从 URL 提取 key：http://endpoint/bucket/key
+            url = file.url or ""
+            bucket = settings.MINIO_BUCKET
+            # 提取 bucket 之后的 key
+            marker = f"/{bucket}/"
+            if marker in url:
+                key = url.split(marker, 1)[1]
+            else:
+                from fastapi.responses import JSONResponse
+                return JSONResponse({"detail": "无法解析文件路径"}, status_code=500)
+            response = client.get_object(bucket, key)
+            content = response.read()
+            response.close()
+            response.release_conn()
+            return StreamingResponse(
+                io.BytesIO(content),
+                media_type=mime,
+                headers={
+                    "Content-Disposition": _content_disposition(file.name),
+                    "Cache-Control": "public, max-age=3600",
+                },
+            )
+        except Exception as e:
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": f"MinIO 读取失败: {str(e)}"}, status_code=500)
+    else:
+        # 本地文件
+        from app.integrations.storage import get_abs_path
+        abs_path = get_abs_path(file.url or "")
+        if not abs_path.exists():
+            from fastapi.responses import JSONResponse
+            return JSONResponse({"detail": "文件不存在于磁盘"}, status_code=404)
+        content = abs_path.read_bytes()
+        return StreamingResponse(
+            io.BytesIO(content),
+            media_type=mime,
+            headers={
+                "Content-Disposition": f'inline; filename="{file.name}"',
+                "Cache-Control": "public, max-age=3600",
+            },
+        )
+
+
+# ===== 通知中心（独立前缀路由）=====
+notices_router = APIRouter()
+
+
+@notices_router.post("/recent", summary="最近通知列表")
+async def recent_notices(
+    limit: int = Query(30, ge=1, le=100),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    """获取当前用户的最近通知（按时间倒序）。"""
+    from app.modules.common.models import Notification
+    rows = (await db.execute(
+        select(Notification)
+        .where(Notification.user_id == current_user.id)
+        .order_by(Notification.created_at.desc())
+        .limit(limit)
+    )).scalars().all()
+    return {
+        "code": 0,
+        "data": {
+            "list": [
+                {
+                    "id": str(n.id),
+                    "type": n.type or "系统",
+                    "action": n.type or "system",
+                    "title": n.title,
+                    "operator": "",
+                    "ts": int(n.created_at.timestamp() * 1000) if n.created_at else 0,
+                    "read": n.is_read,
+                }
+                for n in rows
+            ],
+            "total": len(rows),
+        },
+    }
+
+
+@notices_router.post("/read", summary="标记通知已读")
+async def mark_notice_read(
+    noticeId: int = Query(...),
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    from app.modules.common.models import Notification
+    from datetime import datetime
+    n = (await db.execute(
+        select(Notification).where(Notification.id == noticeId, Notification.user_id == current_user.id)
+    )).scalar_one_or_none()
+    if not n:
+        raise NotFoundException("通知不存在")
+    n.is_read = True
+    n.read_at = datetime.utcnow()
+    await db.commit()
+    return {"code": 0, "data": {"ok": True}}
+
+
+@notices_router.post("/read-all", summary="全部已读")
+async def mark_all_read(
+    db: AsyncSession = Depends(get_db),
+    current_user: CurrentUser = Depends(get_current_user),
+):
+    from app.modules.common.models import Notification
+    from datetime import datetime
+    await db.execute(
+        update(Notification)
+        .where(Notification.user_id == current_user.id, Notification.is_read == False)
+        .values(is_read=True, read_at=datetime.utcnow())
+    )
+    await db.commit()
+    return {"code": 0, "data": {"ok": True}}

@@ -269,7 +269,13 @@ async def list_invoices(
     if filters.get("type"):
         query = query.where(Invoice.invoice_type == filters["type"])
     if filters.get("status"):
-        query = query.where(Invoice.status == filters["status"])
+        status_val = filters["status"]
+        # 前端 status-tabs 传的值可能是 verifyStatus 维度的（pending/verified/rejected）
+        # 也可能是 status 维度的（pending_verify/verified/submitted/failed）
+        if status_val in ("pending", "verified", "rejected"):
+            query = query.where(Invoice.verify_status == status_val)
+        else:
+            query = query.where(Invoice.status == status_val)
     if filters.get("dateRange"):
         dr = filters["dateRange"]
         if isinstance(dr, list) and len(dr) == 2:

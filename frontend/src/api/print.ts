@@ -146,6 +146,17 @@ export const printApi = {
       items: args.items.map(id => ({ id })),
       options: { renderMode: 'pdf', ...(args.options || {}) },
     }, config)) as Blob
+    // 检测错误 blob（后端返回 JSON 错误时，blob type 为 application/json）
+    if (resp instanceof Blob && resp.type && resp.type.includes('json')) {
+      const text = await resp.text()
+      try {
+        const err = JSON.parse(text)
+        throw new Error(err.message || err.detail || '批量打印失败')
+      } catch (e: any) {
+        if (e.message) throw e
+        throw new Error('批量打印失败')
+      }
+    }
     const stats: BatchStats = {
       total: args.items.length,
       success: args.items.length,
@@ -220,6 +231,16 @@ export const printApi = {
       data: args.data || {},
       options: { renderMode: 'pdf', ...(args.options || {}) },
     }, config)) as Blob
+    if (blob instanceof Blob && blob.type && blob.type.includes('json')) {
+      const text = await blob.text()
+      try {
+        const err = JSON.parse(text)
+        throw new Error(err.message || err.detail || 'PDF 生成失败')
+      } catch (e: any) {
+        if (e.message) throw e
+        throw new Error('PDF 生成失败')
+      }
+    }
     return blob
   },
 

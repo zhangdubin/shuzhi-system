@@ -147,7 +147,7 @@ const invoices = ref([
 ])
 
 function goBack() { router.push('/project/list') }
-function editProject() { ElMessage.info('编辑项目') }
+function editProject() { router.push('/project/' + (route.params.id || mock.id) + '/edit') }
 function viewAll(type: string) { ElMessage.info(`查看全部${type}`) }
 function downloadFile(name: string) { ElMessage.info(`下载：${name}`) }
 

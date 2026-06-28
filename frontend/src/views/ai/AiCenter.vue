@@ -11,6 +11,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 
 const router = useRouter()
+const guideVisible = ref(false)
 const askText = ref('')
 
 // LLM 配置（v-model 用）
@@ -100,7 +101,7 @@ function goQuick(e: any) { router.push(e.link) }
         <h1>✦ 数智化工作台</h1>
         <p>让 AI 处理重复劳动，让你专注决策。本月 AI 已为你节省 <strong>87.5 小时</strong>，字段抽取准确率 <strong>94.2%</strong>，风险预警命中 <strong>23 次</strong>。</p>
         <div class="ai-hero-actions">
-          <button class="btn-ghost">📖 使用指南</button>
+          <button class="btn-ghost" @click="guideVisible = true">📖 使用指南</button>
           <button class="btn-white" @click="router.push('/ai/settings')">⚙️ 模型设置</button>
         </div>
       </div>
@@ -155,7 +156,8 @@ function goQuick(e: any) { router.push(e.link) }
                 <div class="at-name">{{ t.name }}</div>
                 <div class="at-meta">
                   <span v-for="(m, mi) in t.meta" :key="mi">
-                    <template v-if="mi > 0">· </template>{{ m }}
+                    <template v-if="mi > 0">· 
+</template>{{ m }}
                   </span>
                 </div>
               </div>
@@ -163,8 +165,10 @@ function goQuick(e: any) { router.push(e.link) }
                 <span v-if="t.status === 'running'" class="ai-thinking-dots">
                   <span></span><span></span><span></span>
                 </span>
-                <template v-else-if="t.status === 'done'">已完成</template>
-                <template v-else>失败</template>
+                <template v-else-if="t.status === 'done'">已完成
+</template>
+                <template v-else>失败
+</template>
               </span>
             </div>
           </div>
@@ -229,6 +233,36 @@ function goQuick(e: any) { router.push(e.link) }
       </div>
     </div>
   </div>
+  <!-- 使用指南弹窗 -->
+  <el-dialog v-model="guideVisible" title="📖 AI 使用指南" width="640px" :close-on-click-modal="true">
+    <div class="guide-content">
+      <h4>一、AI 能力概览</h4>
+      <p>数智化工作台集成了 6 大 AI 能力，覆盖合同、发票、项目、报销、回款等核心业务场景：</p>
+      <ul>
+        <li><strong>合同风险扫描</strong> — 上传合同自动识别风险条款，给出修改建议</li>
+        <li><strong>发票 OCR 识别</strong> — 拍照/上传发票自动提取金额、税号等关键字段</li>
+        <li><strong>项目健康度分析</strong> — AI 综合评估项目进度、预算、风险，生成体检报告</li>
+        <li><strong>智能费用审核</strong> — 自动比对发票与报销金额，检测异常</li>
+        <li><strong>回款预测</strong> — 基于历史数据预测回款时间和金额</li>
+        <li><strong>AI 问答助手</strong> — 自然语言查询业务数据，生成报表</li>
+      </ul>
+      <h4>二、快速上手</h4>
+      <ol>
+        <li>在对应业务详情页点击 <strong>"AI 分析"</strong> 按钮</li>
+        <li>或在本页面点击上方能力卡片直接进入</li>
+        <li>支持自然语言提问：<code>本月合同总额是多少？</code></li>
+      </ol>
+      <h4>三、注意事项</h4>
+      <ul>
+        <li>AI 分析结果仅供参考，重大决策请结合人工判断</li>
+        <li>数据安全：所有分析在本地/私有云完成，不上传第三方</li>
+        <li>反馈机制：每个分析结果底部都有 👍👎 按钮，帮助我们持续优化</li>
+      </ul>
+    </div>
+    <template #footer>
+      <el-button @click="guideVisible = false">知道了</el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style lang="scss" scoped>

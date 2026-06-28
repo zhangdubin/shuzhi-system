@@ -28,7 +28,6 @@
     width="920px"
     :close-on-click-modal="false"
     align-center
-    destroy-on-close
     class="udpe-preview-dialog"
   >
     <div v-if="loading" class="udpe-loading">

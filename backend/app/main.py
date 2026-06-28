@@ -15,7 +15,7 @@ from app.core.sse import sse_router
 from app.core.audit import AuditLogMiddleware
 from app.modules.auth.router import router as auth_router
 from app.modules.project.router import router as project_router
-from app.modules.common.router import router as common_router
+from app.modules.common.router import router as common_router, notices_router
 from app.modules.contract.router import router as contract_router
 from app.modules.expense.router import router as expense_router
 from app.modules.receivable.router import router as receivable_router
@@ -125,6 +125,7 @@ app.add_exception_handler(AppException, app_exception_handler)
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["认证"])
 app.include_router(project_router, prefix="/api/v1/projects", tags=["项目"])
 app.include_router(common_router, prefix="/api/v1/common", tags=["公共"])
+app.include_router(notices_router, prefix="/api/v1/notices", tags=["通知中心"])
 app.include_router(contract_router, prefix="/api/v1/contracts", tags=["合同"])
 app.include_router(expense_router, prefix="/api/v1/expenses", tags=["销售费用"])
 app.include_router(receivable_router, prefix="/api/v1/receivables", tags=["回款"])

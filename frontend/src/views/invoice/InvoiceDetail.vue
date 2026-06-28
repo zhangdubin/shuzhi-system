@@ -16,6 +16,12 @@ import { invoiceOcrApi, expenseApi, fileApi } from '@/api/modules'
 import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
 const router = useRouter()
+
+/** 将 MinIO / 本地文件 URL 转为后端代理 URL（统一鉴权 + 避免 CORS / 权限问题） */
+function _proxyUrl(fileId: string, fileUrl: string): string {
+  if (fileId) return '/api/v1/common/files/proxy?fileId=' + encodeURIComponent(fileId)
+  return fileUrl
+}
 const route = useRoute()
 
 const loading = ref(false)
@@ -183,7 +189,7 @@ function downloadInvoice() {
   }
   // 用 a 标签 click 避免浏览器拦截 popup
   const a = document.createElement('a')
-  a.href = mock.fileUrl
+  a.href = _proxyUrl(mock.fileId || '', mock.fileUrl)
   a.download = mock.fileUrl.split('/').pop() || 'invoice.pdf'
   a.target = '_blank'
   a.rel = 'noopener noreferrer'
@@ -203,7 +209,7 @@ function printInvoice() {
   iframe.style.position = 'fixed'
   iframe.style.right = '-9999px'
   iframe.style.bottom = '0'
-  iframe.src = mock.fileUrl
+  iframe.src = _proxyUrl(mock.fileId || '', mock.fileUrl)
   document.body.appendChild(iframe)
   iframe.onload = () => {
     try {
@@ -415,6 +421,7 @@ onMounted(async () => {
     if (d.previewUrl || d.fileUrl) {
       mock.previewUrl = d.previewUrl || d.fileUrl
       mock.fileUrl = d.fileUrl
+      mock.fileId = d.fileId || ''
     }
     // 6.5) 上传信息：用真实数据回填
     {
@@ -608,7 +615,7 @@ async function runAiRecheck() {
           <div class="detail-section-head">
             <h4>📄 票面预览</h4>
             <div class="preview-actions">
-              <a v-if="mock.fileUrl" :href="mock.fileUrl" target="_blank" class="btn btn-outline btn-sm">📥 下载</a>
+              <a v-if="mock.fileUrl" :href="_proxyUrl(mock.fileId || '', mock.fileUrl)" target="_blank" class="btn btn-outline btn-sm">📥 下载</a>
               <a v-if="mock.previewUrl" :href="mock.previewUrl" target="_blank" class="btn btn-outline btn-sm">🔍 查看原图</a>
               <button class="btn btn-outline btn-sm" @click="printInvoice">🖨 打印</button>
             </div>

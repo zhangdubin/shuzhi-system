@@ -72,8 +72,17 @@ async function handleLogout() {
   router.push('/login')
 }
 
+function _isParentPath(path: string): boolean {
+  return filteredGroups.value.some(g => g.items.some(item => item.index === path && item.children?.length))
+}
 function isActive(path: string) {
-  return route.path === path || route.path.startsWith(path + '/')
+  if (route.path === path || route.path.startsWith(path + '/')) return true
+  // 父菜单模块级匹配：/expense/list → /expense/15, /contract/list → /contract/7
+  if (_isParentPath(path)) {
+    const modulePrefix = '/' + (path.split('/').filter(Boolean)[0] || '')
+    if (modulePrefix && route.path.startsWith(modulePrefix + '/')) return true
+  }
+  return false
 }
 </script>
 

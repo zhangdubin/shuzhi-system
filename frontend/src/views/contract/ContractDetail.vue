@@ -8,7 +8,7 @@
  */
 import { ref, computed, onMounted, reactive } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { contractApi, type Contract } from '@/api/modules'
 import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
 
@@ -122,9 +122,30 @@ function approve() { ElMessage.success('已审批通过') }
 function reject() { ElMessage.warning('已驳回') }
 function reassign() { ElMessage.info('转交他人') }
 function download(att: any) { ElMessage.info(`下载: ${att.name}`) }
-function goEdit() { ElMessage.info('编辑合同') }
+function goEdit() { router.push('/contract/' + (route.params.id || mock.id) + '/edit') }
 function goAiPanel() { aiDrawerVisible.value = true }
-function goSign() { ElMessage.info('发起电子签') }
+function goSign() {
+  const status = detail.value?.status || mock.status
+  if (status === 'draft') {
+    ElMessage.warning('合同尚为草稿，请先提交审批')
+    return
+  }
+  if (status === 'approving' || status === 'pending_review') {
+    ElMessage.warning('合同正在审批中，审批通过后才能发起签署')
+    return
+  }
+  if (status !== 'approved') {
+    ElMessage.warning('当前合同状态不允许发起签署')
+    return
+  }
+  ElMessageBox.confirm(
+    '确认发起电子签署？系统将发送签署链接给对方联系人（' + (detail.value?.client?.name || mock.client.name) + '）。',
+    '发起签署',
+    { confirmButtonText: '确认发起', cancelButtonText: '取消', type: 'info' },
+  ).then(() => {
+    ElMessage.info('电子签署功能正在对接中，敬请期待')
+  }).catch(() => {})
+}
 
 onMounted(() => {
   loading.value = true

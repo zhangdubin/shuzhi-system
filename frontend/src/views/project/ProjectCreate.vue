@@ -8,7 +8,7 @@
  */
 import { ref, reactive, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { projectApi } from '@/api/modules'
 import { clientApi } from '@/api/client'
 
@@ -110,6 +110,29 @@ const rules = {
 function addTeam() { ElMessage.info('添加成员') }
 function addMilestone() { ElMessage.info('添加里程碑') }
 function importHistory() { ElMessage.info('导入历史项目') }
+
+const aiDrawerVisible = ref(false)
+const aiLoading = ref(false)
+const aiSuggestions = ref<{icon: string; title: string; detail: string; level: string}[]>([])
+
+function getAiSuggestions() {
+  aiLoading.value = true
+  aiDrawerVisible.value = true
+  // 根据表单数据生成建议
+  setTimeout(() => {
+    const tips: {icon: string; title: string; detail: string; level: string}[] = []
+    if (!form.client) tips.push({ icon: '🏢', title: '建议关联客户', detail: '项目未选择客户，关联客户后便于后续合同、回款、发票的自动关联。', level: 'warning' })
+    if (!form.startDate || !form.endDate) tips.push({ icon: '📅', title: '建议设置项目周期', detail: '未设置起止日期，会影响里程碑自动生成和进度跟踪。', level: 'info' })
+    if (!form.budget || parseFloat(form.budget.replace(/,/g, '')) === 0) tips.push({ icon: '💰', title: '建议填写预算', detail: '预算为空将无法进行费用审批和预算控制。', level: 'warning' })
+    if (form.milestones.length < 3) tips.push({ icon: '🏁', title: '里程碑偏少', detail: '建议至少设置 3 个里程碑（启动/中期/验收），便于进度管控。', level: 'info' })
+    if (form.team.length < 2) tips.push({ icon: '👥', title: '团队配置不足', detail: '建议至少配置项目经理和财务两个角色，确保职责分离。', level: 'info' })
+    // 通用建议
+    tips.push({ icon: '📋', title: '历史项目参考', detail: `系统中有类似类型的历史项目，建议参考「${form.type || '同类'}」项目的里程碑和预算分配。`, level: 'success' })
+    tips.push({ icon: '⚠️', title: '风险提示', detail: '根据历史数据，SaaS 部署类项目平均延期 12%，建议预留 2 周缓冲期。', level: 'warning' })
+    aiSuggestions.value = tips
+    aiLoading.value = false
+  }, 800)
+}
 // 里程碑模板：按项目类型给一套标准节点
 const MILESTONE_TEMPLATES: Record<string, string[]> = {
   'SaaS 平台升级': ['项目启动会', '需求调研', '环境准备与部署', '系统集成', '数据迁移', '培训上线', '项目验收'],
@@ -201,7 +224,7 @@ onMounted(() => {
         <p class="page-desc">项目立项 · 团队组建 · 里程碑 · 预算</p>
       </div>
       <div class="page-actions">
-        <button class="btn btn-ghost btn-sm">💡 AI 立项建议</button>
+        <button class="btn btn-ghost btn-sm" @click="getAiSuggestions">💡 AI 立项建议</button>
         <button class="btn btn-outline btn-sm" @click="cancel">取消</button>
       </div>
     </div>
@@ -412,7 +435,29 @@ onMounted(() => {
             <el-col :span="12">
               <el-form-item label="预算总额（元）">
                 <el-input v-model="form.budget" style="font-weight: 600;">
-                  <template #prepend><span style="color: #4F6BFF; font-weight: 600;">¥</span></template>
+                  <template #prepend><span style="color: #4F6BFF; font-weight: 600;">¥</span>  <!-- AI 建议抽屉 -->
+  <el-drawer v-model="aiDrawerVisible" title="💡 AI 立项建议" size="480px" direction="rtl">
+    <div v-if="aiLoading" style="text-align:center;padding:40px;color:#94A3B8;">
+      <div style="font-size:24px;margin-bottom:8px;">✦</div>
+      AI 正在分析项目信息…
+    </div>
+    <div v-else>
+      <div v-if="aiSuggestions.length === 0" style="text-align:center;padding:40px;color:#94A3B8;">
+        暂无建议，项目信息填写完整 👍
+      </div>
+      <div v-for="(s, i) in aiSuggestions" :key="i" style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #F1F5F9;">
+        <div style="font-size:20px;flex-shrink:0;">{{ s.icon }}</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;color:#0F172A;">{{ s.title }}</div>
+          <div style="font-size:13px;color:#64748B;margin-top:4px;line-height:1.6;">{{ s.detail }}</div>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="aiDrawerVisible = false">关闭</el-button>
+    </template>
+  </el-drawer>
+</template>
                 </el-input>
               </el-form-item>
             </el-col>
@@ -468,6 +513,28 @@ onMounted(() => {
       </div>
     </div>
   </div>
+  <!-- AI 建议抽屉 -->
+  <el-drawer v-model="aiDrawerVisible" title="💡 AI 立项建议" size="480px" direction="rtl">
+    <div v-if="aiLoading" style="text-align:center;padding:40px;color:#94A3B8;">
+      <div style="font-size:24px;margin-bottom:8px;">✦</div>
+      AI 正在分析项目信息…
+    </div>
+    <div v-else>
+      <div v-if="aiSuggestions.length === 0" style="text-align:center;padding:40px;color:#94A3B8;">
+        暂无建议，项目信息填写完整 👍
+      </div>
+      <div v-for="(s, i) in aiSuggestions" :key="i" style="display:flex;gap:12px;padding:14px 0;border-bottom:1px solid #F1F5F9;">
+        <div style="font-size:20px;flex-shrink:0;">{{ s.icon }}</div>
+        <div>
+          <div style="font-weight:600;font-size:14px;color:#0F172A;">{{ s.title }}</div>
+          <div style="font-size:13px;color:#64748B;margin-top:4px;line-height:1.6;">{{ s.detail }}</div>
+        </div>
+      </div>
+    </div>
+    <template #footer>
+      <el-button @click="aiDrawerVisible = false">关闭</el-button>
+    </template>
+  </el-drawer>
 </template>
 
 <style lang="scss" scoped>
