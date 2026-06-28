@@ -32,6 +32,7 @@ from app.modules.system_settings.router import router as system_settings_router
 from app.modules.cron.router import router as cron_router
 from app.modules.ai.router import router as ai_router
 from app.modules.reimbursement.router import router as reimbursement_router
+from app.modules.invoice_print.router import router as invoice_print_router
 
 
 def _register_udpe() -> None:
@@ -141,6 +142,7 @@ app.include_router(print_runtime_router, prefix="/api/v1", tags=["打印引擎"]
 app.include_router(system_settings_router, prefix="/api/v1/admin/settings", tags=["系统设置"])
 app.include_router(ai_router, prefix="/api/v1/ai", tags=["AI 平台"])
 app.include_router(reimbursement_router, prefix="/api/v1/reimbursements", tags=["报销中心"])
+app.include_router(invoice_print_router, prefix="/api/v1/invoice/print", tags=["发票打印工作台"])
 app.include_router(sse_router, prefix="/sse", tags=["SSE"])
 
 

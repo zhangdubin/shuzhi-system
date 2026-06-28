@@ -765,3 +765,72 @@ async def mark_all_read(
     )
     await db.commit()
     return {"code": 0, "data": {"ok": True}}
+
+
+@router.get("/files/preview-image", summary="文件预览图（PDF→图片 / 图片直出）")
+async def preview_image(
+    fileId: str = Query(..., description="文件 ID"),
+    page: int = Query(1, ge=1, description="PDF 页码（从 1 开始）"),
+    dpi: int = Query(150, ge=72, le=300, description="渲染分辨率"),
+    db: AsyncSession = Depends(get_db),
+):
+    """将 PDF 某页渲染为 PNG，或直接返回图片文件。用于前端发票预览/打印。"""
+    from app.modules.common.models import File as FileModel
+    from app.config import settings
+    from fastapi.responses import Response
+
+    file = (await db.execute(
+        select(FileModel).where(FileModel.id == fileId)
+    )).scalar_one_or_none()
+    if not file:
+        return Response(status_code=404, content=b"file not found", media_type="text/plain")
+
+    storage = file.storage or "local"
+    ext = (file.ext or "").lower()
+
+    # 获取文件字节
+    if storage == "minio":
+        try:
+            from app.integrations.storage import _get_minio_client
+            client = _get_minio_client()
+            url = file.url or ""
+            bucket = settings.MINIO_BUCKET
+            marker = f"/{bucket}/"
+            key = url.split(marker, 1)[1] if marker in url else ""
+            if not key:
+                return Response(status_code=500, content=b"bad key", media_type="text/plain")
+            resp = client.get_object(bucket, key)
+            file_bytes = resp.read()
+            resp.close()
+            resp.release_conn()
+        except Exception as e:
+            return Response(status_code=500, content=str(e).encode(), media_type="text/plain")
+    else:
+        from app.integrations.storage import get_abs_path
+        abs_path = get_abs_path(file.url or "")
+        if not abs_path.exists():
+            return Response(status_code=404, content=b"file missing", media_type="text/plain")
+        file_bytes = abs_path.read_bytes()
+
+    # 图片直接返回
+    if ext in ("jpg", "jpeg", "png", "webp"):
+        mime = {"jpg": "image/jpeg", "jpeg": "image/jpeg", "png": "image/png", "webp": "image/webp"}.get(ext, "image/png")
+        return Response(content=file_bytes, media_type=mime, headers={"Cache-Control": "public, max-age=3600"})
+
+    # PDF → 图片
+    if ext == "pdf":
+        try:
+            import fitz
+            doc = fitz.open("pdf", file_bytes)
+            pg_idx = min(page - 1, doc.page_count - 1)
+            pg = doc[pg_idx]
+            zoom = dpi / 72.0
+            mat = fitz.Matrix(zoom, zoom)
+            pix = pg.get_pixmap(matrix=mat, alpha=False)
+            img_bytes = pix.tobytes("png")
+            doc.close()
+            return Response(content=img_bytes, media_type="image/png", headers={"Cache-Control": "public, max-age=3600"})
+        except Exception as e:
+            return Response(status_code=500, content=f"PDF render error: {e}".encode(), media_type="text/plain")
+
+    return Response(status_code=400, content=b"unsupported file type", media_type="text/plain")

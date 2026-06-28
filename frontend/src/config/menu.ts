@@ -51,6 +51,7 @@ export const menuGroups: MenuGroup[] = [
         ],
       },
       { index: '/invoice/template', title: '发票模板', icon: 'Files', permission: 'template:read' },
+      { index: '/invoice/print-studio', title: '发票打印工作台', icon: 'Printer', permission: 'print:document:read' },
       {
         index: '/expense/list',
         title: '销售费用',

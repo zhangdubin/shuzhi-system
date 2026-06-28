@@ -65,6 +65,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'invoice/ocr/records', redirect: '/invoice/ocr?tab=records' },
       // 注意：/invoice/ocr/:id 必须在所有 /invoice/ocr/xxx 字面路径之后，否则动态路由会吞掉
       { path: 'invoice/ocr/:id', name: 'InvoiceOcrDetail', component: () => import('@/views/invoice/InvoiceDetail.vue'), meta: { title: '识别记录详情' } },
+      { path: 'invoice/print-studio', name: 'InvoicePrintStudio', component: () => import('@/views/invoice/print-studio/InvoicePrintStudio.vue'), meta: { title: '发票打印工作台', permission: 'print:document:read' } },
       { path: 'invoice/verify', name: 'InvoiceVerify', component: () => import('@/views/invoice/InvoiceVerify.vue'), meta: { title: '发票查验' } },
       { path: 'invoice/template', name: 'InvoiceTemplate', component: () => import('@/views/invoice/InvoiceTemplateList.vue'), meta: { title: '发票模板' } },
       { path: 'invoice/template/:id', name: 'InvoiceTemplateDetail', component: () => import('@/views/invoice/InvoiceTemplateDetail.vue'), meta: { title: '模板详情' } },
