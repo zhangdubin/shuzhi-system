@@ -18,9 +18,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     libheif-dev \
-    libde265-dev  # HEIC/HEIF 解码依赖 \
+    libde265-dev \
     curl \
-    && rm -rf /var/lib/apt/lists/*
+    # WeasyPrint 系统依赖 (cairo + pango + glib + gdk-pixbuf)
+    libcairo2 \
+    libpango-1.0-0 \
+    libpangocairo-1.0-0 \
+    libgdk-pixbuf-2.0-0 \
+    libglib2.0-0 \
+    libffi-dev \
+    shared-mime-info \
+    && rm -rf /var/lib/apt/lists/* \
+    && ln -sf /lib/$(uname -m)-linux-gnu/libpango-1.0.so.0 /lib/$(uname -m)-linux-gnu/libpango-1.0-0.so 2>/dev/null || true \
+    && ln -sf /lib/$(uname -m)-linux-gnu/libgobject-2.0.so.0 /lib/$(uname -m)-linux-gnu/libgobject-2.0-0.so 2>/dev/null || true \
+    && ln -sf /lib/$(uname -m)-linux-gnu/libpangocairo-1.0.so.0 /lib/$(uname -m)-linux-gnu/libpangocairo-1.0-0.so 2>/dev/null || true \
+    && ln -sf /lib/$(uname -m)-linux-gnu/libcairo.so.2 /lib/$(uname -m)-linux-gnu/libcairo-2.so 2>/dev/null || true \
+    && ldconfig
 
 # 依赖（缓存层）
 COPY requirements.txt .

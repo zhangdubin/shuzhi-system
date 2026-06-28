@@ -78,6 +78,7 @@ class PrintOptions(BaseModel):
     watermark: Optional[str] = None
     paper: Optional[str] = None
     renderMode: str = "pdf"  # "html" | "pdf"
+    locale: str = "zh"  # 多语言：zh / en / ja / ko 等
     sourceModule: Optional[str] = None
     sourceId: Optional[str] = None
 

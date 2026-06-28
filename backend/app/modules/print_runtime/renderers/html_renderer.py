@@ -11,6 +11,40 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+def _generate_qr_svg(data: str, size: int = 120) -> str:
+    """生成 QR Code 的 PNG data URI."""
+    try:
+        import qrcode
+        import io, base64
+        qr = qrcode.QRCode(version=None, error_correction=qrcode.constants.ERROR_CORRECT_M, box_size=4, border=1)
+        qr.add_data(data)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return f'<img src="data:image/png;base64,{b64}" style="width:{size}px;height:{size}px;" />'
+    except Exception as e:
+        return f'<span style="color:#DC2626;">[QR Error: {e}]</span>'
+
+
+def _generate_barcode_html(code_text: str, bar_height: int = 50) -> str:
+    """生成 Code128 条码的 PNG data URI."""
+    try:
+        import barcode
+        from barcode.writer import ImageWriter
+        import io, base64
+        # python-barcode Code128 生成
+        code128 = barcode.get("code128", code_text, writer=ImageWriter())
+        buf = io.BytesIO()
+        code128.write(buf, options={"module_width": 0.3, "module_height": bar_height * 0.3, "font_size": 10, "text_distance": 2, "quiet_zone": 2})
+        buf.seek(0)
+        b64 = base64.b64encode(buf.getvalue()).decode()
+        return f'<img src="data:image/png;base64,{b64}" style="height:{bar_height}px;" />'
+    except Exception as e:
+        return f'<span style="color:#DC2626;">[Barcode Error: {e}]</span>'
+
+
 def _esc(v: Any) -> str:
     """HTML 转义。"""
     if v is None:
@@ -151,8 +185,45 @@ def _to_html_comp(comp: dict, data: dict) -> str:
                     style += f"background:{c['background']};"
                 if c.get("width"):
                     style += f"width:{c['width']};"
+                # 嵌套组件: 如果 cell 有 children, 递归渲染
+                children = c.get("children")
+                if children and isinstance(children, list):
+                    inner_parts = []
+                    for child in children:
+                        child_type = child.get("type", "text")
+                        if child_type == "title":
+                            cfs = int(child.get("fontSize") or 16)
+                            calign = child.get("align", "center")
+                            ccolor = child.get("color", "#0F172A")
+                            ctxt = _bind_text(child.get("text", ""), data)
+                            inner_parts.append(
+                                f'<div style="font-size:{cfs}px;text-align:{calign};'
+                                f'color:{ccolor};font-weight:bold;margin:4px 0;">{_esc(ctxt)}</div>'
+                            )
+                        elif child_type == "spacer":
+                            ch = child.get("height", 6)
+                            inner_parts.append(f'<div style="height:{ch}mm;"></div>')
+                        elif child_type == "line":
+                            cc = child.get("color", "#E5E7EB")
+                            inner_parts.append(f'<hr style="border:none;border-top:1px solid {cc};margin:4px 0;">')
+                        elif child_type == "text":
+                            cfs = int(child.get("fontSize") or 12)
+                            calign = child.get("align", "left")
+                            ccolor = child.get("color", "#1F2937")
+                            cweight = "bold" if child.get("bold") else "normal"
+                            ctxt = _bind_text(child.get("text", ""), data)
+                            inner_parts.append(
+                                f'<div style="font-size:{cfs}px;text-align:{calign};'
+                                f'color:{ccolor};font-weight:{cweight};margin:2px 0;">{_esc(ctxt)}</div>'
+                            )
+                        else:
+                            ctxt = _bind_text(child.get("text", str(child_type)), data)
+                            inner_parts.append(f'<div style="font-size:12px;margin:2px 0;">{_esc(ctxt)}</div>')
+                    cell_content = "".join(inner_parts)
+                else:
+                    cell_content = _esc(txt) or "&nbsp;"
                 cells_html.append(
-                    f'<td colspan="{span}" style="{style}">{_esc(txt) or "&nbsp;"}</td>'
+                    f'<td colspan="{span}" style="{style}">{cell_content}</td>'
                 )
             rows_html.append(
                 f'<tr style="{height_style}">{"".join(cells_html)}</tr>'
@@ -165,6 +236,30 @@ def _to_html_comp(comp: dict, data: dict) -> str:
 
     if ctype == "pagebreak":
         return '<div style="page-break-after:always;"></div>'
+
+    if ctype == "qrcode":
+        qr_data = _bind_text(comp.get("data", comp.get("text", "")), data)
+        qr_size = int(comp.get("size", 120))
+        label = comp.get("label", "")
+        label_html = f'<div style="text-align:center;font-size:11px;color:#4B5563;margin-top:4px;">{_esc(label)}</div>' if label else ""
+        return (
+            f'<div style="text-align:center;margin:8px 0;">'
+            f'{_generate_qr_svg(qr_data, qr_size)}'
+            f'{label_html}'
+            f'</div>'
+        )
+
+    if ctype == "barcode":
+        bar_data = _bind_text(comp.get("data", comp.get("text", "")), data)
+        bar_height = int(comp.get("height", 50))
+        label = comp.get("label", "")
+        label_html = f'<div style="text-align:center;font-size:11px;color:#4B5563;margin-top:4px;">{_esc(label)}</div>' if label else ""
+        return (
+            f'<div style="text-align:center;margin:8px 0;">'
+            f'{_generate_barcode_html(bar_data, bar_height)}'
+            f'{label_html}'
+            f'</div>'
+        )
 
     return ""  # 未支持类型
 

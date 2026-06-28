@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "purchase_order",
+    "title": "采购订单",
+    "description": "采购订单 A4 标准版（含明细表）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "采 购 订 单", "fontSize": 22, "align": "center" },
+      { "type": "text", "text": "订单编号：{{ order.code | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "供应商名称", "span": 1 }, { "text": "{{ order.supplier.name | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "联系人", "span": 1 }, { "text": "{{ order.supplier.contact | default('—') }}", "span": 1 }, { "text": "联系电话", "span": 1 }, { "text": "{{ order.supplier.phone | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "采购日期", "span": 1 }, { "text": "{{ order.orderDate | default('—') }}", "span": 1 }, { "text": "交货日期", "span": 1 }, { "text": "{{ order.deliveryDate | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "收货地址", "span": 1 }, { "text": "{{ order.shippingAddress | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "采购员", "span": 1 }, { "text": "{{ order.buyer.name | default('—') }}", "span": 1 }, { "text": "审批状态", "span": 1 }, { "text": "{{ order.statusLabel | default('—') }}", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "采购明细（共 {{ order.itemCount | default(0) }} 项）", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "table",
+        "bind": "order.items",
+        "columns": [
+          { "key": "index", "label": "序号", "width": 8, "type": "string" },
+          { "key": "materialName", "label": "物料名称", "width": 28, "type": "string" },
+          { "key": "spec", "label": "规格型号", "width": 20, "type": "string" },
+          { "key": "unit", "label": "单位", "width": 8, "type": "string" },
+          { "key": "quantity", "label": "数量", "width": 12, "type": "number" },
+          { "key": "unitPrice", "label": "单价", "width": 12, "type": "money" },
+          { "key": "amount", "label": "金额", "width": 16, "type": "money" }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "合计金额：¥ {{ order.totalAmount | default(0) }}（大写：{{ order.totalAmount | chinese_money }}）", "fontSize": 14, "color": "#DC2626" },
+      { "type": "text", "text": "税额：¥ {{ order.taxAmount | default(0) }}", "fontSize": 11 },
+      { "type": "text", "text": "价税合计：¥ {{ order.grandTotal | default(0) }}", "fontSize": 12, "color": "#DC2626" },
+      { "type": "spacer", "height": 4 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "付款方式：{{ order.paymentMethod | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "付款条件：{{ order.paymentTerms | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "备注：{{ order.remark | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 12 },
+      {
+        "type": "grid",
+        "border": false,
+        "colCount": 3,
+        "rows": [
+          { "height": 36, "cells": [{ "text": "制单人：________________", "span": 1 }, { "text": "审核人：________________", "span": 1 }, { "text": "批准人：________________", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 12 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

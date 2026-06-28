@@ -70,7 +70,19 @@ function actionLabel(a: string) {
   return a === 'pdf' ? 'PDF' : a === 'html' ? '预览' : a
 }
 
-onMounted(loadList)
+// M5 阶段 3: 用量统计
+const stats = ref<any>(null)
+const statsLoading = ref(false)
+
+async function loadStats() {
+  statsLoading.value = true
+  try {
+    stats.value = await printApi.getStats(30)
+  } catch { /* ignore */ }
+  finally { statsLoading.value = false }
+}
+
+onMounted(() => { loadList(); loadStats() })
 </script>
 
 <template>
@@ -82,6 +94,49 @@ onMounted(loadList)
       </div>
       <div class="page-actions">
         <el-button @click="loadList">🔄 刷新</el-button>
+      </div>
+    </div>
+
+    <!-- 用量统计 (M5 阶段 3) -->
+    <div v-if="stats" class="stats-section">
+      <div class="stats-grid">
+        <div class="stat-card stat-primary">
+          <div class="stat-num">{{ stats.total }}</div>
+          <div class="stat-label">30 天总调用</div>
+        </div>
+        <div class="stat-card stat-success">
+          <div class="stat-num">{{ stats.success }}</div>
+          <div class="stat-label">成功</div>
+        </div>
+        <div class="stat-card stat-danger">
+          <div class="stat-num">{{ stats.failed }}</div>
+          <div class="stat-label">失败</div>
+        </div>
+        <div class="stat-card stat-info">
+          <div class="stat-num">{{ stats.avgElapsedMs }}ms</div>
+          <div class="stat-label">平均耗时</div>
+        </div>
+        <div class="stat-card stat-warning">
+          <div class="stat-num">{{ stats.totalPdfSizeMb }}MB</div>
+          <div class="stat-label">PDF 总量</div>
+        </div>
+      </div>
+      <!-- 最近 7 天趋势 -->
+      <div class="trend-row">
+        <div class="trend-label">最近 7 天：</div>
+        <div class="trend-bars">
+          <div v-for="d in stats.daily" :key="d.date" class="trend-bar-wrap" :title="`${d.date}: ${d.count} 次`">
+            <div class="trend-bar" :style="{ height: Math.max(4, d.count * 8) + 'px' }" />
+            <div class="trend-day">{{ d.date.slice(5) }}</div>
+          </div>
+        </div>
+      </div>
+      <!-- Top 模板 -->
+      <div v-if="stats.topTemplates.length" class="top-templates">
+        <span class="top-label">热门模板：</span>
+        <el-tag v-for="t in stats.topTemplates" :key="t.code" size="small" style="margin-right: 6px;">
+          {{ t.code }} ({{ t.count }})
+        </el-tag>
       </div>
     </div>
 
@@ -192,4 +247,30 @@ onMounted(loadList)
 .tpl-row { display: flex; flex-direction: column; gap: 2px; }
 .tpl-code { font-family: 'SF Mono', Menlo, monospace; font-size: 12.5px; color: #1F2937; }
 .tpl-doctype { font-size: 11px; color: #9CA3AF; }
+.stats-section {
+  padding: 0 24px 16px;
+}
+.stats-grid {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  margin-bottom: 12px;
+}
+.stat-card {
+  background: #FFFFFF; border-radius: 10px; padding: 16px;
+  text-align: center; box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.stat-num { font-size: 24px; font-weight: 700; color: #0F172A; }
+.stat-label { font-size: 12px; color: #6B7280; margin-top: 4px; }
+.stat-primary { border-top: 3px solid #4F6BFF; }
+.stat-success { border-top: 3px solid #10B981; }
+.stat-danger { border-top: 3px solid #DC2626; }
+.stat-info { border-top: 3px solid #6B7280; }
+.stat-warning { border-top: 3px solid #F59E0B; }
+.trend-row { display: flex; align-items: flex-end; gap: 12px; margin-bottom: 8px; }
+.trend-label { font-size: 12px; color: #6B7280; flex-shrink: 0; }
+.trend-bars { display: flex; gap: 6px; align-items: flex-end; }
+.trend-bar-wrap { display: flex; flex-direction: column; align-items: center; }
+.trend-bar { width: 24px; background: #4F6BFF; border-radius: 3px 3px 0 0; min-height: 4px; }
+.trend-day { font-size: 10px; color: #9CA3AF; margin-top: 2px; }
+.top-templates { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #6B7280; }
+.top-label { flex-shrink: 0; }
 </style>

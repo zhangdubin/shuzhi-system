@@ -39,9 +39,23 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import CanvasItem from './CanvasItem.vue'
 import { findMeta, cloneComp, type CompMeta } from './compTemplates'
+
+function handleReorder(e: Event) {
+  const detail = (e as CustomEvent).detail
+  if (detail) {
+    emit('reorder', detail.from, detail.to, detail.insertBefore)
+  }
+}
+
+onMounted(() => {
+  document.addEventListener('udpe-reorder', handleReorder)
+})
+onUnmounted(() => {
+  document.removeEventListener('udpe-reorder', handleReorder)
+})
 
 defineProps<{
   body: Record<string, any>[]
@@ -53,6 +67,7 @@ const emit = defineEmits<{
   (e: 'remove', index: number): void
   (e: 'move', index: number, dir: number): void
   (e: 'add', component: Record<string, any>): void
+  (e: 'reorder', from: number, to: number, insertBefore: boolean): void
 }>()
 
 const isDragOver = ref(false)

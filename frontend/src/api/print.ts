@@ -15,11 +15,13 @@ import type { AxiosRequestConfig } from 'axios'
 /** 打印请求选项。 */
 export interface PrintOptions {
   /** 渲染模式：'pdf'（下载/预览 PDF）或 'html'（返回 HTML 字符串） */
-  renderMode?: 'pdf' | 'pdf-preview' | 'html'
+  renderMode?: 'pdf' | 'pdf-preview' | 'html' | 'weasyprint'
   /** 打印份数（V1 暂未实现真多份，仅记日志） */
   copies?: number
   /** 水印文字（V1 简化） */
   watermark?: string
+  /** 是否添加数字签名（M4 阶段 8） */
+  sign?: boolean
   /** 纸张（V1 暂未消费） */
   paper?: string
   /** 来源模块名（合同/报销/发票/费用），用于审计 */
@@ -171,6 +173,42 @@ export const printApi = {
     }
   },
 
+  // ===== M4 阶段 1: 异步批量打印 =====
+
+  /** 启动异步批量打印任务, 返回 jobId */
+  async batchPdfAsync(args: {
+    templateCode: string
+    items: Array<string | number>
+    options?: PrintOptions
+  }): Promise<{ jobId: string; total: number }> {
+    return (await http.post('/print/batch/async', {
+      templateCode: args.templateCode,
+      items: args.items.map(id => ({ id })),
+      options: { renderMode: 'pdf', ...(args.options || {}) },
+    })) as { jobId: string; total: number }
+  },
+
+  /** 查询异步批量打印任务状态 */
+  async batchJobStatus(jobId: string): Promise<{
+    jobId: string
+    status: string
+    total: number
+    done: number
+    failed: number
+    elapsedMs: number
+    errors: Array<{ id: string; error: string }>
+  }> {
+    return (await http.get(`/print/batch/async/${jobId}/status`)) as any
+  },
+
+  /** 下载异步批量打印结果 (返回 Blob) */
+  async batchJobDownload(jobId: string): Promise<Blob> {
+    return (await http.get(`/print/batch/async/${jobId}/download`, {
+      responseType: 'blob',
+    })) as Blob
+  },
+
+
   /** 仅拿 Blob，不触发下载。 */
   async pdfBlob(args: { templateCode: string; data?: PrintData; options?: PrintOptions; silent?: boolean }): Promise<Blob> {
     const config: AxiosRequestConfig = {
@@ -197,6 +235,21 @@ export const printApi = {
   /** 列出模板（管理后台用）。 */
   async listTemplates(params: { docType?: string; status?: string; page?: number; pageSize?: number } = {}): Promise<{ list: PrintTemplateInfo[]; total: number }> {
     return (await http.get('/admin/print-templates', { params })) as { list: PrintTemplateInfo[]; total: number }
+  },
+
+  /** 打印用量统计 */
+  async getStats(days: number = 30): Promise<{
+    total: number; success: number; failed: number
+    avgElapsedMs: number; totalPdfSizeMb: number
+    topTemplates: Array<{ code: string; count: number }>
+    daily: Array<{ date: string; count: number }>
+  }> {
+    return (await http.get('/admin/print-stats', { params: { days } })) as any
+  },
+
+  /** 预热模板缓存 */
+  async warmupCache(): Promise<{ count: number }> {
+    return (await http.post('/admin/print-templates/cache/warmup')) as any
   },
 
   /** 查日志。 */
@@ -227,6 +280,21 @@ export const printApi = {
   /** 删除模板（仅 draft/archived 状态可删）。 */
   async deleteTemplate(id: number): Promise<void> {
     await http.post('/admin/print-templates/delete', { id })
+  },
+
+  /** 获取模板版本历史 */
+  async listVersions(tid: number): Promise<Array<{ id: number; version: number; note: string; snapshotBy: number; snapshotAt: string }>> {
+    return (await http.get(`/admin/print-templates/${tid}/versions`)) as any
+  },
+
+  /** 获取模板版本详情（含 schemaJson） */
+  async getVersion(tid: number, ver: number): Promise<{ id: number; templateId: number; version: number; schemaJson: any; note: string; snapshotAt: string }> {
+    return (await http.get(`/admin/print-templates/${tid}/versions/${ver}`)) as any
+  },
+
+  /** 回滚模板到指定版本 */
+  async restoreVersion(tid: number, ver: number): Promise<PrintTemplateInfo> {
+    return (await http.post(`/admin/print-templates/${tid}/restore`, { version: ver })) as PrintTemplateInfo
   },
 
   /** 更新模板. M3 阶段 1.1 修复: 后端端点用 ?tid= 而不是 body {id} */

@@ -15,11 +15,35 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { printApi } from '@/api/print'
 import { PrintPreviewDialog } from '@/components/common/print'
 import { contractApi, invoiceOcrApi, expenseApi, reimburseApi } from '@/api/modules'
+import ExcelImportDialog from '@/components/admin/print/ExcelImportDialog.vue'
+import VersionHistoryDialog from '@/components/admin/print/VersionHistoryDialog.vue'
+import WordImportDialog from '@/components/admin/print/WordImportDialog.vue'
 
 const templates = ref<any[]>([])
 const loading = ref(false)
 
 // 状态过滤
+const viewMode = ref<'table' | 'grid'>('table')
+const searchQuery = ref('')
+const sortBy = ref<string>('updatedAt')
+
+const filteredTemplates = computed(() => {
+  let list = templates.value
+  if (searchQuery.value) {
+    const q = searchQuery.value.toLowerCase()
+    list = list.filter(t =>
+      t.name?.toLowerCase().includes(q) ||
+      t.code?.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q)
+    )
+  }
+  // 排序
+  if (sortBy.value === 'name') list = [...list].sort((a, b) => (a.name || '').localeCompare(b.name || ''))
+  else if (sortBy.value === 'docType') list = [...list].sort((a, b) => (a.docType || '').localeCompare(b.docType || ''))
+  else if (sortBy.value === 'status') list = [...list].sort((a, b) => (a.status || '').localeCompare(b.status || ''))
+  return list
+})
+
 const filter = reactive<{ docType: string; status: string }>({
   docType: '',
   status: '',
@@ -49,6 +73,10 @@ const previewLoading = ref(false)
 
 // 创建弹窗
 const createVisible = ref(false)
+const excelImportVisible = ref(false)
+const versionDialogVisible = ref(false)
+const versionTemplate = ref<any>(null)
+const wordImportVisible = ref(false)
 const createForm = reactive({
   code: '',
   name: '',
@@ -253,6 +281,166 @@ async function submitCreate() {
   }
 }
 
+// ===== 模板导入/导出 (M4 阶段 3) =====
+
+/** 导出单个模板为 JSON 文件 */
+function docTypeIcon(docType: string): string {
+  const map: Record<string, string> = { contract: '📄', invoice: '🧾', reimbursement: '📋', expense: '💰', general: '📝' }
+  return map[docType] || '📄'
+}
+
+function openVersionHistory(t: any) {
+  versionTemplate.value = t
+  versionDialogVisible.value = true
+}
+
+function exportTemplate(t: any) {
+  const exportData = {
+    _udpe_export_version: 1,
+    _exported_at: new Date().toISOString(),
+    code: t.code,
+    name: t.name,
+    docType: t.docType,
+    paper: t.paper,
+    orientation: t.orientation || 'portrait',
+    description: t.description || '',
+    isDefault: t.isDefault || false,
+    schemaJson: t.schemaJson || {},
+  }
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `template_${t.code}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出: ${t.name}`)
+}
+
+/** 导出全部模板为 JSON 文件 */
+function exportAll() {
+  if (templates.value.length === 0) {
+    ElMessage.warning('没有可导出的模板')
+    return
+  }
+  const exportData = {
+    _udpe_export_version: 1,
+    _exported_at: new Date().toISOString(),
+    _count: templates.value.length,
+    templates: templates.value.map(t => ({
+      code: t.code,
+      name: t.name,
+      docType: t.docType,
+      paper: t.paper,
+      orientation: t.orientation || 'portrait',
+      description: t.description || '',
+      isDefault: t.isDefault || false,
+      schemaJson: t.schemaJson || {},
+    })),
+  }
+  const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `udpe_templates_${Date.now()}.json`
+  a.click()
+  URL.revokeObjectURL(url)
+  ElMessage.success(`已导出 ${templates.value.length} 个模板`)
+}
+
+/** 导入 JSON 文件为新模板 */
+async function importJsonFile() {
+  const input = document.createElement('input')
+  input.type = 'file'
+  input.accept = '.json'
+  input.onchange = async (e: Event) => {
+    const file = (e.target as HTMLInputElement).files?.[0]
+    if (!file) return
+    try {
+      const text = await file.text()
+      const data = JSON.parse(text)
+
+      // 支持单个模板和批量导入
+      const list = data.templates || [data]
+      let created = 0
+      for (const item of list) {
+        if (!item.code || !item.name || !item.schemaJson) continue
+        try {
+          await printApi.createTemplate({
+            code: item.code + (list.length > 1 ? '_' + Date.now().toString(36).slice(-4) : ''),
+            name: item.name,
+            docType: item.docType || 'general',
+            paper: item.paper || 'A4',
+            orientation: item.orientation || 'portrait',
+            description: item.description || `JSON 导入自 ${file.name}`,
+            schemaJson: item.schemaJson,
+          })
+          created++
+        } catch { /* 单个失败跳过 */ }
+      }
+      if (created > 0) {
+        ElMessage.success(`成功导入 ${created} 个模板`)
+        await loadList()
+      } else {
+        ElMessage.warning('未导入任何模板，请检查文件格式')
+      }
+    } catch (e: any) {
+      ElMessage.error('文件解析失败: ' + (e?.message || ''))
+    }
+  }
+  input.click()
+}
+
+function onExcelImportSuccess() {
+  loadList()
+}
+
+// ===== 批量操作 (M4 阶段 6) =====
+const selectedRows = ref<any[]>([])
+function onSelectionChange(rows: any[]) { selectedRows.value = rows }
+
+async function batchPublish() {
+  if (selectedRows.value.length === 0) return
+  const drafts = selectedRows.value.filter(r => r.status === 'draft')
+  if (drafts.length === 0) { ElMessage.warning('选中项中没有草稿状态的模板'); return }
+  await ElMessageBox.confirm(`确认发布 ${drafts.length} 个模板？`, '批量发布', { type: 'success' }).catch(() => null)
+  let ok = 0
+  for (const t of drafts) {
+    try { await printApi.publishTemplate(t.id); ok++ } catch {}
+  }
+  ElMessage.success(`已发布 ${ok} 个模板`)
+  selectedRows.value = []
+  await loadList()
+}
+
+async function batchArchive() {
+  if (selectedRows.value.length === 0) return
+  const actives = selectedRows.value.filter(r => r.status === 'active')
+  if (actives.length === 0) { ElMessage.warning('选中项中没有已发布状态的模板'); return }
+  await ElMessageBox.confirm(`确认归档 ${actives.length} 个模板？`, '批量归档', { type: 'warning' }).catch(() => null)
+  let ok = 0
+  for (const t of actives) {
+    try { await printApi.archiveTemplate(t.id); ok++ } catch {}
+  }
+  ElMessage.success(`已归档 ${ok} 个模板`)
+  selectedRows.value = []
+  await loadList()
+}
+
+async function batchDelete() {
+  if (selectedRows.value.length === 0) return
+  const deletable = selectedRows.value.filter(r => r.status !== 'active')
+  if (deletable.length === 0) { ElMessage.warning('选中项中没有可删除的模板（已发布需先归档）'); return }
+  await ElMessageBox.confirm(`确认删除 ${deletable.length} 个模板？删除后不可恢复。`, '批量删除', { type: 'error' }).catch(() => null)
+  let ok = 0
+  for (const t of deletable) {
+    try { await printApi.deleteTemplate(t.id); ok++ } catch {}
+  }
+  ElMessage.success(`已删除 ${ok} 个模板`)
+  selectedRows.value = []
+  await loadList()
+}
+
 onMounted(loadList)
 </script>
 
@@ -261,10 +449,14 @@ onMounted(loadList)
     <div class="page-header">
       <div>
         <h1>🧾 打印模板</h1>
-        <p class="page-desc">UDPE 统一单据打印引擎的模板中心 · M1 阶段 3</p>
+        <p class="page-desc">UDPE 统一单据打印引擎的模板中心</p>
       </div>
       <div class="page-actions">
         <el-button @click="loadList">🔄 刷新</el-button>
+        <el-button @click="exportAll" :disabled="templates.length === 0">📤 导出全部</el-button>
+        <el-button @click="importJsonFile">📥 导入 JSON</el-button>
+        <el-button @click="excelImportVisible = true">📥 Excel 导入</el-button>
+        <el-button @click="wordImportVisible = true">📥 Word 导入</el-button>
         <el-button type="primary" @click="openCreate">+ 新建模板</el-button>
       </div>
     </div>
@@ -282,7 +474,15 @@ onMounted(loadList)
 
     <!-- 过滤 -->
     <div class="filter-bar">
-      <span class="filter-label">业务类型：</span>
+      <el-input v-model="searchQuery" placeholder="搜索模板名称 / code / 描述" size="small" clearable style="width: 240px;" />
+      <span class="filter-label" style="margin-left: 12px;">排序：</span>
+      <el-select v-model="sortBy" size="small" style="width: 120px;">
+        <el-option label="更新时间" value="updatedAt" />
+        <el-option label="名称" value="name" />
+        <el-option label="业务类型" value="docType" />
+        <el-option label="状态" value="status" />
+      </el-select>
+      <span class="filter-label" style="margin-left: 12px;">业务类型：</span>
       <el-select v-model="filter.docType" placeholder="全部" clearable size="small" style="width: 140px;" @change="loadList">
         <el-option label="合同" value="contract" />
         <el-option label="发票" value="invoice" />
@@ -295,12 +495,77 @@ onMounted(loadList)
         <el-option label="草稿" value="draft" />
         <el-option label="已归档" value="archived" />
       </el-select>
+      <div style="margin-left: auto; display: flex; gap: 4px;">
+        <el-button size="small" :type="viewMode === 'table' ? 'primary' : 'default'" @click="viewMode = 'table'">📋 列表</el-button>
+        <el-button size="small" :type="viewMode === 'grid' ? 'primary' : 'default'" @click="viewMode = 'grid'">▦ 卡片</el-button>
+      </div>
     </div>
 
     <!-- 列表 -->
     <div class="detail-section">
       <div class="detail-section-body">
-        <el-table v-loading="loading" :data="templates" stripe>
+        <!-- 卡片网格视图 -->
+        <div v-if="viewMode === 'grid'" class="template-grid">
+          <div
+            v-for="t in filteredTemplates"
+            :key="t.id"
+            class="template-card"
+            :class="`card-${t.docType}`"
+            @click="gotoEditor(t)"
+          >
+            <div class="card-top">
+              <span class="card-icon">{{ docTypeIcon(t.docType) }}</span>
+              <el-tag :type="(STATUS_TAG[t.status] || {}).type as any" size="small">
+                {{ (STATUS_TAG[t.status] || {}).label }}
+              </el-tag>
+            </div>
+            <div class="card-name">{{ t.name }}</div>
+            <div class="card-code">{{ t.code }} · v{{ t.version }}</div>
+            <div class="card-meta">
+              <span>{{ DOC_TYPE_LABEL[t.docType] || t.docType }}</span>
+              <span>{{ t.paper }}</span>
+            </div>
+            <div class="card-actions">
+              <el-button size="small" link @click.stop="openPreview(t)">预览</el-button>
+              <el-button size="small" link @click.stop="gotoEditor(t)">编辑</el-button>
+              <el-button size="small" link @click.stop="exportTemplate(t)">导出</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 表格视图 -->
+        <template v-if="viewMode === 'table'">
+        <div v-if="selectedRows.length > 0" class="batch-bar">
+          <span class="batch-count">已选 {{ selectedRows.length }} 项</span>
+          <el-button size="small" type="success" @click="batchPublish">📦 批量发布</el-button>
+          <el-button size="small" type="warning" @click="batchArchive">📦 批量归档</el-button>
+          <el-button size="small" type="danger" @click="batchDelete">🗑 批量删除</el-button>
+        </div>
+        <el-table v-loading="loading" :data="filteredTemplates" stripe @selection-change="onSelectionChange">
+          <el-table-column type="selection" width="40" />
+          <el-table-column label="预览" width="80">
+            <template #default="{ row }">
+              <el-popover trigger="hover" width="360" :show-after="300">
+                <template #reference>
+                  <div class="thumb-badge" :class="`thumb-${row.docType}`">
+                    <span class="thumb-icon">{{ docTypeIcon(row.docType) }}</span>
+                  </div>
+                </template>
+                <div class="thumb-preview">
+                  <div class="thumb-header">
+                    <span class="thumb-name">{{ row.name }}</span>
+                    <el-tag size="small" :type="(STATUS_TAG[row.status] || {}).type as any">{{ (STATUS_TAG[row.status] || {}).label }}</el-tag>
+                  </div>
+                  <div class="thumb-meta">
+                    <span>{{ row.code }}</span>
+                    <span>{{ row.paper }} / {{ row.orientation === 'portrait' ? '纵' : '横' }}</span>
+                    <span>v{{ row.version }}</span>
+                  </div>
+                  <div v-if="row.description" class="thumb-desc">{{ row.description }}</div>
+                </div>
+              </el-popover>
+            </template>
+          </el-table-column>
           <el-table-column label="模板标识" min-width="200">
             <template #default="{ row }">
               <div class="tpl-id">
@@ -337,17 +602,20 @@ onMounted(loadList)
           <el-table-column label="更新时间" width="180">
             <template #default="{ row }">{{ row.updatedAt || '—' }}</template>
           </el-table-column>
-          <el-table-column label="操作" width="240" fixed="right">
+          <el-table-column label="操作" width="370" fixed="right">
             <template #default="{ row }">
               <el-button size="small" type="primary" link @click="openPreview(row)">👁 预览</el-button>
               <el-button size="small" link @click="gotoEditor(row)">✏️ 编辑</el-button>
               <el-button size="small" link @click="openDetail(row)">查看 JSON</el-button>
+              <el-button size="small" link @click="exportTemplate(row)">📤 导出</el-button>
+              <el-button size="small" link @click="openVersionHistory(row)">📋 历史</el-button>
               <el-button v-if="row.status === 'draft'" size="small" type="success" link @click="publish(row)">发布</el-button>
               <el-button v-if="row.status === 'active'" size="small" type="warning" link @click="archive(row)">归档</el-button>
               <el-button v-if="row.status !== 'active'" size="small" type="danger" link @click="deleteTemplate(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
+        </template>
       </div>
     </div>
 
@@ -451,6 +719,28 @@ onMounted(loadList)
       :source-id="String(previewBusinessId)"
       :title="`${previewTemplate.name} 预览`"
     />
+
+    <!-- Excel 导入弹窗 -->
+    <ExcelImportDialog
+      v-model="excelImportVisible"
+      @success="onExcelImportSuccess"
+    />
+
+    <!-- 版本历史弹窗 -->
+    <VersionHistoryDialog
+      v-if="versionTemplate"
+      v-model="versionDialogVisible"
+      :template-id="versionTemplate.id"
+      :template-name="versionTemplate.name"
+      :current-version="versionTemplate.version"
+      @restored="loadList"
+    />
+
+    <!-- Word 导入弹窗 -->
+    <WordImportDialog
+      v-model="wordImportVisible"
+      @success="onExcelImportSuccess"
+    />
 </template>
 
 <style scoped>
@@ -508,4 +798,50 @@ onMounted(loadList)
   font-size: 13px;
   color: #4B5563;
 }
+.batch-bar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 10px 16px; margin-bottom: 8px;
+  background: #EEF2FF; border-radius: 8px;
+  border: 1px solid #C7D2FE;
+}
+.batch-count { font-size: 13px; color: #4F6BFF; font-weight: 600; }
+.thumb-badge {
+  width: 44px; height: 44px; border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; transition: all 0.15s;
+  border: 1px solid #E5E7EB; background: #F8FAFC;
+}
+.thumb-badge:hover { border-color: #4F6BFF; background: #EEF2FF; transform: scale(1.1); }
+.thumb-icon { font-size: 20px; }
+.thumb-contract { background: #FEF3C7; border-color: #FDE68A; }
+.thumb-invoice { background: #DBEAFE; border-color: #93C5FD; }
+.thumb-reimbursement { background: #D1FAE5; border-color: #6EE7B7; }
+.thumb-expense { background: #FCE7F3; border-color: #F9A8D4; }
+.thumb-preview { padding: 4px; }
+.thumb-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.thumb-name { font-weight: 600; color: #0F172A; font-size: 14px; }
+.thumb-meta { display: flex; gap: 12px; font-size: 12px; color: #6B7280; margin-bottom: 6px; }
+.thumb-desc { font-size: 12px; color: #4B5563; line-height: 1.5; padding-top: 6px; border-top: 1px solid #F1F5F9; }
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  padding: 4px;
+}
+.template-card {
+  background: #FFFFFF; border-radius: 10px; padding: 16px;
+  border: 1px solid #E5E7EB; cursor: pointer;
+  transition: all 0.15s; display: flex; flex-direction: column; gap: 8px;
+}
+.template-card:hover { border-color: #4F6BFF; box-shadow: 0 4px 12px rgba(79,107,255,0.12); transform: translateY(-2px); }
+.card-top { display: flex; align-items: center; justify-content: space-between; }
+.card-icon { font-size: 28px; }
+.card-name { font-size: 14px; font-weight: 600; color: #0F172A; line-height: 1.3; }
+.card-code { font-size: 11px; color: #9CA3AF; font-family: 'SF Mono', monospace; }
+.card-meta { display: flex; gap: 8px; font-size: 11px; color: #6B7280; }
+.card-actions { display: flex; gap: 4px; margin-top: auto; padding-top: 8px; border-top: 1px solid #F1F5F9; }
+.card-contract { border-left: 3px solid #F59E0B; }
+.card-invoice { border-left: 3px solid #3B82F6; }
+.card-reimbursement { border-left: 3px solid #10B981; }
+.card-expense { border-left: 3px solid #EC4899; }
 </style>

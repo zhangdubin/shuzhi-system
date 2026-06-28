@@ -7,8 +7,14 @@
 <template>
   <div
     class="canvas-item"
-    :class="{ 'is-selected': selected }"
+    :class="{ 'is-selected': selected, 'drag-over-top': dropPosition === 'top', 'drag-over-bottom': dropPosition === 'bottom' }"
+    :draggable="true"
     @click.stop="$emit('select', index)"
+    @dragstart.stop="onDragStart"
+    @dragend="onDragEnd"
+    @dragover.prevent="onDragOver"
+    @dragleave="onDragLeave"
+    @drop.prevent="onDrop"
   >
     <!-- 左侧类型 tag -->
     <div class="canvas-item-type">
@@ -32,12 +38,19 @@
         </div>
         <div v-else-if="component.type === 'grid'" class="preview-grid">
           <div class="grid-label">⊞ 网格 {{ component.colCount || 4 }} 列 · {{ (component.rows || []).length }} 行</div>
+          <div v-if="nestedCount > 0" class="grid-nested">📦 {{ nestedCount }} 个单元格含嵌套组件</div>
         </div>
         <div v-else-if="component.type === 'table'" class="preview-table">
           ⊟ 数据表: bind="{{ component.bind || '?' }}", {{ (component.columns || []).length }} 列
         </div>
         <div v-else-if="component.type === 'pagebreak'" class="preview-pagebreak">
           ⤓ 强制分页
+        </div>
+        <div v-else-if="component.type === 'qrcode'" class="preview-qrcode">
+          <span class="qr-icon">⊞</span> 二维码: {{ component.data || '(未绑定)' }}
+        </div>
+        <div v-else-if="component.type === 'barcode'" class="preview-barcode">
+          <span class="qr-icon">║║</span> 条码: {{ component.data || '(未绑定)' }}
         </div>
       </slot>
     </div>
@@ -51,7 +64,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { ref, computed } from 'vue'
 import { findMeta } from './compTemplates'
 
 const props = defineProps<{
@@ -65,7 +78,62 @@ defineEmits<{
   (e: 'select', index: number): void
   (e: 'remove', index: number): void
   (e: 'move', index: number, dir: number): void
+  (e: 'dragStart', index: number): void
+  (e: 'dragEnd'): void
+  (e: 'drop', index: number): void
 }>()
+
+const dropPosition = ref<string | null>(null)
+
+function onDragStart(e: DragEvent) {
+  if (e.dataTransfer) {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('application/x-udpe-reorder', String(props.index))
+  }
+}
+
+function onDragEnd() {
+  dropPosition.value = null
+}
+
+function onDragOver(e: DragEvent) {
+  if (!e.dataTransfer?.types.includes('application/x-udpe-reorder')) return
+  e.dataTransfer.dropEffect = 'move'
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const midY = rect.top + rect.height / 2
+  dropPosition.value = e.clientY < midY ? 'top' : 'bottom'
+}
+
+function onDragLeave() {
+  dropPosition.value = null
+}
+
+function onDrop(e: DragEvent) {
+  dropPosition.value = null
+  if (!e.dataTransfer) return
+  const fromIndex = parseInt(e.dataTransfer.getData('application/x-udpe-reorder'), 10)
+  if (isNaN(fromIndex)) return
+  // 计算目标位置: 如果从上面拖到下面, 需要 +1
+  const toIndex = props.index
+  if (fromIndex === toIndex) return
+  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+  const midY = rect.top + rect.height / 2
+  const insertBefore = e.clientY < midY
+  // 发给父组件处理
+  const event = new CustomEvent('udpe-reorder', { detail: { from: fromIndex, to: toIndex, insertBefore } })
+  document.dispatchEvent(event)
+}
+
+const nestedCount = computed(() => {
+  if (props.component.type !== 'grid') return 0
+  let count = 0
+  for (const row of (props.component.rows || [])) {
+    for (const cell of (row.cells || [])) {
+      if (cell.children && cell.children.length > 0) count++
+    }
+  }
+  return count
+})
 
 const meta = computed(() => findMeta(props.component.type))
 
@@ -128,9 +196,28 @@ const textStyle = computed(() => ({
 .preview-spacer { color: #94A3B8; font-size: 12px; font-style: italic; }
 .preview-line hr { border: none; border-top: 1px solid #E5E7EB; margin: 4px 0; }
 .preview-grid .grid-label { font-size: 12px; color: #4F6BFF; }
+.preview-grid .grid-nested { font-size: 11px; color: #16A34A; margin-top: 2px; }
 .preview-table { font-size: 12px; color: #4F6BFF; font-family: 'SF Mono', monospace; }
 .preview-pagebreak { color: #DC2626; font-size: 12px; font-weight: 600; }
 .canvas-item-tools {
   display: flex; gap: 4px; flex-shrink: 0;
 }
+.drag-over-top {
+  border-top: 2px solid #4F6BFF !important;
+  margin-top: -1px;
+}
+.drag-over-bottom {
+  border-bottom: 2px solid #4F6BFF !important;
+  margin-bottom: -1px;
+}
+.canvas-item[draggable="true"] {
+  cursor: grab;
+}
+.canvas-item[draggable="true"]:active {
+  cursor: grabbing;
+  opacity: 0.5;
+}
+.preview-qrcode { font-size: 12px; color: #4F6BFF; display: flex; align-items: center; gap: 6px; }
+.preview-barcode { font-size: 12px; color: #4F6BFF; display: flex; align-items: center; gap: 6px; }
+.qr-icon { font-size: 16px; }
 </style>

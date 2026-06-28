@@ -36,3 +36,12 @@ openpyxl>=3.1.0
 
 # M3 阶段 4 下半: Word 模板导入
 python-docx>=1.1.0
+
+# M4 阶段 5: WeasyPrint 渲染器 (CSS → PDF)
+WeasyPrint>=62.0
+
+# M4 阶段 7: 条码生成
+python-barcode>=0.15.0
+
+# M4 阶段 8: PDF 数字签名
+pyhanko>=0.25.0

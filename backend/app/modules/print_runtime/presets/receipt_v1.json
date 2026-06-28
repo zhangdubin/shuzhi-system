@@ -1,0 +1,67 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "receipt",
+    "title": "收据",
+    "description": "收据 A4 标准版"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "收    据", "fontSize": 22, "align": "center" },
+      { "type": "text", "text": "收据编号：{{ receipt.code | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "付款方", "span": 1 }, { "text": "{{ receipt.payer.name | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "收款方", "span": 1 }, { "text": "{{ receipt.payee.name | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "收款日期", "span": 1 }, { "text": "{{ receipt.receiptDate | default('—') }}", "span": 1 }, { "text": "收款方式", "span": 1 }, { "text": "{{ receipt.paymentMethod | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "关联单据", "span": 1 }, { "text": "{{ receipt.refDocCode | default('—') }}", "span": 1 }, { "text": "业务类型", "span": 1 }, { "text": "{{ receipt.bizType | default('—') }}", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "收款事由：{{ receipt.reason | default('—') }}", "fontSize": 11 },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "收款金额：¥ {{ receipt.amount | default(0) }}（大写：{{ receipt.amount | chinese_money }}）", "fontSize": 16, "color": "#DC2626" },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "明细", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "table",
+        "bind": "receipt.items",
+        "columns": [
+          { "key": "index", "label": "序号", "width": 10, "type": "string" },
+          { "key": "itemName", "label": "项目名称", "width": 40, "type": "string" },
+          { "key": "quantity", "label": "数量", "width": 15, "type": "number" },
+          { "key": "unitPrice", "label": "单价", "width": 15, "type": "money" },
+          { "key": "amount", "label": "金额", "width": 20, "type": "money" }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "备注：{{ receipt.remark | default('（无）') }}", "fontSize": 10 },
+      { "type": "text", "text": "附件张数：{{ receipt.attachmentCount | default(0) }} 张", "fontSize": 10 },
+      { "type": "spacer", "height": 12 },
+      {
+        "type": "grid",
+        "border": false,
+        "colCount": 3,
+        "rows": [
+          { "height": 36, "cells": [{ "text": "收款人：________________", "span": 1 }, { "text": "复核人：________________", "span": 1 }, { "text": "财务主管：________________", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 12 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

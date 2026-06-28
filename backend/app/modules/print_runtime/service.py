@@ -12,7 +12,7 @@ import logging
 import time
 from typing import Any, Optional
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.cache import delete_pattern, get as cache_get, set_ as cache_set
@@ -227,7 +227,9 @@ async def archive_template(db: AsyncSession, template_id: int) -> PrintTemplate:
 
 
 async def delete_template(db: AsyncSession, template_id: int) -> None:
-    """删除模板（仅 draft/archived 状态允许）。"""
+    """删除模板（仅 draft/archived 状态允许）。
+    先解除 print_logs 的外键引用,再删除模板（保留审计日志）。
+    """
     t = (await db.execute(
         select(PrintTemplate).where(PrintTemplate.id == template_id)
     )).scalar_one_or_none()
@@ -236,6 +238,12 @@ async def delete_template(db: AsyncSession, template_id: int) -> None:
     if t.status == "active":
         from app.core.exceptions import ParamErrorException
         raise ParamErrorException("已发布的模板不能删除，请先归档")
+    # 解除 print_logs 的外键引用（保留日志,只清 template_id）
+    from app.modules.print_runtime.models import PrintLog
+    await db.execute(
+        update(PrintLog).where(PrintLog.template_id == template_id).values(template_id=None)
+    )
+    # print_template_versions 有 ondelete="CASCADE"，会被自动级联删除
     await invalidate_template_cache(t.code)
     await db.delete(t)
     await db.commit()
@@ -293,6 +301,13 @@ async def render_by_schema(
 
     opts = options or {}
     render_mode = (opts.get("renderMode") or "html") if isinstance(opts, dict) else "html"
+
+    # 0.5) 多语言：根据 locale 转换 schema 中的文本
+    locale = (opts.get("locale") or "zh") if isinstance(opts, dict) else "zh"
+    if locale and locale != "zh":
+        from app.modules.print_runtime.i18n import apply_locale_to_schema
+        schema = apply_locale_to_schema(schema, locale)
+        bind_ctx.locale = locale
 
     # 1) VariableProvider
     data = await _enrich_data_with_providers(req_data or {}, bind_ctx)
@@ -356,10 +371,17 @@ async def render(
     schema = template_dict.get("schema_json") or {}
     doc_type = template_dict.get("doc_type") or ""
 
-    # options → render_mode / watermark
+    # options → render_mode / watermark / locale
     opts = req.options or {}
     render_mode = (opts.get("renderMode") or "pdf") if isinstance(opts, dict) else "pdf"
     copies = (opts.get("copies") or 1) if isinstance(opts, dict) else 1
+
+    # 0.5) 多语言：根据 locale 转换 schema 中的文本
+    locale = (opts.get("locale") or "zh") if isinstance(opts, dict) else "zh"
+    if locale and locale != "zh":
+        from app.modules.print_runtime.i18n import apply_locale_to_schema
+        schema = apply_locale_to_schema(schema, locale)
+        bind_ctx.locale = locale
     watermark = (opts.get("watermark") or None) if isinstance(opts, dict) else None
     source_module = (opts.get("sourceModule") or None) if isinstance(opts, dict) else None
     source_id = (opts.get("sourceId") or None) if isinstance(opts, dict) else None
@@ -424,6 +446,15 @@ async def render(
         source_module=source_module, source_id=source_id,
         pdf_size=len(content) if render_mode == "pdf" else None,
     )
+
+    # 4) PDF 数字签名 (M4 阶段 8, 仅 PDF 输出且 opts.sign=true)
+    if render_mode in ("pdf", "weasyprint") and isinstance(opts, dict) and opts.get("sign"):
+        from .signer import sign_pdf, is_signing_available
+        if is_signing_available():
+            try:
+                content = sign_pdf(content, reason=f"UDPE {template_dict.get('code')}")
+            except Exception as e:
+                logger.warning(f"[UDPE] PDF 签名失败（不影响输出）: {e}")
 
     return PrintResult(
         content=content,

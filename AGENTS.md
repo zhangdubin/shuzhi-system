@@ -88,12 +88,55 @@ cd frontend && npm run build 2>&1 | tail -10
 - `node_modules/.vite/` 热重载 → Vite dev server（本地 `npm run dev` 起的）
 
 **修改源码后,Docker 容器不会自动感知,必须 rebuild**:
+
+前端 `dist/` 是 volume 挂载，`npm run build` 即可，不需要重建前端镜像：
 ```bash
-cd deploy && docker compose build --no-cache frontend
-docker compose up -d --no-deps frontend
+cd frontend && npm run build
+# nginx 容器自动读到新 dist/
 ```
 
+后端必须重建镜像并重启容器：
+```bash
+cd deploy && docker compose build --no-cache backend
+docker compose up -d --no-deps backend
+```
+
+**排查线索**: 如果 curl 一个刚加的后端接口返回 `{"detail":"Method Not Allowed"}` (405)，先确认后端容器是否已 rebuild —— 本地改了代码但容器里跑的还是旧镜像。
+
 **Dockerfile context 注意**: `docker-compose.yml` 的 `context: ..` 指向项目根,`dockerfile: frontend/Dockerfile`。Dockerfile 里的 `COPY frontend/ .` 路径相对于项目根。
+
+
+
+## 补 CRUD 功能的标准链路
+
+给已有列表页补一个操作（如删除、导入），必须三层一起补：
+
+1. **后端 service** — `backend/app/modules/<domain>/service.py`，写业务函数
+2. **后端 router** — `backend/app/modules/<domain>/router.py`，注册端点（注意权限 `require_permission`）
+3. **前端 API** — `frontend/src/api/<domain>.ts`，加调用方法
+4. **前端页面** — `frontend/src/views/<domain>/<Page>.vue`，加按钮 + 处理函数
+
+**不要只改一端**：后端加了接口但前端没按钮 = 用户看不到；前端加了按钮但后端没接口 = 405 报错。
+
+## 接入已有组件前先检查
+
+项目里有些组件已经写好但**没有接入页面**（如 `ExcelImportDialog.vue`、`WordImportDialog.vue`）。
+补功能时先 `find` / `grep` 一下组件目录，看看是否已有现成的，避免重复造轮子。
+
+接入步骤：
+1. `import` 组件
+2. 加 `ref<boolean>` 控制显隐
+3. 页面头部加触发按钮
+4. 模板里加 `<XxxDialog v-model="visible" @success="onSuccess" />`
+5. 写 success 回调（通常就是刷新列表）
+
+## 删除功能的状态保护
+
+删除按钮不能对所有状态都显示。常见模式：
+- `active`（已发布）→ 不显示删除，先归档
+- `draft`（草稿）/ `archived`（已归档）→ 可删除
+
+后端也要做同样的校验，防止 API 直接调用绕过前端限制。
 
 ## Vue 模板 ref 可选链规范
 
@@ -109,3 +152,31 @@ docker compose up -d --no-deps frontend
 <div v-if="(result as any).suggestions?.linkToContract">
   <strong>{{ (result as any).suggestions.linkToContract }}</strong>
 ```
+
+## UDPE 后续方向经验（2026-06-28）
+
+### 多语言 i18n 规范
+- 模板组件 text 支持两种多语言格式：
+  1. `text: {"zh": "合同", "en": "Contract"}`（dict 格式）
+  2. `text: "合同"` + `locales: {"en": "Contract"}`（兼容旧格式）
+- 渲染时通过 `options.locale` 参数切换语言
+- i18n 模块在 `backend/app/modules/print_runtime/i18n.py`
+- grid cells、table headers 也支持多语言
+
+### PDF 导入
+- 端点: `POST /admin/print-templates/import/pdf/preview` 和 `/confirm`
+- 解析器: `backend/app/modules/print_runtime/importers/pdf_importer.py`
+- 用 PyMuPDF 提取文本块坐标和字号，启发式表格检测
+
+### 模板预设
+- 预设文件在 `backend/app/modules/print_runtime/presets/`
+- 格式: `{version, meta, paper, schemaJson: {body: [...]}}`
+- 新增: purchase_order / delivery_note / salary_slip / receipt
+
+### 压测脚本
+- `backend/tests/test_print_load.py` — 60 并发，120 请求/端点
+- 独立运行: `python -m pytest tests/test_print_load.py -v -s`
+
+### E2E 测试
+- `frontend/e2e/print-template.spec.ts` — Playwright 10 个用例
+- 配置: `frontend/playwright.config.ts`

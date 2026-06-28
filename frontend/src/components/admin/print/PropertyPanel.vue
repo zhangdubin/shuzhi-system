@@ -143,9 +143,24 @@
             @update:model-value="(v: string) => update('borderColor', v)"
           />
         </el-form-item>
-        <el-alert type="info" :closable="false" show-icon>
-          提示: V1 通过模板插入, rows 内部结构请用 JSON 模式编辑.
-        </el-alert>
+        <!-- 单元格网格 (可点击编辑) -->
+        <el-form-item label="单元格">
+          <div class="cell-grid">
+            <div v-for="(row, ri) in (component.rows || [])" :key="ri" class="cell-row">
+              <div
+                v-for="(cell, ci) in (row.cells || [])"
+                :key="ci"
+                class="cell-chip"
+                :class="{ 'has-children': cell.children && cell.children.length > 0 }"
+                :style="{ flex: cell.span || 1 }"
+                @click="emit('editCell', ri, ci)"
+              >
+                <span v-if="cell.children && cell.children.length > 0" class="chip-badge">{{ cell.children.length }}</span>
+                <span class="chip-text">{{ cell.text || '空' }}</span>
+              </div>
+            </div>
+          </div>
+        </el-form-item>
       </el-form>
 
       <!-- table: bind / columns -->
@@ -170,6 +185,56 @@
         ⤓ 强制分页符, 无需配置属性.
       </div>
 
+      <!-- qrcode: data / size / label -->
+      <el-form v-if="component.type === 'qrcode'" label-width="80px" size="default">
+        <el-form-item label="数据">
+          <el-input
+            :model-value="component.data"
+            placeholder="{{ form.code }}"
+            @update:model-value="(v: string) => update('data', v)"
+          />
+        </el-form-item>
+        <el-form-item label="尺寸">
+          <el-input-number
+            :model-value="component.size || 120"
+            :min="60" :max="300"
+            @update:model-value="(v: number) => update('size', v)"
+          />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input
+            :model-value="component.label || ''"
+            placeholder="扫码说明（可选）"
+            @update:model-value="(v: string) => update('label', v)"
+          />
+        </el-form-item>
+      </el-form>
+
+      <!-- barcode: data / height / label -->
+      <el-form v-if="component.type === 'barcode'" label-width="80px" size="default">
+        <el-form-item label="数据">
+          <el-input
+            :model-value="component.data"
+            placeholder="{{ form.formNo }}"
+            @update:model-value="(v: string) => update('data', v)"
+          />
+        </el-form-item>
+        <el-form-item label="条码高度">
+          <el-input-number
+            :model-value="component.height || 50"
+            :min="30" :max="120"
+            @update:model-value="(v: number) => update('height', v)"
+          />
+        </el-form-item>
+        <el-form-item label="标签">
+          <el-input
+            :model-value="component.label || ''"
+            placeholder="条码说明（可选）"
+            @update:model-value="(v: string) => update('label', v)"
+          />
+        </el-form-item>
+      </el-form>
+
       <!-- 通用: id (临时) -->
       <el-form label-width="80px" size="default" class="id-form">
         <el-form-item label="临时 ID">
@@ -193,6 +258,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'update', key: string, value: any): void
+  (e: 'editCell', rowIndex: number, cellIndex: number): void
 }>()
 
 // 数据绑定相关状态
@@ -231,7 +297,7 @@ function insertStatic() {
 const meta = computed(() => props.component ? findMeta(props.component.type) : null)
 const typeLabel = computed(() => meta.value?.label || props.component?.type || '')
 
-const hasText = computed(() => props.component && ['title', 'text'].includes(props.component.type))
+const hasText = computed(() => props.component && ['title', 'text', 'qrcode', 'barcode'].includes(props.component.type))
 const isTextLike = computed(() => props.component && ['title', 'text'].includes(props.component.type))
 
 function update(key: string, value: any) {
@@ -325,5 +391,52 @@ function removeGridRow() {
 
 .bind-section .el-button {
   margin-left: 0;
+}
+.cell-grid {
+  width: 100%;
+  border: 1px solid #E5E7EB;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.cell-row {
+  display: flex;
+  border-bottom: 1px solid #E5E7EB;
+}
+.cell-row:last-child { border-bottom: none; }
+.cell-chip {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 8px;
+  border-right: 1px solid #E5E7EB;
+  cursor: pointer;
+  font-size: 11px;
+  color: #6B7280;
+  transition: all 0.15s;
+  position: relative;
+  min-height: 28px;
+}
+.cell-chip:last-child { border-right: none; }
+.cell-chip:hover { background: #EEF2FF; color: #4F6BFF; }
+.cell-chip.has-children { background: #F0FDF4; color: #16A34A; }
+.chip-badge {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  font-size: 9px;
+  background: #16A34A;
+  color: white;
+  border-radius: 50%;
+  width: 14px;
+  height: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.chip-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 60px;
 }
 </style>

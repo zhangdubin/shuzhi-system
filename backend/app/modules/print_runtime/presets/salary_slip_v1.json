@@ -1,0 +1,68 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "salary_slip",
+    "title": "工资条",
+    "description": "员工工资条 A4 标准版（含明细）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "员 工 工 资 条", "fontSize": 22, "align": "center" },
+      { "type": "text", "text": "{{ company.name }} · {{ salary.period | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "姓名", "span": 1 }, { "text": "{{ salary.employee.name | default('—') }}", "span": 1 }, { "text": "工号", "span": 1 }, { "text": "{{ salary.employee.code | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "部门", "span": 1 }, { "text": "{{ salary.employee.department | default('—') }}", "span": 1 }, { "text": "职位", "span": 1 }, { "text": "{{ salary.employee.position | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "入职日期", "span": 1 }, { "text": "{{ salary.employee.joinDate | default('—') }}", "span": 1 }, { "text": "银行账号", "span": 1 }, { "text": "{{ salary.bankAccount | default('—') }}", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "收入项目", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "基本工资", "span": 1 }, { "text": "¥ {{ salary.baseSalary | default(0) }}", "span": 1 }, { "text": "岗位津贴", "span": 1 }, { "text": "¥ {{ salary.positionAllowance | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "绩效奖金", "span": 1 }, { "text": "¥ {{ salary.performanceBonus | default(0) }}", "span": 1 }, { "text": "加班工资", "span": 1 }, { "text": "¥ {{ salary.overtimePay | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "全勤奖", "span": 1 }, { "text": "¥ {{ salary.attendanceBonus | default(0) }}", "span": 1 }, { "text": "其他补贴", "span": 1 }, { "text": "¥ {{ salary.otherAllowance | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "应发合计", "span": 1 }, { "text": "¥ {{ salary.grossPay | default(0) }}", "span": 3 }] }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "text", "text": "扣减项目", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "养老保险", "span": 1 }, { "text": "¥ {{ salary.pension | default(0) }}", "span": 1 }, { "text": "医疗保险", "span": 1 }, { "text": "¥ {{ salary.medical | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "失业保险", "span": 1 }, { "text": "¥ {{ salary.unemployment | default(0) }}", "span": 1 }, { "text": "住房公积金", "span": 1 }, { "text": "¥ {{ salary.housingFund | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "个人所得税", "span": 1 }, { "text": "¥ {{ salary.incomeTax | default(0) }}", "span": 1 }, { "text": "其他扣款", "span": 1 }, { "text": "¥ {{ salary.otherDeduction | default(0) }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "扣减合计", "span": 1 }, { "text": "¥ {{ salary.totalDeduction | default(0) }}", "span": 3 }] }
+        ]
+      },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "实发工资：¥ {{ salary.netPay | default(0) }}（大写：{{ salary.netPay | chinese_money }}）", "fontSize": 16, "color": "#DC2626" },
+      { "type": "text", "text": "发放日期：{{ salary.payDate | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "备注：{{ salary.remark | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 16 },
+      { "type": "text", "text": "※ 本工资条仅供个人查阅，请妥善保管", "fontSize": 9, "align": "center", "color": "#9CA3AF" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

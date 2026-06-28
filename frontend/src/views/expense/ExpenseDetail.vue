@@ -10,6 +10,7 @@ import { useRouter, useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { expenseApi, invoiceOcrApi } from '@/api/modules'
 import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
+import { printApi } from '@/api/print'
 
 const router = useRouter()
 const route = useRoute()
@@ -20,10 +21,37 @@ const loading = ref(false)
 const printVisible = ref(false)
 const printDialogVisible = ref(false)
 
+const pdfBusy = ref(false)
+
 function openPrint() { printVisible.value = true }
 function doPrint() {
-  // 给浏览器一点时间渲染打印内容
   setTimeout(() => window.print(), 100)
+}
+
+async function downloadPDF() {
+  pdfBusy.value = true
+  const loading = ElMessage({ message: '正在生成 PDF…', type: 'info', duration: 0 })
+  try {
+    const id = detail.value?.id || Number(route.params.id)
+    const blob = await printApi.pdfBlob({
+      templateCode: 'expense_v1',
+      data: { _resolver: id },
+      options: { sourceModule: 'expense', sourceId: String(id) },
+    })
+    loading.close()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${detail.value?.code || '费用申请'}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('PDF 已下载')
+  } catch (e: any) {
+    loading.close()
+    ElMessage.error('PDF 生成失败: ' + (e?.message || ''))
+  } finally {
+    pdfBusy.value = false
+  }
 }
 
 
@@ -476,6 +504,7 @@ function doPrint() {
   >
     <div class="print-toolbar no-print">
       <el-button type="primary" @click="doPrint">🖨 立即打印</el-button>
+      <el-button @click="downloadPDF" :loading="pdfBusy">⇩ 下载 PDF</el-button>
       <el-button @click="printVisible = false">关闭</el-button>
       <span class="print-tip">建议使用 A4 纸张 · 边距「最小」</span>
     </div>

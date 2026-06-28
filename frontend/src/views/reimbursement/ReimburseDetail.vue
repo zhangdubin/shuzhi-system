@@ -317,6 +317,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { reimburseApi } from '@/api/modules'
 import { PrintByTemplateButton, PrintPreviewDialog } from '@/components/common/print'
+import { printApi } from '@/api/print'
 
 const route = useRoute()
 const router = useRouter()
@@ -464,8 +465,24 @@ async function onPrint() {
 
 async function onDownloadPDF() {
   pdfBusy.value = true
+  const loading = ElMessage({ message: '正在生成 PDF…', type: 'info', duration: 0 })
   try {
-    // 走浏览器原生打印 → 用户选 "另存为 PDF"
+    const blob = await printApi.pdfBlob({
+      templateCode: 'reimbursement_v1',
+      data: { _resolver: form.value?.formId || Number(route.params.id) },
+      options: { sourceModule: 'reimbursement', sourceId: String(form.value?.formId || route.params.id) },
+    })
+    loading.close()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `${form.value?.formNo || '报销单'}.pdf`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success('PDF 已下载')
+  } catch (e: any) {
+    loading.close()
+    ElMessage.error('PDF 生成失败: ' + (e?.message || '') + '，回退到浏览器打印')
     onNativePrint()
   } finally {
     pdfBusy.value = false

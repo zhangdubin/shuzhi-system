@@ -13,6 +13,7 @@ declare module 'vue' {
     AiFilterDialog: typeof import('./components/ai/AiFilterDialog.vue')['default']
     AIRiskChip: typeof import('./components/ai/AIRiskChip.vue')['default']
     AiRiskScanPanel: typeof import('./components/ai/AiRiskScanPanel.vue')['default']
+    BatchPrintProgressDialog: typeof import('./components/common/BatchPrintProgressDialog.vue')['default']
     CanvasItem: typeof import('./components/admin/print/CanvasItem.vue')['default']
     ComponentPalette: typeof import('./components/admin/print/ComponentPalette.vue')['default']
     ElAlert: typeof import('element-plus/es')['ElAlert']
@@ -69,6 +70,7 @@ declare module 'vue' {
     FilterPanel: typeof import('./components/common/FilterPanel.vue')['default']
     FormField: typeof import('./components/common/FormField.vue')['default']
     GlobalAskDialog: typeof import('./components/ai/GlobalAskDialog.vue')['default']
+    GridCellEditor: typeof import('./components/admin/print/GridCellEditor.vue')['default']
     PageHeader: typeof import('./components/common/PageHeader.vue')['default']
     PrintByTemplateButton: typeof import('./components/common/PrintByTemplateButton.vue')['default']
     PrintPreviewDialog: typeof import('./components/common/PrintPreviewDialog.vue')['default']
@@ -80,6 +82,7 @@ declare module 'vue' {
     StatGrid: typeof import('./components/StatGrid.vue')['default']
     StatusTabs: typeof import('./components/common/StatusTabs.vue')['default']
     TagPill: typeof import('./components/common/TagPill.vue')['default']
+    VersionHistoryDialog: typeof import('./components/admin/print/VersionHistoryDialog.vue')['default']
     VisualCanvas: typeof import('./components/admin/print/VisualCanvas.vue')['default']
     WordImportDialog: typeof import('./components/admin/print/WordImportDialog.vue')['default']
   }

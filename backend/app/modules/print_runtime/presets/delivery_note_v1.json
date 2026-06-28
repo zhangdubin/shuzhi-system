@@ -1,0 +1,71 @@
+{
+  "version": "1.0",
+  "meta": {
+    "docType": "delivery_note",
+    "title": "发货单",
+    "description": "发货单/送货单 A4 标准版（含明细表）"
+  },
+  "paper": { "size": "A4", "orientation": "portrait", "marginMm": { "top": 18, "right": 18, "bottom": 18, "left": 18 } },
+  "schemaJson": {
+    "body": [
+      { "type": "title", "text": "发 货 单", "fontSize": 22, "align": "center" },
+      { "type": "text", "text": "发货单号：{{ delivery.code | default('—') }}", "fontSize": 10, "align": "center", "color": "#6B7280" },
+      { "type": "spacer", "height": 8 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "grid",
+        "border": true,
+        "colCount": 4,
+        "rows": [
+          { "height": 16, "cells": [{ "text": "客户名称", "span": 1 }, { "text": "{{ delivery.customer.name | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "收货人", "span": 1 }, { "text": "{{ delivery.receiver.name | default('—') }}", "span": 1 }, { "text": "联系电话", "span": 1 }, { "text": "{{ delivery.receiver.phone | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "收货地址", "span": 1 }, { "text": "{{ delivery.shippingAddress | default('—') }}", "span": 3 }] },
+          { "height": 16, "cells": [{ "text": "发货日期", "span": 1 }, { "text": "{{ delivery.shipDate | default('—') }}", "span": 1 }, { "text": "物流方式", "span": 1 }, { "text": "{{ delivery.logisticsMethod | default('—') }}", "span": 1 }] },
+          { "height": 16, "cells": [{ "text": "关联订单号", "span": 1 }, { "text": "{{ delivery.orderCode | default('—') }}", "span": 1 }, { "text": "状态", "span": 1 }, { "text": "{{ delivery.statusLabel | default('—') }}", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "发货明细（共 {{ delivery.itemCount | default(0) }} 项）", "fontSize": 13, "color": "#4F6BFF" },
+      { "type": "spacer", "height": 4 },
+      {
+        "type": "table",
+        "bind": "delivery.items",
+        "columns": [
+          { "key": "index", "label": "序号", "width": 8, "type": "string" },
+          { "key": "productName", "label": "产品名称", "width": 28, "type": "string" },
+          { "key": "spec", "label": "规格型号", "width": 20, "type": "string" },
+          { "key": "unit", "label": "单位", "width": 8, "type": "string" },
+          { "key": "quantity", "label": "发货数量", "width": 12, "type": "number" },
+          { "key": "unitPrice", "label": "单价", "width": 12, "type": "money" },
+          { "key": "amount", "label": "金额", "width": 16, "type": "money" }
+        ]
+      },
+      { "type": "spacer", "height": 6 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "合计金额：¥ {{ delivery.totalAmount | default(0) }}（大写：{{ delivery.totalAmount | chinese_money }}）", "fontSize": 14, "color": "#DC2626" },
+      { "type": "text", "text": "总件数：{{ delivery.totalPieces | default(0) }} 件", "fontSize": 11 },
+      { "type": "text", "text": "总重量：{{ delivery.totalWeight | default(0) }} kg", "fontSize": 11 },
+      { "type": "spacer", "height": 4 },
+      { "type": "line" },
+      { "type": "spacer", "height": 4 },
+      { "type": "text", "text": "物流公司：{{ delivery.logisticsCompany | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "运单号：{{ delivery.trackingNo | default('—') }}", "fontSize": 10 },
+      { "type": "text", "text": "备注：{{ delivery.remark | default('（无）') }}", "fontSize": 10 },
+      { "type": "spacer", "height": 12 },
+      {
+        "type": "grid",
+        "border": false,
+        "colCount": 3,
+        "rows": [
+          { "height": 36, "cells": [{ "text": "发货人：________________", "span": 1 }, { "text": "仓库确认：________________", "span": 1 }, { "text": "收货人签收：________________", "span": 1 }] }
+        ]
+      },
+      { "type": "spacer", "height": 12 },
+      { "type": "text", "text": "打印时间：{{ printTime }} | 打印人：{{ printUser }}", "fontSize": 9, "align": "center", "color": "#9CA3AF" }
+    ]
+  }
+}

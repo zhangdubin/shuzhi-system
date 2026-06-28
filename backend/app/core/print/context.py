@@ -16,6 +16,7 @@ class BindContext:
     operator_name: Optional[str] = None
     source_module: Optional[str] = None
     source_id: Optional[str] = None
+    locale: str = "zh"  # 多语言支持
     extra: dict = field(default_factory=dict)
 
 

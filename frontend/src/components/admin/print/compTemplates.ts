@@ -3,7 +3,7 @@
  * 7 个组件: title / text / spacer / line / grid / table / pagebreak
  * 新增的组件会自动分配临时 id, 保存前剔除.
  */
-export type CompType = 'title' | 'text' | 'spacer' | 'line' | 'grid' | 'table' | 'pagebreak'
+export type CompType = 'title' | 'text' | 'spacer' | 'line' | 'grid' | 'table' | 'pagebreak' | 'qrcode' | 'barcode'
 
 let _idCounter = 0
 const _idPrefix = 'c'
@@ -60,6 +60,14 @@ export const COMP_PALETTE: CompMeta[] = [
   {
     type: 'pagebreak', label: '分页', icon: '⤓', desc: '强制分页符',
     default: () => ({ type: 'pagebreak' }),
+  },
+  {
+    type: 'qrcode', label: '二维码', icon: '⊞', desc: 'QR Code (支持 {{...}} 模板插值)',
+    default: () => ({ type: 'qrcode', data: '{{ form.code }}', size: 120, label: '' }),
+  },
+  {
+    type: 'barcode', label: '条码', icon: '║║', desc: 'Code128 条形码',
+    default: () => ({ type: 'barcode', data: '{{ form.formNo }}', height: 50, label: '' }),
   },
 ]
 

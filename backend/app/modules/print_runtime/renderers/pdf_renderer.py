@@ -391,15 +391,40 @@ def _build_component(comp: dict, data: dict, styles_cache: dict) -> list:
             cells = row.get("cells", [])
             for c in cells:
                 span = int(c.get("span", 1))
-                if "bind" in c:
-                    txt = str(_resolve_value(data, c["bind"]) or "")
-                else:
-                    txt = _bind_text(c.get("text", ""), data)
                 fs = int(c.get("fontSize") or 12)
                 color = c.get("color", "#000000")
                 bold = "bold" if c.get("bold") else "normal"
                 align = c.get("align", "left")
                 bg = c.get("background")
+                # 嵌套组件: 如果 cell 有 children, 拼接渲染
+                children = c.get("children")
+                if children and isinstance(children, list):
+                    parts = []
+                    for child in children:
+                        ct = child.get("type", "text")
+                        if ct in ("text", "title"):
+                            ctxt = _bind_text(child.get("text", ""), data)
+                            cfs = int(child.get("fontSize") or 12)
+                            ccolor = child.get("color", "#1F2937")
+                            cweight = "bold" if child.get("bold") or ct == "title" else ""
+                            styled_txt = ctxt
+                            if cweight:
+                                styled_txt = f'<b>{styled_txt}</b>'
+                            parts.append(
+                                f'<font size="{cfs}" color="{ccolor}">{styled_txt}</font>'
+                            )
+                        elif ct == "spacer":
+                            parts.append(" ")
+                        elif ct == "line":
+                            parts.append("─" * 20)
+                        else:
+                            parts.append(_bind_text(child.get("text", ct), data))
+                    txt = "<br/>".join(parts)
+                else:
+                    if "bind" in c:
+                        txt = str(_resolve_value(data, c["bind"]) or "")
+                    else:
+                        txt = _bind_text(c.get("text", ""), data)
                 # 用 Paragraph 支持中文字体
                 style = ParagraphStyle(
                     "gcell",
@@ -409,7 +434,10 @@ def _build_component(comp: dict, data: dict, styles_cache: dict) -> list:
                     leading=fs * 1.3,
                     alignment={"left": 0, "center": 1, "right": 2}.get(align, 0),
                 )
-                content_html = f'<b>{txt}</b>' if bold == "bold" else txt
+                if not (children and isinstance(children, list)):
+                    content_html = f'<b>{txt}</b>' if bold == "bold" else txt
+                else:
+                    content_html = txt
                 para = Paragraph(content_html or "&nbsp;", style)
                 cell_paragraphs.append({"p": para, "span": span, "bg": bg})
 

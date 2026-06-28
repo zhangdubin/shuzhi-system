@@ -92,6 +92,7 @@ def _convert_sheet(sheet) -> dict:
             )
         # 起始 cell (纵向合并的 _origin_row 是 min_row)
         cells[(mr.min_row, mr.min_col)] = {
+            "_col": mr.min_col,
             "text": str(start_cell.value) if start_cell.value is not None else "",
             "span": col_span,
             "row_span": row_span,
@@ -118,6 +119,7 @@ def _convert_sheet(sheet) -> dict:
             # 跳过纯空 cell (无值无边框)
             text = str(cell.value) if cell.value is not None else ""
             cells[(cell.row, cell.column)] = {
+                "_col": cell.column,
                 "text": text,
                 "span": 1,
                 "row_span": 1,
@@ -150,6 +152,7 @@ def _convert_sheet(sheet) -> dict:
             if cell_meta.get("_origin_row", r) != r:
                 continue
             row_cells_out.append({
+                "_col": cell_meta.get("_col", c),
                 "text": _clean_template_text(cell_meta["text"]),
                 "span": cell_meta["span"],
                 "bold": cell_meta["bold"],
@@ -158,6 +161,19 @@ def _convert_sheet(sheet) -> dict:
                 **({"fontSize": cell_meta["fontSize"]} if cell_meta["fontSize"] else {}),
                 **({"color": cell_meta["color"]} if cell_meta["color"] else {}),
             })
+        # 填充列间隙: 空列用空 cell 占位, 保持列对齐
+        if row_cells_out:
+            filled = []
+            current_col = 1
+            for cell_out in row_cells_out:
+                cell_col = cell_out.pop("_col")  # 移除临时字段
+                while current_col < cell_col:
+                    # 插入空 cell 占位
+                    filled.append({"text": "", "span": 1, "bold": False})
+                    current_col += 1
+                filled.append(cell_out)
+                current_col += cell_out.get("span", 1)
+            row_cells_out = filled
         if row_cells_out:
             # 行高: 此行 + 后续被合并的行 (row_span > 1)
             max_row_span = 1

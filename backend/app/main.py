@@ -44,6 +44,7 @@ def _register_udpe() -> None:
         ProviderRegistry, RendererRegistry, ResolverRegistry,
     )
     from app.modules.print_runtime.renderers import HtmlRenderer, PdfRenderer
+    from app.modules.print_runtime.renderers.weasyprint_renderer import WeasyPrintRenderer
     from app.modules.print_runtime.resolvers import (
         ContractResolver, ExpenseResolver, InvoiceResolver, ReimbursementResolver,
     )
@@ -51,6 +52,7 @@ def _register_udpe() -> None:
 
     RendererRegistry.register(PdfRenderer())
     RendererRegistry.register(HtmlRenderer())
+    RendererRegistry.register(WeasyPrintRenderer())
 
     ResolverRegistry.register(ContractResolver())
     ResolverRegistry.register(ReimbursementResolver())

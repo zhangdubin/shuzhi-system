@@ -23,7 +23,8 @@
       <div class="header-right">
         <el-button v-if="isNew" @click="excelImportOpen = true">📥 导入 Excel</el-button>
         <el-button v-if="isNew" @click="docxImportOpen = true">📥 导入 Word</el-button>
-        <el-button :disabled="!isDirty || saving" @click="resetForm">↺ 撤销</el-button>
+        <el-button :disabled="!canUndo" @click="doUndo" title="Ctrl+Z">↩ 撤销</el-button>
+        <el-button :disabled="!canRedo" @click="redo" title="Ctrl+Shift+Z">↪ 重做</el-button>
         <el-button type="primary" :loading="saving" @click="save">{{ isNew ? '创建（draft）' : '保存' }}</el-button>
         <el-button v-if="!isNew && status === 'draft'" type="success" :loading="publishing" @click="publish">发布</el-button>
       </div>
@@ -125,11 +126,13 @@
                   @remove="onVisualRemove"
                   @move="onVisualMove"
                   @add="onVisualAddByComp"
+                  @reorder="onVisualReorder"
                 />
                 <PropertyPanel
                   :component="visualSelectedComp"
                   :doc-type="form.docType"
                   @update="onVisualUpdate"
+                  @edit-cell="onEditCell"
                 />
               </div>
             </div>
@@ -165,6 +168,16 @@
       </div>
     </div>
 
+    <!-- 单元格编辑弹窗 -->
+    <GridCellEditor
+      v-if="cellEditorCell"
+      v-model="cellEditorVisible"
+      :cell="cellEditorCell"
+      :row-index="cellEditorRow"
+      :cell-index="cellEditorCol"
+      @save="onCellSave"
+    />
+
     <ExcelImportDialog
       v-model="excelImportOpen"
       @success="onImportSuccess"
@@ -178,16 +191,18 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+import { ref, reactive, computed, onMounted, onUnmounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Loading } from '@element-plus/icons-vue'
 import { printApi } from '@/api/print'
 import { contractApi, invoiceOcrApi, expenseApi, reimburseApi } from '@/api/modules'
+import { useUndoRedo } from '@/components/admin/print/useUndoRedo'
 import ComponentPalette from '@/components/admin/print/ComponentPalette.vue'
 import VisualCanvas from '@/components/admin/print/VisualCanvas.vue'
 import PropertyPanel from '@/components/admin/print/PropertyPanel.vue'
 import { cloneComp, type CompMeta, findMeta } from '@/components/admin/print/compTemplates'
+import GridCellEditor from '@/components/admin/print/GridCellEditor.vue'
 import ExcelImportDialog from '@/components/admin/print/ExcelImportDialog.vue'
 import WordImportDialog from '@/components/admin/print/WordImportDialog.vue'
 
@@ -223,6 +238,7 @@ const form = reactive({
 // M3 阶段 3: 可视化模式状态
 const editorMode = ref<'json' | 'visual'>('visual')  // 默认可视化
 const visualBody = ref<Record<string, any>[]>([])
+const { push: pushHistory, undo, redo, canUndo, canRedo } = useUndoRedo(visualBody, 50)
 const visualSelectedIndex = ref<number>(-1)
 const visualSelectedComp = computed(() => {
   if (visualSelectedIndex.value < 0 || visualSelectedIndex.value >= visualBody.value.length) return null
@@ -231,6 +247,10 @@ const visualSelectedComp = computed(() => {
 let syncingFromJson = false  // 防止循环同步
 const excelImportOpen = ref(false)
 const docxImportOpen = ref(false)
+const cellEditorVisible = ref(false)
+const cellEditorCell = ref<Record<string, any> | null>(null)
+const cellEditorRow = ref(0)
+const cellEditorCol = ref(0)
 
 const jsonRaw = ref<string>('{\n  "body": []\n}')
 const jsonError = ref<string | null>(null)
@@ -322,6 +342,7 @@ function onVisualAdd(meta: CompMeta) {
 function onVisualAddByComp(comp: Record<string, any>) {
   const arr = [...visualBody.value]
   const insertAt = visualSelectedIndex.value >= 0 ? visualSelectedIndex.value + 1 : arr.length
+  pushHistory()
   arr.splice(insertAt, 0, comp)
   visualBody.value = arr
   visualSelectedIndex.value = insertAt
@@ -330,6 +351,7 @@ function onVisualAddByComp(comp: Record<string, any>) {
 
 /** 删除选中 */
 function onVisualRemove(index: number) {
+  pushHistory()
   const arr = [...visualBody.value]
   arr.splice(index, 1)
   visualBody.value = arr
@@ -343,6 +365,7 @@ function onVisualRemove(index: number) {
 function onVisualMove(index: number, dir: number) {
   const newIdx = index + dir
   if (newIdx < 0 || newIdx >= visualBody.value.length) return
+  pushHistory()
   const arr = [...visualBody.value]
   const [item] = arr.splice(index, 1)
   arr.splice(newIdx, 0, item)
@@ -354,6 +377,7 @@ function onVisualMove(index: number, dir: number) {
 /** 属性面板修改: 改 component 字段 */
 function onVisualUpdate(key: string, value: any) {
   if (visualSelectedIndex.value < 0) return
+  pushHistory()
   const arr = [...visualBody.value]
   const comp = { ...arr[visualSelectedIndex.value], [key]: value }
   arr[visualSelectedIndex.value] = comp
@@ -362,6 +386,23 @@ function onVisualUpdate(key: string, value: any) {
 }
 
 /** 画布变化后 → 同步到 jsonRaw (避免循环) */
+/** 拖拽重排 */
+function onVisualReorder(from: number, to: number, insertBefore: boolean) {
+  if (from === to) return
+  pushHistory()
+  const arr = [...visualBody.value]
+  const [item] = arr.splice(from, 1)
+  let targetIdx = to
+  // 如果拖到目标下方, 需要调整
+  if (from < to) targetIdx--  // splice 后 index 偏移
+  if (!insertBefore) targetIdx++
+  targetIdx = Math.max(0, Math.min(targetIdx, arr.length))
+  arr.splice(targetIdx, 0, item)
+  visualBody.value = arr
+  visualSelectedIndex.value = targetIdx
+  syncVisualToJson()
+}
+
 function syncVisualToJson() {
   if (syncingFromJson) return
   // 深拷贝, 剔除 id 字段 (保存时不带临时 id)
@@ -374,7 +415,42 @@ function syncVisualToJson() {
   jsonError.value = null
   isDirty.value = (jsonRaw.value !== initialJson)
   // 防抖 600ms 后预览
-  if (previewTimer) clearTimeout(preloadPreview)
+  if (previewTimer) clearTimeout(previewTimer)
+  previewTimer = setTimeout(reloadPreview, 600)
+}
+
+/** 打开单元格编辑器 */
+function onEditCell(rowIndex: number, cellIndex: number) {
+  if (!visualSelectedComp.value || visualSelectedComp.value.type !== 'grid') return
+  const rows = visualSelectedComp.value.rows || []
+  if (rowIndex >= rows.length) return
+  const cells = rows[rowIndex].cells || []
+  if (cellIndex >= cells.length) return
+  cellEditorCell.value = cells[cellIndex]
+  cellEditorRow.value = rowIndex
+  cellEditorCol.value = cellIndex
+  cellEditorVisible.value = true
+}
+
+/** 单元格编辑器保存 */
+function onCellSave(children: Record<string, any>[], simpleText: string) {
+  if (!visualSelectedComp.value) return
+  pushHistory()
+  const rows = [...(visualSelectedComp.value.rows || [])]
+  const row = { ...rows[cellEditorRow.value] }
+  const cells = [...row.cells]
+  const cell = { ...cells[cellEditorCol.value] }
+  if (children.length > 0) {
+    cell.children = children
+    delete cell.text
+  } else {
+    cell.text = simpleText
+    delete cell.children
+  }
+  cells[cellEditorCol.value] = cell
+  row.cells = cells
+  rows[cellEditorRow.value] = row
+  onVisualUpdate('rows', rows)
 }
 
 function onImportSuccess(templateId: number) {
@@ -595,12 +671,37 @@ watch(previewBusinessId, () => {
   reloadPreview()
 })
 
+function doUndo() {
+  undo()
+  syncVisualToJson()
+}
+
+// 键盘快捷键: Ctrl+Z 撤销, Ctrl+Shift+Z 重做
+function onKeydown(e: KeyboardEvent) {
+  if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+    e.preventDefault()
+    if (e.shiftKey) {
+      redo()
+    } else {
+      doUndo()
+    }
+    syncVisualToJson()
+  }
+}
+
 onMounted(async () => {
+  window.addEventListener('keydown', onKeydown)
+  // 保存初始快照
+  pushHistory()
   if (!isNew.value) {
     await loadTemplate()
   } else {
     initialJson = jsonRaw.value
   }
+})
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', onKeydown)
 })
 </script>
 
